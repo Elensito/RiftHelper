@@ -37,12 +37,15 @@ def generate_stats_excel(
     wins = sum(1 for m in matches if m.get("win"))
     wr = round(wins / total * 100) if total else 0
 
+    include_boots = any(m.get("is_adc") for m in matches)
+    total_cols = 22 if include_boots else 21
+
     # ================= PANEL DEL JUGADOR =================
     for row in range(1, 5):
-        for col in range(1, 22):
+        for col in range(1, total_cols + 1):
             c = ws.cell(row=row, column=col)
             c.fill = PatternFill("solid", fgColor=NAVY)
-    for col in range(1, 22):
+    for col in range(1, total_cols + 1):
         ws.cell(row=1, column=col).fill = PatternFill("solid", fgColor=NAVY_2)
         ws.cell(row=4, column=col).fill = PatternFill("solid", fgColor=NAVY_2)
 
@@ -64,9 +67,12 @@ def generate_stats_excel(
     headers = [
         "Nº", "Fecha", "Campeón", "Adversario", "Oro diff @10", "Oro diff @30", "CS/min",
         "Daño/min", "Daño total", "KP%", "Daño edif.", "Visión/min", "Runa",
-        "Item 1", "Item 2", "Item 3", "Item 4", "Item 5", "Item 6", "Trinket",
-        "Resultado",
+        "Item 1", "Item 2", "Item 3", "Item 4", "Item 5", "Item 6",
     ]
+    if include_boots:
+        headers.append("Botas")
+    headers += ["Trinket", "Resultado"]
+
     ws.row_dimensions[header_row].height = 26
     for col, h in enumerate(headers, 1):
         cell = ws.cell(row=header_row, column=col, value=h)
@@ -75,7 +81,10 @@ def generate_stats_excel(
         cell.alignment = Alignment(horizontal="center", vertical="center")
         cell.border = Border(bottom=Side(style="medium", color=GOLD))
 
-    widths = [6, 12, 6, 6, 13, 13, 9, 10, 12, 8, 12, 11, 6, 6, 6, 6, 6, 6, 6, 6, 11]
+    widths = [6, 12, 6, 6, 13, 13, 9, 10, 12, 8, 12, 11, 6, 6, 6, 6, 6, 6, 6]
+    if include_boots:
+        widths.append(6)
+    widths += [6, 11]
     for i, w in enumerate(widths, 1):
         ws.column_dimensions[get_column_letter(i)].width = w
 
@@ -106,9 +115,11 @@ def generate_stats_excel(
             "",
             "",
             "",
-            "",
-            "Victoria" if m.get("win") else "Derrota",
         ]
+        if include_boots:
+            values.append("")
+        values += ["", "Victoria" if m.get("win") else "Derrota"]
+
         for col, v in enumerate(values, 1):
             cell = ws.cell(row=row, column=col, value=v)
             cell.font = Font(name=FONT_NAME, size=10)
@@ -117,7 +128,9 @@ def generate_stats_excel(
             if zebra:
                 cell.fill = zebra
 
-        res = ws.cell(row=row, column=21)
+        trinket_col = 21 if include_boots else 20
+        result_col = trinket_col + 1
+        res = ws.cell(row=row, column=result_col)
         res.font = Font(name=FONT_NAME, size=10, bold=True, color=GREEN if m.get("win") else RED)
 
         _add_cell_image(ws, m.get("player_icon"), f"C{row}")
@@ -127,8 +140,10 @@ def generate_stats_excel(
         for slot in range(6):
             if slot < len(items):
                 _add_cell_image(ws, _item_icon(items[slot]), f"{get_column_letter(14 + slot)}{row}")
+        if include_boots and m.get("is_adc") and len(items) > 7:
+            _add_cell_image(ws, _item_icon(items[7]), f"T{row}")
         if len(items) > 6:
-            _add_cell_image(ws, _item_icon(items[6]), f"T{row}")
+            _add_cell_image(ws, _item_icon(items[6]), f"{get_column_letter(trinket_col)}{row}")
         row += 1
 
     # ================= ACABADO =================

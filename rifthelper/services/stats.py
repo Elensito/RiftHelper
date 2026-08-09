@@ -88,9 +88,14 @@ def compute_match_stats(
     )
 
     item_ids = []
-    for i in range(7):
+    for i in range(8):
         item_id = target.get(f"item{i}", 0) or 0
         item_ids.append(item_id)
+
+    is_adc = (target.get("teamPosition") or "").upper() == "BOTTOM"
+    if is_adc:
+        role_boots = target.get("roleBoundItem", 0) or 0
+        item_ids[7] = role_boots or item_ids[7]
 
     keystone = None
     styles = (target.get("perks", {}) or {}).get("styles", []) or []
@@ -117,6 +122,7 @@ def compute_match_stats(
         "vision_per_min": vision_per_min,
         "item_ids": item_ids,
         "keystone": keystone,
+        "is_adc": is_adc,
     }
 
 
