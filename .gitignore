@@ -1,0 +1,14 @@
+.env
+data.json
+champions_cache.json
+items_cache.json
+runes_cache.json
+cache/
+__pycache__/
+*.pyc
+.venv/
+venv/
+dist/
+build/
+*.egg-info/
+.pytest_cache/
