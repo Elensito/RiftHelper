@@ -1,3 +1,5 @@
+import io
+import zipfile
 from datetime import datetime, timezone
 
 import discord
@@ -20,24 +22,30 @@ class StatsCog(commands.Cog):
 
     @app_commands.command(
         name="estadisticas",
-        description="Genera un Excel descargable con tus stats de la temporada (oro diff y CS/min)",
+        description="Genera un Excel/HTML descargable con tus stats de la temporada (build, runas, oro diff, CS/min...)",
     )
     @app_commands.describe(
         partidas=f"Número de partidas a analizar ({MIN_MATCHES}-{MAX_MATCHES})",
-        tipo="Qué colas clasificatorias incluir en el Excel",
+        tipo="Qué colas clasificatorias incluir en el informe",
+        formato="Formato del informe: Excel (.xlsx) o HTML (.html)",
     )
     @app_commands.choices(
         tipo=[
             app_commands.Choice(name="Todas (Ranked)", value=0),
             app_commands.Choice(name="Solo/Dúo", value=420),
             app_commands.Choice(name="Flex", value=440),
-        ]
+        ],
+        formato=[
+            app_commands.Choice(name="Excel (.xlsx)", value="xlsx"),
+            app_commands.Choice(name="HTML (.html)", value="html"),
+        ],
     )
     async def stats(
         self,
         interaction: discord.Interaction,
         partidas: app_commands.Range[int, MIN_MATCHES, MAX_MATCHES] = DEFAULT_MATCHES,
         tipo: int = 0,
+        formato: str = "xlsx",
     ):
         data = interaction.client.storage.get_user(interaction.user.id)
         if not data:
@@ -98,14 +106,22 @@ class StatsCog(commands.Cog):
         rank_icon = config.RANK_ICONS.get(tier.upper()) or config.RANK_ICONS["UNRANKED"]
         full_name = f"{data['game_name']}#{data['tag']}"
         mode_label = MODE_LABELS.get(tipo, "")
-        xlsx = excel.generate_stats_excel(full_name, rank_icon, results, mode_label)
+
+        if formato == "html":
+            html = excel.generate_stats_html(full_name, rank_icon, results, mode_label)
+            buf = io.BytesIO()
+            with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+                zf.writestr(f"stats_{data['game_name']}.html", html)
+            buf.seek(0)
+            file = discord.File(buf, filename=f"stats_{data['game_name']}.zip")
+        else:
+            xlsx = excel.generate_stats_excel(full_name, rank_icon, results, mode_label)
+            file = discord.File(xlsx, filename=f"stats_{data['game_name']}.xlsx")
 
         await interaction.edit_original_response(
             content=f"📄 **{full_name}** · {len(results)} partidas analizadas ({mode_label})"
         )
-        await interaction.followup.send(
-            file=discord.File(xlsx, filename=f"stats_{data['game_name']}.xlsx")
-        )
+        await interaction.followup.send(file=file)
 
 
 async def setup(bot: commands.Bot):
