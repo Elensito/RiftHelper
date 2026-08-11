@@ -6,7 +6,7 @@ import PlayerRow from './PlayerRow.jsx'
 
 const MatchMetrics = lazy(() => import('./MatchMetrics.jsx'))
 
-function TeamColumn({ players, teamId, lang }) {
+function TeamColumn({ players, teamId, lang, onOpenPlayer }) {
   const team = sortPlayers(players.filter((p) => p.team === teamId))
   return (
     <div className={`team-col ${teamId === 100 ? 'blue' : 'red'}`}>
@@ -15,13 +15,13 @@ function TeamColumn({ players, teamId, lang }) {
         {teamId === 100 ? t(lang, 'blueTeam') : t(lang, 'redTeam')}
       </div>
       {team.map((p, i) => (
-        <PlayerRow key={i} p={p} lang={lang} />
+        <PlayerRow key={i} p={p} lang={lang} onOpenPlayer={onOpenPlayer} />
       ))}
     </div>
   )
 }
 
-export default function MatchCard({ match, lang, puuid }) {
+export default function MatchCard({ match, lang, puuid, onOpenPlayer }) {
   const [open, setOpen] = useState(false)
   const [tab, setTab] = useState('general')
   const pl = match.player
@@ -107,8 +107,8 @@ export default function MatchCard({ match, lang, puuid }) {
 
         {tab === 'general' ? (
           <div className="teams">
-            <TeamColumn players={match.players} teamId={100} lang={lang} />
-            <TeamColumn players={match.players} teamId={200} lang={lang} />
+            <TeamColumn players={match.players} teamId={100} lang={lang} onOpenPlayer={onOpenPlayer} />
+            <TeamColumn players={match.players} teamId={200} lang={lang} onOpenPlayer={onOpenPlayer} />
           </div>
         ) : (
           <Suspense

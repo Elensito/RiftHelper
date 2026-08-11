@@ -36,14 +36,25 @@ function Items({ p, lang }) {
   )
 }
 
-export default function PlayerRow({ p, lang }) {
+export default function PlayerRow({ p, lang, onOpenPlayer = () => {} }) {
   return (
     <div className={`prow ${p.is_player ? 'me' : ''}`}>
       <div className="prow-main">
         <div className="p-champ">
-          <Img src={p.champion_icon} className="p-champ-icon" />
+          <Img src={p.champion_icon} className="p-champ-icon" title={p.champion} />
           <div className="p-champ-name">
-            <span className="p-name">{p.champion}</span>
+            {p.player_name ? (
+              <button
+                className="p-name"
+                title={`${p.player_name}#${p.player_tag}`}
+                onClick={() => onOpenPlayer(p.player_name, p.player_tag)}
+              >
+                {p.player_name}
+                {p.player_tag ? <span className="p-tag">#{p.player_tag}</span> : null}
+              </button>
+            ) : (
+              <span className="p-name">{p.champion}</span>
+            )}
             <span className="p-role">{roleLabel(p.role)}</span>
           </div>
         </div>

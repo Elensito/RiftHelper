@@ -28,6 +28,12 @@ export default function App() {
     }
   }
 
+  const openPlayer = (name, tag) => {
+    if (!name) return
+    window.history.pushState(null, '', `/?name=${encodeURIComponent(name)}&tag=${encodeURIComponent(tag)}`)
+    load(name, tag)
+  }
+
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
     const name = params.get('name')
@@ -85,6 +91,7 @@ export default function App() {
                   match={m}
                   lang={lang}
                   puuid={profile.summoner.puuid}
+                  onOpenPlayer={openPlayer}
                 />
               ))}
             </div>
