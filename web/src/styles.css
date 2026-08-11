@@ -679,6 +679,18 @@ body {
   color: var(--muted);
 }
 
+.team-kda {
+  margin-left: auto;
+  letter-spacing: 0.4px;
+  color: var(--text);
+}
+
+.team-kda i {
+  font-style: normal;
+  color: var(--muted);
+  padding: 0 2px;
+}
+
 .team-col.blue .team-header {
   color: var(--cyan);
 }

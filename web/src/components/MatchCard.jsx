@@ -9,11 +9,23 @@ const MatchBuild = lazy(() => import('./MatchBuild.jsx'))
 
 function TeamColumn({ players, teamId, lang, onOpenPlayer }) {
   const team = sortPlayers(players.filter((p) => p.team === teamId))
+  const totals = team.reduce(
+    (acc, p) => {
+      acc.kills += p.kills || 0
+      acc.deaths += p.deaths || 0
+      acc.assists += p.assists || 0
+      return acc
+    },
+    { kills: 0, deaths: 0, assists: 0 }
+  )
   return (
     <div className={`team-col ${teamId === 100 ? 'blue' : 'red'}`}>
       <div className="team-header">
         <span className="team-dot" />
         {teamId === 100 ? t(lang, 'blueTeam') : t(lang, 'redTeam')}
+        <span className="team-kda">
+          {totals.kills} <i>/</i> {totals.deaths} <i>/</i> {totals.assists}
+        </span>
       </div>
       {team.map((p, i) => (
         <PlayerRow key={i} p={p} lang={lang} onOpenPlayer={onOpenPlayer} />
