@@ -3,6 +3,7 @@ import SearchBar from './components/SearchBar.jsx'
 import ProfileHeader from './components/ProfileHeader.jsx'
 import MatchCard from './components/MatchCard.jsx'
 import LangSwitcher from './components/LangSwitcher.jsx'
+import ThemeToggle from './components/ThemeToggle.jsx'
 import { fetchSummoner } from './api.js'
 import { t } from './i18n.js'
 
@@ -12,6 +13,12 @@ export default function App() {
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState('')
   const [lang, setLang] = useState('en')
+  const [theme, setTheme] = useState(() => localStorage.getItem('rh-theme') || 'dark')
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme
+    localStorage.setItem('rh-theme', theme)
+  }, [theme])
 
   const load = async (name, tag, silent = false) => {
     setError('')
@@ -59,6 +66,8 @@ export default function App() {
         </button>
         <LangSwitcher lang={lang} onChange={setLang} />
       </header>
+
+      <ThemeToggle theme={theme} onChange={setTheme} />
 
       {error && (
         <div className="error-banner">
