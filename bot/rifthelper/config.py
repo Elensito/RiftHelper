@@ -6,20 +6,20 @@ from dotenv import load_dotenv
 ROOT_DIR = Path(__file__).resolve().parents[2]
 load_dotenv(ROOT_DIR / ".env")
 
-# --- Secretos ---
+
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN", "")
 RIOT_API_KEY = os.getenv("RIOT_API_KEY", "")
 
-# --- Región fija: solo se verifica en EUW ---
+
 RIOT_REGION = os.getenv("RIOT_REGION", "euw1").strip().lower()
 REGION_LABEL = "EUW · Europa Oeste"
 
-# --- Rutas del proyecto ---
+
 BASE_DIR = Path(__file__).resolve().parent.parent
 DATA_FILE = BASE_DIR / "data.json"
 ASSETS_DIR = ROOT_DIR / "assets"
 
-# --- Marca visual ---
+
 BRAND = {
     "name": "RiftHelper",
     "accent": 0xC89B3C,
@@ -29,7 +29,7 @@ BRAND = {
     "gold": 0xF0C868,
 }
 
-# --- DataDragon ---
+
 DDG_VERSION = "16.15.1"
 ICON_URL = f"https://ddragon.leagueoflegends.com/cdn/{DDG_VERSION}/img/profileicon/{{icon_id}}.png"
 CHAMPIONS_URL = f"https://ddragon.leagueoflegends.com/cdn/{DDG_VERSION}/data/en_US/champion.json"
@@ -37,15 +37,15 @@ CHAMPION_ICON_URL = f"https://ddragon.leagueoflegends.com/cdn/{DDG_VERSION}/img/
 CHAMPIONS_CACHE = BASE_DIR / "champions_cache.json"
 CHAMPIONS_DIR = ASSETS_DIR / "champions"
 
-# Iconos que TODA cuenta desbloquea al crearla (desde 2009, siempre disponibles).
-# Referencia: LoL Wiki / LoLMath - "Unlocked by creating an account".
+
+
 VERIFICATION_ICONS = {
     0: {"name": "Default", "file": ASSETS_DIR / "icon_0.png"},
     2: {"name": "Default II", "file": ASSETS_DIR / "icon_2.png"},
     28: {"name": "Tibbers", "file": ASSETS_DIR / "icon_28.png"},
 }
 
-# Iconos individuales de cada rango (fuente: LoL Wiki - Season 2023 crests).
+
 RANKS_DIR = ASSETS_DIR / "ranks"
 RANK_ICONS = {
     "UNRANKED": RANKS_DIR / "unranked.png",
@@ -61,7 +61,7 @@ RANK_ICONS = {
     "CHALLENGER": RANKS_DIR / "challenger.png",
 }
 
-# Cluster regional de cada servidor (para account-v1 y match-v5).
+
 REGIONAL_ROUTING = {
     "euw1": "europe",
     "eun1": "europe",

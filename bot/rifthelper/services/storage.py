@@ -6,7 +6,7 @@ from rifthelper import config
 
 
 class Storage:
-    """Persistencia de perfiles verificados en un fichero JSON."""
+
 
     def __init__(self, path: str = None):
         self.path = path or str(config.DATA_FILE)

@@ -1,9 +1,9 @@
-"""API de datos para la web: cuenta + partidas recientes con detalle de los 10 jugadores.
 
-Reutiliza RiotClient y el análisis de stats.py. Genera URLs relativas (/assets/...) que
-el frontend pide al mismo servidor FastAPI. Para cada ítem/runa se incluye el nombre en
-inglés y español (DataDragon por locale) para los tooltips de la web.
-"""
+
+
+
+
+
 from datetime import datetime, timezone
 
 from rifthelper import config
@@ -12,11 +12,11 @@ from rifthelper.services.riot import RiotAPIError, RiotClient
 
 MATCH_COUNT = 20
 
-# Icono por defecto que muestra el cliente cuando la API reporta profileIconId=0
-# (cuentas que nunca han elegido icono): el minion azul con escudo (id 28).
+
+
 DEFAULT_PROFILE_ICON_ID = 28
 
-# Las runas de atributos (5001-5014) no vienen en runesReforged.json: sus iconos
+
 STAT_MODS = {
     5001: "perk-images/StatMods/StatModsHealthScalingIcon.png",
     5002: "perk-images/StatMods/StatModsArmorIcon.png",
@@ -83,11 +83,11 @@ def _itemd(item_id, item_names: dict) -> dict | None:
 
 
 async def _ensure_profile_icon(icon_id) -> None:
-    """Descarga el icono de perfil del invocador si no está en disco.
 
-    icon_id puede ser None (sin dato): entonces no se hace nada. El valor 0 ya
-    se resuelve antes de llamar (cuentas sin icono -> minion por defecto, id 28).
-    """
+
+
+
+
     if icon_id is None:
         return
     base_dir = config.ASSETS_DIR / "profileicons"
@@ -108,7 +108,7 @@ async def _ensure_profile_icon(icon_id) -> None:
 
 
 async def _ensure_rune_icons(rune_ids: set[int], runes_info: dict) -> None:
-    """Descarga en disco las runas (incluidas las de atributos) que falten."""
+
     if not rune_ids:
         return
     out_dir = config.ASSETS_DIR / "runes"
@@ -133,7 +133,7 @@ async def _ensure_rune_icons(rune_ids: set[int], runes_info: dict) -> None:
 
 
 def _runes_of(p: dict) -> list[int]:
-    """IDs de todas las runas del jugador (keystone, menores y runas de atributos)."""
+
     runes: list[int] = []
     perks = p.get("perks", {}) or {}
     for style in perks.get("styles", []) or []:
@@ -239,7 +239,7 @@ def build_match(
 
 
 async def fetch_profile(name: str, tag: str, count: int = MATCH_COUNT) -> dict:
-    """Devuelve el perfil completo: summoner + partidas recientes con detalle."""
+
     region = config.RIOT_REGION
     riot = RiotClient()
 
@@ -269,8 +269,8 @@ async def fetch_profile(name: str, tag: str, count: int = MATCH_COUNT) -> dict:
 
     summoner = await riot.get_summoner_by_puuid(region, puuid)
     rank = await riot.get_solo_rank(region, puuid)
-    # profileIconId=0 (cuenta sin icono elegido): el cliente muestra el icono por
-    # defecto (minion azul, id 28), así que mapeamos 0 -> 28.
+
+
     profile_icon_id = summoner.get("profileIconId") or DEFAULT_PROFILE_ICON_ID
     await _ensure_profile_icon(profile_icon_id)
 
@@ -319,7 +319,7 @@ async def fetch_profile(name: str, tag: str, count: int = MATCH_COUNT) -> dict:
 
 
 async def fetch_match_metrics(match_id: str, puuid: str | None = None) -> dict:
-    """Series temporales (oro, daño, XP, CS) de una partida, muestreadas cada 2 min."""
+
     region = config.RIOT_REGION
     riot = RiotClient()
     try:
@@ -335,7 +335,7 @@ SKILL_SLOT_KEYS = ["Q", "W", "E", "R"]
 
 
 def _skill_order(timeline: dict, participant_id: int) -> list[int]:
-    """Orden de habilidades del jugador (1=Q, 2=W, 3=E, 4=R) desde los eventos del timeline."""
+
     order: list[int] = []
     frames = timeline.get("info", {}).get("frames", []) or []
     for frame in frames:
@@ -351,7 +351,7 @@ def _skill_order(timeline: dict, participant_id: int) -> list[int]:
 
 
 async def _ensure_spell_icons(images: set[str]) -> None:
-    """Descarga en disco los iconos de habilidades que falten."""
+
     if not images:
         return
     out_dir = config.SPELLS_DIR
@@ -372,11 +372,11 @@ async def _ensure_spell_icons(images: set[str]) -> None:
 
 
 async def fetch_match_build(match_id: str, puuid: str | None = None) -> dict:
-    """Spells (Q/W/E/R) y orden de habilidades de cada jugador de una partida.
 
-    Las runas de cada jugador ya viajan en el payload de /api/summoner; el frontend
-    las une por participant_id. Aquí se aporta lo que solo da el timeline: el skill order.
-    """
+
+
+
+
     region = config.RIOT_REGION
     riot = RiotClient()
     try:

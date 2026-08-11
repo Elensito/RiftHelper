@@ -7,7 +7,7 @@ from rifthelper.services.riot import RiotAPIError
 
 
 class ProfileCog(commands.Cog):
-    """Comando /profile: muestra el rango y LP de la cuenta verificada."""
+
 
     @app_commands.command(name="perfil", description="Muestra tu rango y LP de League of Legends")
     async def profile(self, interaction: discord.Interaction):

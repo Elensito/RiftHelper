@@ -1,5 +1,5 @@
 class PendingVerificationStore:
-    """Verificaciones en curso, en memoria: {discord_user_id: datos}."""
+
 
     def __init__(self):
         self._pending: dict = {}

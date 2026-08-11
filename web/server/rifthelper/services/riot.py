@@ -8,7 +8,7 @@ import aiohttp
 from rifthelper import config
 
 class RiotAPIError(Exception):
-    """Error de la API de Riot con un mensaje legible y el código HTTP."""
+
 
     def __init__(self, message: str, status: int = 0):
         super().__init__(message)
@@ -16,13 +16,13 @@ class RiotAPIError(Exception):
 
 
 class RiotClient:
-    """Cliente asíncrono de la API de Riot Games.
 
-    Usa el flujo oficial recomendado por Riot:
-      1. account-v1 (routing regional) -> PUUID a partir de Riot ID.
-      2. summoner-v4 / by-puuid        -> icono, nivel.
-      3. league-v4 / by-puuid          -> rango y LP.
-    """
+
+
+
+
+
+
 
     PLATFORM_BASE = "https://{region}.api.riotgames.com"
     REGIONAL_BASE = "https://{cluster}.api.riotgames.com"
@@ -73,7 +73,7 @@ class RiotClient:
         return await self._request(f"{self.REGIONAL_BASE.format(cluster=cluster)}{path}")
 
     async def _cached(self, cache_dir, match_id: str, url: str) -> Any:
-        """Obtiene una partida/timeline desde disco o la descarga y la cachea."""
+
         cache_dir.mkdir(parents=True, exist_ok=True)
         path = cache_dir / f"{match_id}.json"
         if path.is_file():
@@ -122,10 +122,10 @@ class RiotClient:
     async def get_match_ids(
         self, region: str, puuid: str, count: int, start_time: int, queue: int | None = None
     ) -> list[str]:
-        """IDs de partidas clasificatorias (Solo/Dúo y/o Flex) de un jugador desde start_time.
 
-        queue=420 -> Solo/Dúo, queue=440 -> Flex, None -> todas las clasificatorias.
-        """
+
+
+
         cluster = self._cluster_for(region)
         url = (
             f"{self.REGIONAL_BASE.format(cluster=cluster)}/lol/match/v5/matches/by-puuid/{puuid}/ids"
@@ -149,7 +149,7 @@ class RiotClient:
         return await self._cached(config.TIMELINE_CACHE_DIR, match_id, url)
 
     async def get_champion_info(self) -> dict[int, dict]:
-        """Mapa championId -> {id, name, image} (DataDragon), cacheado en disco."""
+
         if self._champions is not None:
             return self._champions
 
@@ -187,11 +187,11 @@ class RiotClient:
         return self._champions
 
     async def get_champion_spells(self, champion_ids: list[int]) -> dict[int, list[dict]]:
-        """Spells Q/W/E/R [{name, image}] por championId, cacheado en disco.
 
-        DataDragon ya no incluye spells en champion.json; se descarga por campeón
-        (champion/{id}.json) solo para los ids pedidos.
-        """
+
+
+
+
         if self._champion_spells is None:
             self._champion_spells = {}
             path = config.CHAMPION_SPELLS_CACHE
@@ -230,7 +230,7 @@ class RiotClient:
         return self._champion_spells
 
     async def get_items_info(self, locale: str = "en_US") -> dict[int, dict]:
-        """Mapa itemId -> {name, image} (DataDragon), cacheado en disco por idioma."""
+
         if locale in self._items:
             return self._items[locale]
 
@@ -263,7 +263,7 @@ class RiotClient:
         return self._items[locale]
 
     async def get_runes_info(self, locale: str = "en_US") -> dict[int, dict]:
-        """Mapa runaId -> {name, icon} (DataDragon), cacheado en disco por idioma."""
+
         if locale in self._runes:
             return self._runes[locale]
 

@@ -42,7 +42,7 @@ body {
   padding: 0 22px 60px;
 }
 
-/* ---------- Topbar ---------- */
+
 .topbar {
   position: sticky;
   top: 0;
@@ -71,7 +71,7 @@ body {
   font-weight: 300;
 }
 
-/* ---------- Search ---------- */
+
 .search {
   display: flex;
   gap: 8px;
@@ -115,7 +115,7 @@ body {
   font-size: 16px;
 }
 
-/* ---------- Buttons ---------- */
+
 .btn {
   border: 0;
   border-radius: 12px;
@@ -265,7 +265,7 @@ body {
   }
 }
 
-/* ---------- Error / loader ---------- */
+
 .error-banner {
   margin: 14px 0;
   padding: 14px 16px;
@@ -315,7 +315,7 @@ body {
   font-size: 15px;
 }
 
-/* ---------- Profile ---------- */
+
 .profile {
   display: flex;
   align-items: center;
@@ -508,7 +508,7 @@ body {
   box-shadow: var(--glow-cyan);
 }
 
-/* ---------- Match list ---------- */
+
 .match-list {
   display: flex;
   flex-direction: column;
@@ -690,7 +690,7 @@ body {
   transform: rotate(180deg);
 }
 
-/* ---------- Match body / teams ---------- */
+
 .match-body {
   max-height: 0;
   overflow: hidden;
@@ -770,7 +770,7 @@ body {
   box-shadow: var(--glow-red);
 }
 
-/* ---------- Tabs de partida ---------- */
+
 .match-tabs {
   display: flex;
   gap: 4px;
@@ -802,7 +802,7 @@ body {
   box-shadow: inset 0 -14px 18px -18px rgba(0, 229, 255, 0.6);
 }
 
-/* ---------- Métricas de la partida ---------- */
+
 .metrics-wrap {
   display: flex;
   flex-direction: column;
@@ -961,7 +961,7 @@ body {
   font-size: 13px;
 }
 
-/* ---------- Player row ---------- */
+
 .prow {
   padding: 9px 14px;
   border-top: 1px solid rgba(0, 229, 255, 0.07);
@@ -1172,7 +1172,7 @@ button.p-name:hover {
   margin: 0 3px;
 }
 
-/* ---------- Build ---------- */
+
 .build-wrap {
   display: flex;
   flex-direction: column;
@@ -1342,7 +1342,7 @@ button.p-name:hover {
   box-shadow: var(--glow-cyan);
 }
 
-/* ---------- Misc ---------- */
+
 .img-slot {
   display: inline-block;
   width: 28px;

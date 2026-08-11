@@ -14,7 +14,7 @@ def build_bot() -> commands.Bot:
     intents = discord.Intents.default()
     bot = commands.Bot(command_prefix="!", intents=intents)
 
-    # Servicios inyectados en el bot para que los cogs los compartan.
+
     bot.riot = RiotClient()
     bot.storage = Storage()
     bot.pending = PendingVerificationStore()

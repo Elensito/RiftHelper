@@ -7,7 +7,7 @@ from rifthelper.services.riot import RiotAPIError
 
 
 class MasteryCog(commands.Cog):
-    """Comando /mastery: muestra los 10 campeones con más maestría del jugador."""
+
 
     @app_commands.command(
         name="maestria", description="Muestra los 10 campeones con más maestría de tu cuenta"

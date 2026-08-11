@@ -7,7 +7,7 @@ import aiohttp
 from rifthelper import config
 
 class RiotAPIError(Exception):
-    """Error de la API de Riot con un mensaje legible y el código HTTP."""
+
 
     def __init__(self, message: str, status: int = 0):
         super().__init__(message)
@@ -15,14 +15,14 @@ class RiotAPIError(Exception):
 
 
 class RiotClient:
-    """Cliente asíncrono de la API de Riot Games (solo lo que usa el bot).
 
-    Usa el flujo oficial recomendado por Riot:
-      1. account-v1 (routing regional) -> PUUID a partir de Riot ID.
-      2. summoner-v4 / by-puuid        -> icono, nivel.
-      3. league-v4 / by-puuid          -> rango y LP.
-      4. champion-mastery-v4           -> maestría por campeón.
-    """
+
+
+
+
+
+
+
 
     PLATFORM_BASE = "https://{region}.api.riotgames.com"
     REGIONAL_BASE = "https://{cluster}.api.riotgames.com"
@@ -104,7 +104,7 @@ class RiotClient:
         return data if isinstance(data, list) else []
 
     async def get_champion_info(self) -> dict[int, dict]:
-        """Mapa championId -> {name, image} (DataDragon), cacheado en disco."""
+
         if self._champions is not None:
             return self._champions
 

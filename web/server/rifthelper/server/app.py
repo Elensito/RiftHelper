@@ -1,11 +1,11 @@
-"""Servidor web de RiftHelper: sirve la API de partidas y los assets de League.
 
-Endpoints:
-  GET /api/summoner?name=Elensito&tag=01234&count=20   -> perfil + partidas
-  GET /health                                          -> estado
-  /assets/*                                            -> iconos (campeones, runas, items, ranks)
-  /                                                    -> frontend React (web/dist) si está construido
-"""
+
+
+
+
+
+
+
 import sys
 from pathlib import Path
 

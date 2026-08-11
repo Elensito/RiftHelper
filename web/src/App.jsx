@@ -39,7 +39,7 @@ export default function App() {
     const name = params.get('name')
     const tag = params.get('tag')
     if (name && tag) load(name, tag)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+
   }, [])
 
   return (

@@ -11,7 +11,7 @@ from rifthelper.services.riot import RiotAPIError
 
 
 class VerifyModal(Modal):
-    """Formulario de Discord con el Riot ID completo (Nombre#TAG)."""
+
 
     def __init__(self, region: str):
         self.region = region
@@ -28,7 +28,7 @@ class VerifyModal(Modal):
 
     @staticmethod
     def parse_riot_id(raw: str) -> tuple[str, str] | None:
-        """Divide 'Nombre#TAG' en (nombre, tag). Devuelve None si falta '#'."""
+
         if "#" not in raw:
             return None
         game_name, tag = raw.rsplit("#", 1)
@@ -78,7 +78,7 @@ class VerifyModal(Modal):
 
 
 class VerifyView(View):
-    """Botón de verificación asociado a un único usuario."""
+
 
     def __init__(self, user_id: int):
         super().__init__(timeout=600)
@@ -147,7 +147,7 @@ class VerifyView(View):
 
 
 class VerifyCog(commands.Cog):
-    """Comando /verify: vincula la cuenta de LoL (EUW) de un usuario."""
+
 
     @app_commands.command(name="verificar", description="Vincula tu cuenta de League of Legends (EUW) a Discord")
     async def verify(self, interaction: discord.Interaction):

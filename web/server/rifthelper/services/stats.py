@@ -134,18 +134,18 @@ def _icon_path(champ: dict) -> Path | None:
     return path if path.is_file() else None
 
 
-METRIC_STEP = 2  # minutos entre muestras de las series temporales
+METRIC_STEP = 2
 
 
 def timeline_metrics(
     match: dict, timeline: dict, champ_info: dict[int, dict], puuid: str
 ) -> dict:
-    """Series temporales de cada jugador: oro, daño, XP y CS por minuto.
 
-    El timeline de Riot es acumulado: cada frame trae totalGold, xp y damageStats
-    (totalDamageDoneToChampions) de cada jugador hasta ese minuto. Se muestrean
-    los frames cada METRIC_STEP minutos y se añade siempre el último frame.
-    """
+
+
+
+
+
     info = match.get("info", {}) or {}
     participants = info.get("participants", []) or []
     frames = timeline.get("info", {}).get("frames", []) or []
