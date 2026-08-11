@@ -178,6 +178,8 @@ def _participant_summary(
         "assists": p.get("assists", 0),
         "cs": cs,
         "cs_per_min": round(cs / duration_min, 1) if duration_min else 0,
+        "level": p.get("champLevel", 0),
+        "vision": round(p.get("visionScore", 0) or 0, 1),
         "gold": p.get("goldEarned", 0),
         "damage": p.get("totalDamageDealtToChampions", 0),
         "win": bool(p.get("win")),

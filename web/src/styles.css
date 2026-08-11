@@ -994,6 +994,29 @@ body {
   object-fit: cover;
 }
 
+.p-champ-icon-wrap {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.p-champ-level {
+  position: absolute;
+  left: -3px;
+  bottom: -4px;
+  min-width: 17px;
+  height: 17px;
+  padding: 0 3px;
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 16px;
+  text-align: center;
+  color: #04121a;
+  background: linear-gradient(135deg, var(--cyan), var(--violet));
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 99px;
+  box-shadow: 0 0 10px rgba(0, 229, 255, 0.55);
+}
+
 .p-champ-name {
   display: flex;
   flex-direction: column;

@@ -41,7 +41,10 @@ export default function PlayerRow({ p, lang, onOpenPlayer = () => {} }) {
     <div className={`prow ${p.is_player ? 'me' : ''}`}>
       <div className="prow-main">
         <div className="p-champ">
-          <Img src={p.champion_icon} className="p-champ-icon" title={p.champion} />
+          <div className="p-champ-icon-wrap">
+            <Img src={p.champion_icon} className="p-champ-icon" title={p.champion} />
+            {p.level ? <span className="p-champ-level">{p.level}</span> : null}
+          </div>
           <div className="p-champ-name">
             {p.player_name ? (
               <button
@@ -77,6 +80,10 @@ export default function PlayerRow({ p, lang, onOpenPlayer = () => {} }) {
         <div className="p-stat">
           <span className="p-stat-v">{fmtNum(p.damage)}</span>
           <span className="p-stat-l">{t(lang, 'damageShort')}</span>
+        </div>
+        <div className="p-stat">
+          <span className="p-stat-v">{p.vision}</span>
+          <span className="p-stat-l">{t(lang, 'visionShort')}</span>
         </div>
 
         {p.is_player && <span className="me-badge">{t(lang, 'you')}</span>}
