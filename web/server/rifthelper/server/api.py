@@ -164,6 +164,7 @@ def _participant_summary(
     return {
         "is_player": p.get("puuid") == puuid,
         "team": p.get("teamId", 0),
+        "participant_id": p.get("participantId"),
         "champion": champ.get("name", f"ID {p.get('championId')}"),
         "champion_icon": _champ_url(champ),
         "player_name": p.get("riotIdGameName") or p.get("summonerName") or "",
@@ -320,3 +321,94 @@ async def fetch_match_metrics(match_id: str, puuid: str | None = None) -> dict:
         raise RiotAPIError(f"Partida {match_id} no disponible: {e}", 404) from e
     champ_info = await riot.get_champion_info()
     return stats_service.timeline_metrics(match, timeline, champ_info, puuid or "")
+
+
+SKILL_SLOT_KEYS = ["Q", "W", "E", "R"]
+
+
+def _skill_order(timeline: dict, participant_id: int) -> list[int]:
+    """Orden de habilidades del jugador (1=Q, 2=W, 3=E, 4=R) desde los eventos del timeline."""
+    order: list[int] = []
+    frames = timeline.get("info", {}).get("frames", []) or []
+    for frame in frames:
+        for event in frame.get("events", []) or []:
+            if (
+                event.get("type") == "SKILL_LEVEL_UP"
+                and event.get("participantId") == participant_id
+                and event.get("timestamp")
+                and event.get("skillSlot") in (1, 2, 3, 4)
+            ):
+                order.append(event["skillSlot"])
+    return order
+
+
+async def _ensure_spell_icons(images: set[str]) -> None:
+    """Descarga en disco los iconos de habilidades que falten."""
+    if not images:
+        return
+    out_dir = config.SPELLS_DIR
+    out_dir.mkdir(parents=True, exist_ok=True)
+    import aiohttp
+
+    async with aiohttp.ClientSession() as session:
+        for image in sorted(images):
+            path = out_dir / image
+            if path.is_file():
+                continue
+            async with session.get(config.SPELL_ICON_URL.format(image=image)) as resp:
+                if resp.status == 200:
+                    try:
+                        path.write_bytes(await resp.read())
+                    except OSError:
+                        pass
+
+
+async def fetch_match_build(match_id: str, puuid: str | None = None) -> dict:
+    """Spells (Q/W/E/R) y orden de habilidades de cada jugador de una partida.
+
+    Las runas de cada jugador ya viajan en el payload de /api/summoner; el frontend
+    las une por participant_id. Aquí se aporta lo que solo da el timeline: el skill order.
+    """
+    region = config.RIOT_REGION
+    riot = RiotClient()
+    try:
+        match = await riot.get_match(region, match_id)
+        timeline = await riot.get_match_timeline(region, match_id)
+    except RiotAPIError as e:
+        raise RiotAPIError(f"Partida {match_id} no disponible: {e}", 404) from e
+
+    participants = (match.get("info", {}) or {}).get("participants", []) or []
+    spells_map = await riot.get_champion_spells(
+        [p.get("championId") for p in participants if p.get("championId")]
+    )
+    player_ids = {p.get("participantId") for p in participants}
+    players = []
+    images: set[str] = set()
+    for p in participants:
+        pid = p.get("participantId")
+        champ = spells_map.get(p.get("championId"), [])
+        spells = []
+        for i, s in enumerate(champ[:4]):
+            if not s.get("image"):
+                continue
+            image = s["image"]
+            images.add(image)
+            spells.append(
+                {
+                    "key": SKILL_SLOT_KEYS[i],
+                    "name": s.get("name", ""),
+                    "icon": f"/assets/spells/{image}",
+                }
+            )
+        players.append(
+            {
+                "participant_id": pid,
+                "team": p.get("teamId", 0),
+                "champion": p.get("championName", f"ID {p.get('championId')}"),
+                "spells": spells,
+                "skill_order": _skill_order(timeline, pid) if pid in player_ids else [],
+            }
+        )
+
+    await _ensure_spell_icons(images)
+    return {"players": players}

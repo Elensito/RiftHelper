@@ -5,6 +5,7 @@ import { queueLabel, t } from '../i18n.js'
 import PlayerRow from './PlayerRow.jsx'
 
 const MatchMetrics = lazy(() => import('./MatchMetrics.jsx'))
+const MatchBuild = lazy(() => import('./MatchBuild.jsx'))
 
 function TeamColumn({ players, teamId, lang, onOpenPlayer }) {
   const team = sortPlayers(players.filter((p) => p.team === teamId))
@@ -103,6 +104,12 @@ export default function MatchCard({ match, lang, puuid, onOpenPlayer }) {
           >
             {t(lang, 'tabMetrics')}
           </button>
+          <button
+            className={`tab ${tab === 'build' ? 'active' : ''}`}
+            onClick={() => setTab('build')}
+          >
+            {t(lang, 'tabBuild')}
+          </button>
         </div>
 
         {tab === 'general' ? (
@@ -110,7 +117,7 @@ export default function MatchCard({ match, lang, puuid, onOpenPlayer }) {
             <TeamColumn players={match.players} teamId={100} lang={lang} onOpenPlayer={onOpenPlayer} />
             <TeamColumn players={match.players} teamId={200} lang={lang} onOpenPlayer={onOpenPlayer} />
           </div>
-        ) : (
+        ) : tab === 'metrics' ? (
           <Suspense
             fallback={
               <div className="metrics-loading">
@@ -119,6 +126,21 @@ export default function MatchCard({ match, lang, puuid, onOpenPlayer }) {
             }
           >
             <MatchMetrics matchId={match.match_id} puuid={puuid} lang={lang} />
+          </Suspense>
+        ) : (
+          <Suspense
+            fallback={
+              <div className="metrics-loading">
+                <div className="spinner" />
+              </div>
+            }
+          >
+            <MatchBuild
+              matchId={match.match_id}
+              puuid={puuid}
+              lang={lang}
+              players={match.players}
+            />
           </Suspense>
         )}
       </div>

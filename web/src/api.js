@@ -13,3 +13,11 @@ export async function fetchMatchMetrics(matchId, puuid) {
   if (!res.ok) throw new Error(data.detail || 'Error al obtener las métricas')
   return data
 }
+
+export async function fetchMatchBuild(matchId) {
+  const url = `/api/match/${encodeURIComponent(matchId)}/build`
+  const res = await fetch(url)
+  const data = await res.json()
+  if (!res.ok) throw new Error(data.detail || 'Error al obtener el build')
+  return data
+}

@@ -25,6 +25,11 @@ CHAMPION_ICON_URL = f"https://ddragon.leagueoflegends.com/cdn/{DDG_VERSION}/img/
 CHAMPIONS_CACHE = BASE_DIR / "champions_cache.json"
 CHAMPIONS_DIR = ASSETS_DIR / "champions"
 
+CHAMPION_SPELLS_CACHE = BASE_DIR / "champions_spells_cache.json"
+CHAMPION_SPELLS_URL = f"https://ddragon.leagueoflegends.com/cdn/{DDG_VERSION}/data/en_US/champion/{{id}}.json"
+SPELL_ICON_URL = f"https://ddragon.leagueoflegends.com/cdn/{DDG_VERSION}/img/spell/{{image}}"
+SPELLS_DIR = ASSETS_DIR / "spells"
+
 ITEMS_URL = f"https://ddragon.leagueoflegends.com/cdn/{DDG_VERSION}/data/{{locale}}/item.json"
 ITEM_ICON_URL = f"https://ddragon.leagueoflegends.com/cdn/{DDG_VERSION}/img/item/{{image}}"
 ITEMS_CACHE = BASE_DIR / "items_cache.json"

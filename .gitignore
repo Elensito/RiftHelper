@@ -14,6 +14,7 @@ bot/champions_cache.json
 
 # Backend web (FastAPI)
 web/server/champions_cache.json
+web/server/champions_spells_cache.json
 web/server/items_cache.json
 web/server/items_cache_es.json
 web/server/runes_cache.json
@@ -26,3 +27,4 @@ web/dist/
 
 # Iconos de perfil descargados al vuelo por la web
 assets/profileicons/
+assets/spells/

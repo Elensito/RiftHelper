@@ -30,6 +30,7 @@ class RiotClient:
     def __init__(self, api_key: str = None):
         self.api_key = api_key or config.RIOT_API_KEY
         self._champions: dict[int, dict] | None = None
+        self._champion_spells: dict[int, list[dict]] | None = None
         self._items: dict[str, dict] = {}
         self._runes: dict[str, dict] = {}
 
@@ -148,7 +149,7 @@ class RiotClient:
         return await self._cached(config.TIMELINE_CACHE_DIR, match_id, url)
 
     async def get_champion_info(self) -> dict[int, dict]:
-        """Mapa championId -> {name, image} (DataDragon), cacheado en disco."""
+        """Mapa championId -> {id, name, image} (DataDragon), cacheado en disco."""
         if self._champions is not None:
             return self._champions
 
@@ -156,8 +157,10 @@ class RiotClient:
         if path.is_file():
             try:
                 raw = json.loads(path.read_text(encoding="utf-8"))
-                self._champions = {int(k): v for k, v in raw.items()}
-                return self._champions
+                parsed = {int(k): v for k, v in raw.items()}
+                if all("id" in v for v in parsed.values()):
+                    self._champions = parsed
+                    return self._champions
             except (ValueError, OSError):
                 pass
 
@@ -170,7 +173,11 @@ class RiotClient:
                 data = await resp.json()
 
         self._champions = {
-            int(c["key"]): {"name": c["name"], "image": c["image"]["full"]}
+            int(c["key"]): {
+                "id": c["id"],
+                "name": c["name"],
+                "image": c["image"]["full"],
+            }
             for c in data.get("data", {}).values()
         }
         try:
@@ -178,6 +185,49 @@ class RiotClient:
         except OSError:
             pass
         return self._champions
+
+    async def get_champion_spells(self, champion_ids: list[int]) -> dict[int, list[dict]]:
+        """Spells Q/W/E/R [{name, image}] por championId, cacheado en disco.
+
+        DataDragon ya no incluye spells en champion.json; se descarga por campeón
+        (champion/{id}.json) solo para los ids pedidos.
+        """
+        if self._champion_spells is None:
+            self._champion_spells = {}
+            path = config.CHAMPION_SPELLS_CACHE
+            if path.is_file():
+                try:
+                    raw = json.loads(path.read_text(encoding="utf-8"))
+                    self._champion_spells = {int(k): v for k, v in raw.items()}
+                except (ValueError, OSError):
+                    pass
+
+        missing = [cid for cid in champion_ids if cid not in self._champion_spells]
+        if missing:
+            champ_info = await self.get_champion_info()
+            async with aiohttp.ClientSession() as session:
+                for cid in missing:
+                    champ_id = champ_info.get(cid, {}).get("id")
+                    spells: list[dict] = []
+                    if champ_id:
+                        async with session.get(
+                            config.CHAMPION_SPELLS_URL.format(id=champ_id)
+                        ) as resp:
+                            if resp.status == 200:
+                                payload = await resp.json()
+                        spells = [
+                            {
+                                "name": s.get("name", ""),
+                                "image": s.get("image", {}).get("full", ""),
+                            }
+                            for s in payload.get("data", {}).get(champ_id, {}).get("spells", [])
+                        ]
+                    self._champion_spells[cid] = spells
+            try:
+                path.write_text(json.dumps(self._champion_spells), encoding="utf-8")
+            except OSError:
+                pass
+        return self._champion_spells
 
     async def get_items_info(self, locale: str = "en_US") -> dict[int, dict]:
         """Mapa itemId -> {name, image} (DataDragon), cacheado en disco por idioma."""
