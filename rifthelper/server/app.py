@@ -1,0 +1,73 @@
+"""Servidor web de RiftHelper: sirve la API de partidas y los assets de League.
+
+Endpoints:
+  GET /api/summoner?name=Elensito&tag=01234&count=20   -> perfil + partidas
+  GET /health                                          -> estado
+  /assets/*                                            -> iconos (campeones, runas, items, ranks)
+  /                                                    -> frontend React (web/dist) si está construido
+"""
+import sys
+from pathlib import Path
+
+from fastapi import FastAPI, HTTPException, Query
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
+
+from rifthelper import config
+from rifthelper.services.riot import RiotAPIError
+from rifthelper.server import api as api_service
+
+BASE_DIR = config.BASE_DIR
+WEB_DIST = BASE_DIR / "web" / "dist"
+ASSETS_DIR = config.ASSETS_DIR
+
+app = FastAPI(title="RiftHelper API", version="1.0.0")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+app.mount("/assets", StaticFiles(directory=str(ASSETS_DIR)), name="assets")
+
+
+@app.get("/health")
+def health() -> dict:
+    return {"status": "ok", "version": "1.0.0"}
+
+
+@app.get("/api/summoner")
+async def get_summoner(
+    name: str = Query(..., min_length=1),
+    tag: str = Query(..., min_length=1),
+    count: int = Query(api_service.MATCH_COUNT, ge=1, le=50),
+):
+    try:
+        return await api_service.fetch_profile(name.strip(), tag.strip(), count=count)
+    except RiotAPIError as e:
+        raise HTTPException(status_code=e.status or 502, detail=str(e)) from e
+    except RuntimeError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+
+
+if WEB_DIST.is_dir() and (WEB_DIST / "index.html").is_file():
+    app.mount("/", StaticFiles(directory=str(WEB_DIST), html=True), name="web")
+else:
+    @app.get("/")
+    def index():
+        return {"message": "RiftHelper API. Frontend no construido: ejecuta 'npm run build' en web/."}
+
+
+def main() -> int:
+    import uvicorn
+
+    uvicorn.run(app, host="127.0.0.1", port=8000, log_level="info")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

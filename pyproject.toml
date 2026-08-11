@@ -12,9 +12,12 @@ python-dotenv = ">=1.0.0"
 aiohttp = ">=3.9.0"
 openpyxl = "^3.1.5"
 pillow = "^12.3.0"
+fastapi = "^0.141.1"
+uvicorn = "^0.52.1"
 
 [tool.poetry.scripts]
 rifthelper = "rifthelper.main:main"
+rifthelper-web = "rifthelper.server.app:main"
 
 [build-system]
 requires = ["poetry-core"]

@@ -12,3 +12,10 @@ dist/
 build/
 *.egg-info/
 .pytest_cache/
+
+# Frontend (React)
+node_modules/
+web/dist/
+
+# Iconos de perfil descargados al vuelo por la web
+assets/profileicons/
