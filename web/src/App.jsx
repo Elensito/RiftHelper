@@ -80,7 +80,12 @@ export default function App() {
             <ProfileHeader summoner={profile.summoner} matches={profile.matches} lang={lang} />
             <div className="match-list">
               {profile.matches.map((m) => (
-                <MatchCard key={m.match_id} match={m} lang={lang} />
+                <MatchCard
+                  key={m.match_id}
+                  match={m}
+                  lang={lang}
+                  puuid={profile.summoner.puuid}
+                />
               ))}
             </div>
           </>

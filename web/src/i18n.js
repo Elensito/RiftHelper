@@ -33,6 +33,14 @@ const EN = {
   damageShort: 'DAMAGE',
   you: 'YOU',
   match: 'Match',
+  tabGeneral: 'General',
+  tabMetrics: 'Metrics',
+  metricGold: 'Gold',
+  metricDamage: 'Damage',
+  metricXp: 'XP',
+  metricCs: 'CS',
+  metricHint: 'Click a champion to track its curve',
+  minShort: 'min',
   footerRiot: 'unofficial data provided by Riot Games',
 }
 
@@ -66,6 +74,14 @@ const ES = {
   damageShort: 'Daño',
   you: 'TÚ',
   match: 'Partida',
+  tabGeneral: 'General',
+  tabMetrics: 'Métricas',
+  metricGold: 'Oro',
+  metricDamage: 'Daño',
+  metricXp: 'XP',
+  metricCs: 'CS',
+  metricHint: 'Pulsa un campeón para activar su curva',
+  minShort: 'min',
   footerRiot: 'datos no oficiales de Riot Games',
 }
 

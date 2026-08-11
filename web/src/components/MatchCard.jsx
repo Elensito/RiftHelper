@@ -1,8 +1,10 @@
-import { useState } from 'react'
+import { lazy, Suspense, useState } from 'react'
 import Img from './Img.jsx'
 import { fmtNum, kdaRatio, sortPlayers } from '../utils.js'
 import { queueLabel, t } from '../i18n.js'
 import PlayerRow from './PlayerRow.jsx'
+
+const MatchMetrics = lazy(() => import('./MatchMetrics.jsx'))
 
 function TeamColumn({ players, teamId, lang }) {
   const team = sortPlayers(players.filter((p) => p.team === teamId))
@@ -19,8 +21,9 @@ function TeamColumn({ players, teamId, lang }) {
   )
 }
 
-export default function MatchCard({ match, lang }) {
+export default function MatchCard({ match, lang, puuid }) {
   const [open, setOpen] = useState(false)
+  const [tab, setTab] = useState('general')
   const pl = match.player
   const win = match.win
 
@@ -87,10 +90,37 @@ export default function MatchCard({ match, lang }) {
       </div>
 
       <div className="match-body">
-        <div className="teams">
-          <TeamColumn players={match.players} teamId={100} lang={lang} />
-          <TeamColumn players={match.players} teamId={200} lang={lang} />
+        <div className="match-tabs">
+          <button
+            className={`tab ${tab === 'general' ? 'active' : ''}`}
+            onClick={() => setTab('general')}
+          >
+            {t(lang, 'tabGeneral')}
+          </button>
+          <button
+            className={`tab ${tab === 'metrics' ? 'active' : ''}`}
+            onClick={() => setTab('metrics')}
+          >
+            {t(lang, 'tabMetrics')}
+          </button>
         </div>
+
+        {tab === 'general' ? (
+          <div className="teams">
+            <TeamColumn players={match.players} teamId={100} lang={lang} />
+            <TeamColumn players={match.players} teamId={200} lang={lang} />
+          </div>
+        ) : (
+          <Suspense
+            fallback={
+              <div className="metrics-loading">
+                <div className="spinner" />
+              </div>
+            }
+          >
+            <MatchMetrics matchId={match.match_id} puuid={puuid} lang={lang} />
+          </Suspense>
+        )}
       </div>
     </article>
   )

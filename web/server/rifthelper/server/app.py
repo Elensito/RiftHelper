@@ -53,6 +53,14 @@ async def get_summoner(
         raise HTTPException(status_code=404, detail=str(e)) from e
 
 
+@app.get("/api/match/{match_id}/metrics")
+async def get_match_metrics(match_id: str, puuid: str | None = Query(default=None)):
+    try:
+        return await api_service.fetch_match_metrics(match_id, puuid)
+    except RiotAPIError as e:
+        raise HTTPException(status_code=e.status or 502, detail=str(e)) from e
+
+
 if WEB_DIST.is_dir() and (WEB_DIST / "index.html").is_file():
     app.mount("/", StaticFiles(directory=str(WEB_DIST), html=True), name="web")
 else:

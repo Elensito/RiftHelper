@@ -132,3 +132,55 @@ def _icon_path(champ: dict) -> Path | None:
         return None
     path = config.CHAMPIONS_DIR / image
     return path if path.is_file() else None
+
+
+METRIC_STEP = 2  # minutos entre muestras de las series temporales
+
+
+def timeline_metrics(
+    match: dict, timeline: dict, champ_info: dict[int, dict], puuid: str
+) -> dict:
+    """Series temporales de cada jugador: oro, daño, XP y CS por minuto.
+
+    El timeline de Riot es acumulado: cada frame trae totalGold, xp y damageStats
+    (totalDamageDoneToChampions) de cada jugador hasta ese minuto. Se muestrean
+    los frames cada METRIC_STEP minutos y se añade siempre el último frame.
+    """
+    info = match.get("info", {}) or {}
+    participants = info.get("participants", []) or []
+    frames = timeline.get("info", {}).get("frames", []) or []
+
+    idx = list(range(0, len(frames), METRIC_STEP))
+    if frames and idx[-1] != len(frames) - 1:
+        idx.append(len(frames) - 1)
+
+    players = []
+    for p in participants:
+        pid = p.get("participantId")
+        champ = champ_info.get(p.get("championId"), {})
+        image = champ.get("image")
+        series = {"gold": [], "damage": [], "xp": [], "cs": []}
+        for i in idx:
+            pf = (frames[i].get("participantFrames", {}) or {}).get(str(pid), {}) or {}
+            stats = pf.get("damageStats", {}) or {}
+            series["gold"].append(pf.get("totalGold") or 0)
+            series["damage"].append(stats.get("totalDamageDoneToChampions") or 0)
+            series["xp"].append(pf.get("xp") or 0)
+            series["cs"].append(
+                (pf.get("minionsKilled") or 0) + (pf.get("jungleMinionsKilled") or 0)
+            )
+        players.append(
+            {
+                "participant_id": pid,
+                "team": p.get("teamId", 0),
+                "champion": champ.get("name", f"ID {p.get('championId')}"),
+                "champion_icon": f"/assets/champions/{image}" if image else None,
+                "is_player": p.get("puuid") == puuid,
+                **series,
+            }
+        )
+
+    return {
+        "buckets": [int(frames[i].get("timestamp", 0) / 60000) for i in idx],
+        "players": players,
+    }
