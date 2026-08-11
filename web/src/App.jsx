@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import SearchBar from './components/SearchBar.jsx'
 import ProfileHeader from './components/ProfileHeader.jsx'
 import MatchCard from './components/MatchCard.jsx'
+import LangSwitcher from './components/LangSwitcher.jsx'
 import { fetchSummoner } from './api.js'
 import { t } from './i18n.js'
 
@@ -50,13 +51,7 @@ export default function App() {
           <span className={`refresh ${refreshing ? 'spin' : ''}`}>⟳</span>
           {t(lang, 'update')}
         </button>
-        <button
-          className={`btn btn-lang ${lang === 'es' ? 'active' : ''}`}
-          onClick={() => setLang(lang === 'en' ? 'es' : 'en')}
-          aria-label="Cambiar idioma"
-        >
-          {lang === 'en' ? 'ES' : 'EN'}
-        </button>
+        <LangSwitcher lang={lang} onChange={setLang} />
       </header>
 
       {error && (

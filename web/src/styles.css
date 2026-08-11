@@ -160,7 +160,12 @@ body {
   cursor: not-allowed;
 }
 
-.btn-lang {
+.lang-switcher {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.lang-current {
   background: var(--bg-2);
   border: 1px solid var(--border);
   color: var(--cyan);
@@ -168,13 +173,81 @@ body {
   flex-shrink: 0;
 }
 
-.btn-lang:hover {
+.lang-current:hover,
+.lang-current.open {
   box-shadow: var(--glow-cyan);
 }
 
-.btn-lang.active {
-  background: linear-gradient(135deg, var(--cyan), var(--violet));
-  color: #04121a;
+.lang-caret {
+  font-size: 10px;
+  transition: transform 0.2s;
+}
+
+.lang-caret.open {
+  transform: rotate(180deg);
+}
+
+.lang-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 8px);
+  min-width: 170px;
+  list-style: none;
+  margin: 0;
+  padding: 6px;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: var(--glow-cyan);
+  z-index: 30;
+}
+
+.lang-menu li {
+  margin: 0;
+}
+
+.lang-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 9px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-1);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.15s;
+}
+
+.lang-option:hover {
+  background: rgba(0, 229, 255, 0.1);
+}
+
+.lang-option.active {
+  color: var(--cyan);
+}
+
+.lang-flag {
+  font-size: 16px;
+  line-height: 1;
+}
+
+.lang-code {
+  font-weight: 800;
+  letter-spacing: 1px;
+}
+
+.lang-name {
+  flex: 1;
+}
+
+.lang-check {
+  color: var(--cyan);
+  font-weight: 800;
 }
 
 .refresh {

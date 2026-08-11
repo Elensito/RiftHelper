@@ -71,6 +71,12 @@ const ES = {
 
 export const STR = { en: EN, es: ES }
 
+// Idiomas disponibles (nombre mostrado en su propio idioma).
+export const LANGS = [
+  { code: 'en', flag: '🇬🇧', label: 'English' },
+  { code: 'es', flag: '🇪🇸', label: 'Español' },
+]
+
 // Modos de partida (nombres oficiales en el juego, por idioma).
 export const QUEUES = {
   400: { en: 'Normal (Draft)', es: 'Normal (Draft)' },
