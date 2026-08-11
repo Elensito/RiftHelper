@@ -12,8 +12,11 @@ from rifthelper.services.riot import RiotAPIError, RiotClient
 
 MATCH_COUNT = 20
 
+# Icono por defecto que muestra el cliente cuando la API reporta profileIconId=0
+# (cuentas que nunca han elegido icono): el minion azul con escudo (id 28).
+DEFAULT_PROFILE_ICON_ID = 28
+
 # Las runas de atributos (5001-5014) no vienen en runesReforged.json: sus iconos
-# y nombres son fijos desde la introducción del sistema de runas (2017).
 STAT_MODS = {
     5001: "perk-images/StatMods/StatModsHealthScalingIcon.png",
     5002: "perk-images/StatMods/StatModsArmorIcon.png",
@@ -82,8 +85,8 @@ def _itemd(item_id, item_names: dict) -> dict | None:
 async def _ensure_profile_icon(icon_id) -> None:
     """Descarga el icono de perfil del invocador si no está en disco.
 
-    icon_id puede ser 0 (cuentas sin icono elegido): también es un icono válido
-    en DataDragon, así que solo se ignora cuando es None.
+    icon_id puede ser None (sin dato): entonces no se hace nada. El valor 0 ya
+    se resuelve antes de llamar (cuentas sin icono -> minion por defecto, id 28).
     """
     if icon_id is None:
         return
@@ -264,7 +267,10 @@ async def fetch_profile(name: str, tag: str, count: int = MATCH_COUNT) -> dict:
 
     summoner = await riot.get_summoner_by_puuid(region, puuid)
     rank = await riot.get_solo_rank(region, puuid)
-    await _ensure_profile_icon(summoner.get("profileIconId"))
+    # profileIconId=0 (cuenta sin icono elegido): el cliente muestra el icono por
+    # defecto (minion azul, id 28), así que mapeamos 0 -> 28.
+    profile_icon_id = summoner.get("profileIconId") or DEFAULT_PROFILE_ICON_ID
+    await _ensure_profile_icon(profile_icon_id)
 
     start_ts = int(datetime(datetime.now().year, 1, 1, tzinfo=timezone.utc).timestamp())
     match_ids = await riot.get_match_ids(region, puuid, count, start_ts)
@@ -297,7 +303,7 @@ async def fetch_profile(name: str, tag: str, count: int = MATCH_COUNT) -> dict:
             "puuid": puuid,
             "region": region.upper().rstrip("0123456789"),
             "level": summoner.get("summonerLevel", 0),
-            "profile_icon": f"/assets/profileicons/{summoner.get('profileIconId', 0)}.png",
+            "profile_icon": f"/assets/profileicons/{profile_icon_id}.png",
             "rank_icon": f"/assets/ranks/{tier.lower()}.png",
             "tier": tier,
             "division": division,
