@@ -1,0 +1,19 @@
+[tool.poetry]
+name = "rifthelper-bot"
+version = "0.1.0"
+description = "Bot de Discord para verificar cuentas de League of Legends (EUW) y mostrar rango, LP y maestría"
+authors = ["RiftHelper"]
+packages = [{ include = "rifthelper" }]
+
+[tool.poetry.dependencies]
+python = "^3.11"
+discord-py = ">=2.3.2"
+python-dotenv = ">=1.0.0"
+aiohttp = ">=3.9.0"
+
+[tool.poetry.scripts]
+rifthelper = "rifthelper.main:main"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

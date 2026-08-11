@@ -1,0 +1,94 @@
+// ============================================================
+// Strings de la interfaz, separadas por idioma.
+// Todas las cadenas visibles de la página viven aquí.
+// ============================================================
+
+const EN = {
+  search: 'Search',
+  placeholder: 'Summoner name',
+  tag: 'tag',
+  update: 'Update',
+  loading: 'Loading matches…',
+  heroTitle: 'Analyze any summoner matches',
+  heroSub:
+    'Search by Name#tag and discover runes, builds, gold and damage of all 10 players of each match.',
+  lp: 'LP',
+  level: 'Lv',
+  wins: 'W',
+  losses: 'L',
+  wr: 'WR',
+  recentMatches: 'recent matches',
+  blueTeam: 'BLUE TEAM',
+  redTeam: 'RED TEAM',
+  win: 'W',
+  loss: 'L',
+  kda: 'KDA',
+  gold: 'Gold',
+  damage: 'Damage',
+  kp: 'KP',
+  cs: 'CS',
+  showDetails: 'Show details',
+  hideDetails: 'Hide details',
+  goldShort: 'GOLD',
+  damageShort: 'DAMAGE',
+  you: 'YOU',
+  match: 'Match',
+  footerRiot: 'unofficial data provided by Riot Games',
+}
+
+const ES = {
+  search: 'Buscar',
+  placeholder: 'Nombre de invocador',
+  tag: 'tag',
+  update: 'Actualizar',
+  loading: 'Cargando partidas…',
+  heroTitle: 'Analiza las partidas de cualquier invocador',
+  heroSub:
+    'Busca por Nombre#tag y descubre runas, builds, oro y daño de los 10 jugadores de cada partida.',
+  lp: 'LP',
+  level: 'Nv',
+  wins: 'V',
+  losses: 'D',
+  wr: 'WR',
+  recentMatches: 'partidas recientes',
+  blueTeam: 'EQUIPO AZUL',
+  redTeam: 'EQUIPO ROJO',
+  win: 'V',
+  loss: 'D',
+  kda: 'KDA',
+  gold: 'Oro',
+  damage: 'Daño',
+  kp: 'KP',
+  cs: 'CS',
+  showDetails: 'Ver detalle',
+  hideDetails: 'Ocultar detalle',
+  goldShort: 'Oro',
+  damageShort: 'Daño',
+  you: 'TÚ',
+  match: 'Partida',
+  footerRiot: 'datos no oficiales de Riot Games',
+}
+
+export const STR = { en: EN, es: ES }
+
+// Modos de partida (nombres oficiales en el juego, por idioma).
+export const QUEUES = {
+  400: { en: 'Normal (Draft)', es: 'Normal (Draft)' },
+  420: { en: 'Ranked Solo', es: 'Clasificatoria Solo' },
+  430: { en: 'Normal', es: 'Normal' },
+  440: { en: 'Ranked Flex', es: 'Clasificatoria Flexible' },
+  450: { en: 'ARAM', es: 'ARAM' },
+  480: { en: 'Swiftplay', es: 'Swiftplay' },
+  700: { en: 'Clash', es: 'Clash' },
+}
+
+export function queueLabel(lang, id) {
+  const q = QUEUES[id]
+  if (q) return q[lang] || q.en
+  return lang === 'es' ? 'Partida' : 'Match'
+}
+
+export function t(lang, key) {
+  const dict = STR[lang] || STR.en
+  return dict[key] || STR.en[key] || key
+}

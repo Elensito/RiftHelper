@@ -36,7 +36,6 @@ async def run() -> None:
     await bot.load_extension("rifthelper.cogs.verify")
     await bot.load_extension("rifthelper.cogs.profile")
     await bot.load_extension("rifthelper.cogs.mastery")
-    await bot.load_extension("rifthelper.cogs.stats")
     await bot.start(config.DISCORD_TOKEN)
 
 

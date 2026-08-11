@@ -1,17 +1,3 @@
-export const QUEUES = {
-  400: 'Normal (Draft)',
-  420: 'Ranked Solo',
-  430: 'Normal',
-  440: 'Ranked Flex',
-  450: 'ARAM',
-  480: 'Swiftplay',
-  700: 'Clash',
-}
-
-export function queueLabel(id) {
-  return QUEUES[id] || 'Partida'
-}
-
 export function roleLabel(role) {
   const map = {
     TOP: 'TOP',

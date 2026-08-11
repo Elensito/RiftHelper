@@ -1,24 +1,25 @@
 import { useState } from 'react'
 import Img from './Img.jsx'
-import { fmtNum, kdaRatio, queueLabel, sortPlayers } from '../utils.js'
+import { fmtNum, kdaRatio, sortPlayers } from '../utils.js'
+import { queueLabel, t } from '../i18n.js'
 import PlayerRow from './PlayerRow.jsx'
 
-function TeamColumn({ players, teamId }) {
+function TeamColumn({ players, teamId, lang }) {
   const team = sortPlayers(players.filter((p) => p.team === teamId))
   return (
     <div className={`team-col ${teamId === 100 ? 'blue' : 'red'}`}>
       <div className="team-header">
         <span className="team-dot" />
-        {teamId === 100 ? 'EQUIPO AZUL' : 'EQUIPO ROJO'}
+        {teamId === 100 ? t(lang, 'blueTeam') : t(lang, 'redTeam')}
       </div>
       {team.map((p, i) => (
-        <PlayerRow key={i} p={p} />
+        <PlayerRow key={i} p={p} lang={lang} />
       ))}
     </div>
   )
 }
 
-export default function MatchCard({ match }) {
+export default function MatchCard({ match, lang }) {
   const [open, setOpen] = useState(false)
   const pl = match.player
   const win = match.win
@@ -26,48 +27,52 @@ export default function MatchCard({ match }) {
   return (
     <article className={`match ${open ? 'open' : ''}`}>
       <div className="match-head" onClick={() => setOpen(!open)}>
-        <div className={`badge ${win ? 'win' : 'loss'}`}>{win ? 'V' : 'D'}</div>
+        <div className={`badge ${win ? 'win' : 'loss'}`}>{win ? t(lang, 'win') : t(lang, 'loss')}</div>
 
         <div className="m-meta">
-          <span className="m-mode">{queueLabel(match.queue)}</span>
+          <span className="m-mode">{queueLabel(lang, match.queue)}</span>
           <span className="m-dur">{match.duration}</span>
           <span className="m-date">{match.date}</span>
         </div>
 
         <div className="m-champ">
           <Img src={pl.champion_icon} className="m-champ-icon" />
-          <Img src={pl.keystone_icon} className="m-keystone" />
+          <Img
+            src={pl.keystone && pl.keystone.src}
+            className="m-keystone"
+            title={pl.keystone && (pl.keystone[lang] || pl.keystone.en)}
+          />
         </div>
 
         <div className="m-kda">
           <span className="m-kda-line">
             {pl.kills} <i>/</i> {pl.deaths} <i>/</i> {pl.assists}
           </span>
-          <span className="m-kda-ratio">{kdaRatio(pl.kills, pl.deaths, pl.assists)} KDA</span>
+          <span className="m-kda-ratio">{kdaRatio(pl.kills, pl.deaths, pl.assists)} {t(lang, 'kda')}</span>
         </div>
 
         <div className="m-stats">
           <div className="m-stat">
             <b>{pl.cs}</b>
-            <span>{pl.cs_per_min}/m CS</span>
+            <span>{pl.cs_per_min}/m {t(lang, 'cs')}</span>
           </div>
           <div className="m-stat">
             <b>{fmtNum(pl.gold)}</b>
-            <span>Oro</span>
+            <span>{t(lang, 'gold')}</span>
           </div>
           <div className="m-stat">
             <b>{fmtNum(pl.damage)}</b>
-            <span>Daño</span>
+            <span>{t(lang, 'damage')}</span>
           </div>
           <div className="m-stat">
             <b>{pl.kp}%</b>
-            <span>KP</span>
+            <span>{t(lang, 'kp')}</span>
           </div>
         </div>
 
         <button
           className={`chevron ${open ? 'open' : ''}`}
-          aria-label={open ? 'Ocultar detalle' : 'Ver detalle'}
+          aria-label={open ? t(lang, 'hideDetails') : t(lang, 'showDetails')}
         >
           <svg viewBox="0 0 24 24" width="20" height="20" fill="none">
             <path
@@ -83,8 +88,8 @@ export default function MatchCard({ match }) {
 
       <div className="match-body">
         <div className="teams">
-          <TeamColumn players={match.players} teamId={100} />
-          <TeamColumn players={match.players} teamId={200} />
+          <TeamColumn players={match.players} teamId={100} lang={lang} />
+          <TeamColumn players={match.players} teamId={200} lang={lang} />
         </div>
       </div>
     </article>

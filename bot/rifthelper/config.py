@@ -3,7 +3,8 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-load_dotenv()
+ROOT_DIR = Path(__file__).resolve().parents[2]
+load_dotenv(ROOT_DIR / ".env")
 
 # --- Secretos ---
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN", "")
@@ -16,7 +17,7 @@ REGION_LABEL = "EUW · Europa Oeste"
 # --- Rutas del proyecto ---
 BASE_DIR = Path(__file__).resolve().parent.parent
 DATA_FILE = BASE_DIR / "data.json"
-ASSETS_DIR = BASE_DIR / "assets"
+ASSETS_DIR = ROOT_DIR / "assets"
 
 # --- Marca visual ---
 BRAND = {
@@ -35,21 +36,6 @@ CHAMPIONS_URL = f"https://ddragon.leagueoflegends.com/cdn/{DDG_VERSION}/data/en_
 CHAMPION_ICON_URL = f"https://ddragon.leagueoflegends.com/cdn/{DDG_VERSION}/img/champion/{{image}}"
 CHAMPIONS_CACHE = BASE_DIR / "champions_cache.json"
 CHAMPIONS_DIR = ASSETS_DIR / "champions"
-
-ITEMS_URL = f"https://ddragon.leagueoflegends.com/cdn/{DDG_VERSION}/data/en_US/item.json"
-ITEM_ICON_URL = f"https://ddragon.leagueoflegends.com/cdn/{DDG_VERSION}/img/item/{{image}}"
-ITEMS_CACHE = BASE_DIR / "items_cache.json"
-ITEMS_DIR = ASSETS_DIR / "items"
-
-RUNES_URL = f"https://ddragon.leagueoflegends.com/cdn/{DDG_VERSION}/data/en_US/runesReforged.json"
-RUNE_ICON_URL = "https://ddragon.leagueoflegends.com/cdn/img/{icon}"
-RUNES_CACHE = BASE_DIR / "runes_cache.json"
-RUNES_DIR = ASSETS_DIR / "runes"
-
-# --- Caché de partidas (match-v5) ---
-CACHE_DIR = BASE_DIR / "cache"
-MATCH_CACHE_DIR = CACHE_DIR / "matches"
-TIMELINE_CACHE_DIR = CACHE_DIR / "timelines"
 
 # Iconos que TODA cuenta desbloquea al crearla (desde 2009, siempre disponibles).
 # Referencia: LoL Wiki / LoLMath - "Unlocked by creating an account".

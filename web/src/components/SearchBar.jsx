@@ -1,6 +1,7 @@
 import { useState } from 'react'
+import { t } from '../i18n.js'
 
-export default function SearchBar({ onSearch, loading }) {
+export default function SearchBar({ onSearch, loading, lang }) {
   const [name, setName] = useState('')
   const [tag, setTag] = useState('')
 
@@ -17,7 +18,7 @@ export default function SearchBar({ onSearch, loading }) {
         <input
           value={name}
           onChange={(e) => setName(e.target.value)}
-          placeholder="Nombre de invocador"
+          placeholder={t(lang, 'placeholder')}
           autoFocus
           spellCheck="false"
         />
@@ -27,12 +28,12 @@ export default function SearchBar({ onSearch, loading }) {
         <input
           value={tag}
           onChange={(e) => setTag(e.target.value)}
-          placeholder="tag"
+          placeholder={t(lang, 'tag')}
           spellCheck="false"
         />
       </div>
       <button className="btn btn-search" type="submit" disabled={loading}>
-        <span>⌕</span> Buscar
+        <span>⌕</span> {t(lang, 'search')}
       </button>
     </form>
   )

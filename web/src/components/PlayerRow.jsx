@@ -1,37 +1,42 @@
 import Img from './Img.jsx'
 import { fmtNum, kdaRatio, roleLabel } from '../utils.js'
+import { t } from '../i18n.js'
 
-function RuneStrip({ runes }) {
+function nameOf(entry, lang) {
+  return entry ? entry[lang] || entry.en || '' : ''
+}
+
+function RuneStrip({ runes, lang }) {
   if (!runes || runes.length === 0) return null
   return (
     <div className="rune-strip">
       {runes.slice(0, 4).map((r, i) => (
-        <Img key={`p${i}`} src={r} className="rune" title="Runa primaria" />
+        <Img key={`p${i}`} src={r && r.src} className="rune" title={nameOf(r, lang)} />
       ))}
       <span className="rune-sep" />
       {runes.slice(4, 6).map((r, i) => (
-        <Img key={`s${i}`} src={r} className="rune" title="Runa secundaria" />
+        <Img key={`s${i}`} src={r && r.src} className="rune" title={nameOf(r, lang)} />
       ))}
       <span className="rune-sep" />
       {runes.slice(6).map((r, i) => (
-        <Img key={`t${i}`} src={r} className="rune shard" title="Runas de atributo" />
+        <Img key={`t${i}`} src={r && r.src} className="rune shard" title={nameOf(r, lang)} />
       ))}
     </div>
   )
 }
 
-function Items({ p }) {
+function Items({ p, lang }) {
   const items = [...(p.items || []), ...(p.boots ? [p.boots] : []), ...(p.trinket ? [p.trinket] : [])]
   return (
     <div className="items">
       {items.map((it, i) => (
-        <Img key={i} src={it} className="item" />
+        <Img key={i} src={it && it.src} className="item" title={nameOf(it, lang)} />
       ))}
     </div>
   )
 }
 
-export default function PlayerRow({ p }) {
+export default function PlayerRow({ p, lang }) {
   return (
     <div className={`prow ${p.is_player ? 'me' : ''}`}>
       <div className="prow-main">
@@ -52,24 +57,28 @@ export default function PlayerRow({ p }) {
 
         <div className="p-stat">
           <span className="p-stat-v">{p.cs}</span>
-          <span className="p-stat-l">{p.cs_per_min}/m</span>
+          <span className="p-stat-l">{p.cs_per_min}/m {t(lang, 'cs')}</span>
         </div>
         <div className="p-stat">
           <span className="p-stat-v">{fmtNum(p.gold)}</span>
-          <span className="p-stat-l">Oro</span>
+          <span className="p-stat-l">{t(lang, 'goldShort')}</span>
         </div>
         <div className="p-stat">
           <span className="p-stat-v">{fmtNum(p.damage)}</span>
-          <span className="p-stat-l">Daño</span>
+          <span className="p-stat-l">{t(lang, 'damageShort')}</span>
         </div>
 
-        <Img src={p.keystone_icon} className="p-keystone" />
-        <Items p={p} />
-        {p.is_player && <span className="me-badge">TÚ</span>}
+        <Img
+          src={p.keystone && p.keystone.src}
+          className="p-keystone"
+          title={nameOf(p.keystone, lang)}
+        />
+        <Items p={p} lang={lang} />
+        {p.is_player && <span className="me-badge">{t(lang, 'you')}</span>}
       </div>
 
       <div className="prow-sub">
-        <RuneStrip runes={p.runes} />
+        <RuneStrip runes={p.runes} lang={lang} />
       </div>
     </div>
   )

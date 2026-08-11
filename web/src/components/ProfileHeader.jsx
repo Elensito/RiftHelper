@@ -1,6 +1,7 @@
 import Img from './Img.jsx'
+import { t } from '../i18n.js'
 
-export default function ProfileHeader({ summoner, matches }) {
+export default function ProfileHeader({ summoner, matches, lang }) {
   const wins = summoner.wins || 0
   const losses = summoner.losses || 0
   const total = wins + losses
@@ -23,19 +24,19 @@ export default function ProfileHeader({ summoner, matches }) {
           <span className="tier-name">
             {summoner.tier} {summoner.division || ''}
           </span>
-          <span className="chip lp">{summoner.lp} LP</span>
-          <span className="chip level">Nv {summoner.level}</span>
+          <span className="chip lp">{summoner.lp} {t(lang, 'lp')}</span>
+          <span className="chip level">{t(lang, 'level')} {summoner.level}</span>
         </div>
         <div className="record">
-          <span className="rec-win">{wins}V</span>
+          <span className="rec-win">{wins}{t(lang, 'wins')}</span>
           <span className="rec-sep">/</span>
-          <span className="rec-loss">{losses}D</span>
+          <span className="rec-loss">{losses}{t(lang, 'losses')}</span>
           <div className="wr-bar">
             <div className="wr-fill" style={{ width: `${wr}%` }} />
           </div>
-          <span className="wr-text">{wr}% WR</span>
+          <span className="wr-text">{wr}% {t(lang, 'wr')}</span>
           <span className="rec-sep">·</span>
-          <span className="rec-recent">{recent.length} partidas recientes</span>
+          <span className="rec-recent">{recent.length} {t(lang, 'recentMatches')}</span>
         </div>
       </div>
 

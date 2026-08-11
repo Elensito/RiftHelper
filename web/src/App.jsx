@@ -3,12 +3,14 @@ import SearchBar from './components/SearchBar.jsx'
 import ProfileHeader from './components/ProfileHeader.jsx'
 import MatchCard from './components/MatchCard.jsx'
 import { fetchSummoner } from './api.js'
+import { t } from './i18n.js'
 
 export default function App() {
   const [profile, setProfile] = useState(null)
   const [loading, setLoading] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState('')
+  const [lang, setLang] = useState('en')
 
   const load = async (name, tag, silent = false) => {
     setError('')
@@ -37,7 +39,7 @@ export default function App() {
     <div className="app">
       <header className="topbar">
         <div className="logo">RIFT<span>HELPER</span></div>
-        <SearchBar onSearch={(n, t) => load(n, t)} loading={loading} />
+        <SearchBar onSearch={(n, t) => load(n, t)} loading={loading} lang={lang} />
         <button
           className="btn btn-update"
           disabled={!profile || refreshing}
@@ -46,7 +48,14 @@ export default function App() {
           }
         >
           <span className={`refresh ${refreshing ? 'spin' : ''}`}>⟳</span>
-          Actualizar
+          {t(lang, 'update')}
+        </button>
+        <button
+          className={`btn btn-lang ${lang === 'es' ? 'active' : ''}`}
+          onClick={() => setLang(lang === 'en' ? 'es' : 'en')}
+          aria-label="Cambiar idioma"
+        >
+          {lang === 'en' ? 'ES' : 'EN'}
         </button>
       </header>
 
@@ -59,27 +68,24 @@ export default function App() {
       <main className="content">
         {!profile && !loading && !error && (
           <div className="hero">
-            <h1>Analiza las partidas de cualquier invocador</h1>
-            <p className="hero-sub">
-              Busca por <b>Nombre#tag</b> y descubre runas, builds, oro y daño de los
-              10 jugadores de cada partida.
-            </p>
+            <h1>{t(lang, 'heroTitle')}</h1>
+            <p className="hero-sub">{t(lang, 'heroSub')}</p>
           </div>
         )}
 
         {loading && (
           <div className="loader">
             <div className="spinner" />
-            Cargando partidas…
+            {t(lang, 'loading')}
           </div>
         )}
 
         {profile && !loading && (
           <>
-            <ProfileHeader summoner={profile.summoner} matches={profile.matches} />
+            <ProfileHeader summoner={profile.summoner} matches={profile.matches} lang={lang} />
             <div className="match-list">
               {profile.matches.map((m) => (
-                <MatchCard key={m.match_id} match={m} />
+                <MatchCard key={m.match_id} match={m} lang={lang} />
               ))}
             </div>
           </>
@@ -87,7 +93,7 @@ export default function App() {
       </main>
 
       <footer className="footer">
-        RiftHelper · datos no oficiales de Riot Games · {new Date().getFullYear()}
+        RiftHelper · {t(lang, 'footerRiot')} · {new Date().getFullYear()}
       </footer>
     </div>
   )

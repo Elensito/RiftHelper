@@ -7,7 +7,9 @@ oro, farm, daño y KDA.
 ## Backend (API + assets)
 
 ```
-poetry run python -m rifthelper.server
+cd web/server
+poetry install          # solo la primera vez
+poetry run rifthelper-web   # o: poetry run python -m rifthelper.server
 ```
 
 Servidor en `http://127.0.0.1:8000`. Sirve la API y el frontend construido.
@@ -34,7 +36,7 @@ npm run build      # genera web/dist, servido por el backend en :8000
 
 ## Uso
 
-1. Arranca el backend (`poetry run python -m rifthelper.server`).
+1. Arranca el backend (`poetry run rifthelper-web` desde `web/server`).
 2. Abre `http://127.0.0.1:8000`.
 3. Busca un invocador por **Nombre#tag** (ej. `Elensito` `01234`) y pulsa **Buscar**.
 4. **⟳ Actualizar** recarga las partidas más recientes.
@@ -46,10 +48,12 @@ También puedes compartir enlaces directos: `http://127.0.0.1:8000/?name=Elensit
 ## Estructura
 
 ```
-rifthelper/server/     backend FastAPI
-  api.py               payload de partidas + perfil
-  app.py               servidor FastAPI (API, assets y frontend)
-web/                   frontend React + Vite
-  src/components/      SearchBar, ProfileHeader, MatchCard, PlayerRow
-  src/styles.css       tema neon
+web/
+  server/                backend FastAPI (poetry: rifthelper-web-server)
+    rifthelper/
+      server/            app.py (API, assets y frontend) + api.py (payload)
+      services/          riot.py (RiotClient) + stats.py (análisis)
+  src/components/        SearchBar, ProfileHeader, MatchCard, PlayerRow
+  src/styles.css         tema neon
+  dist/                  build de producción (servido por el backend)
 ```

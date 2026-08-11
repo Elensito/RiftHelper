@@ -1,9 +1,4 @@
 .env
-data.json
-champions_cache.json
-items_cache.json
-runes_cache.json
-cache/
 __pycache__/
 *.pyc
 .venv/
@@ -12,6 +7,18 @@ dist/
 build/
 *.egg-info/
 .pytest_cache/
+
+# Bot de Discord
+bot/data.json
+bot/champions_cache.json
+
+# Backend web (FastAPI)
+web/server/champions_cache.json
+web/server/items_cache.json
+web/server/items_cache_es.json
+web/server/runes_cache.json
+web/server/runes_cache_es.json
+web/server/cache/
 
 # Frontend (React)
 node_modules/

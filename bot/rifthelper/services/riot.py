@@ -1,6 +1,5 @@
 import asyncio
 import json
-from typing import Any
 from urllib.parse import quote
 
 import aiohttp
@@ -16,12 +15,13 @@ class RiotAPIError(Exception):
 
 
 class RiotClient:
-    """Cliente asíncrono de la API de Riot Games.
+    """Cliente asíncrono de la API de Riot Games (solo lo que usa el bot).
 
     Usa el flujo oficial recomendado por Riot:
       1. account-v1 (routing regional) -> PUUID a partir de Riot ID.
       2. summoner-v4 / by-puuid        -> icono, nivel.
       3. league-v4 / by-puuid          -> rango y LP.
+      4. champion-mastery-v4           -> maestría por campeón.
     """
 
     PLATFORM_BASE = "https://{region}.api.riotgames.com"
@@ -30,13 +30,11 @@ class RiotClient:
     def __init__(self, api_key: str = None):
         self.api_key = api_key or config.RIOT_API_KEY
         self._champions: dict[int, dict] | None = None
-        self._items: dict[int, dict] | None = None
-        self._runes: dict[int, dict] | None = None
 
     def _cluster_for(self, region: str) -> str:
         return config.REGIONAL_ROUTING.get(region, region)
 
-    async def _request(self, url: str) -> Any:
+    async def _request(self, url: str):
         headers = {"X-Riot-Token": self.api_key}
         for attempt in range(3):
             async with aiohttp.ClientSession() as session:
@@ -70,19 +68,6 @@ class RiotClient:
     async def _regional(self, region: str, path: str) -> dict:
         cluster = self._cluster_for(region)
         return await self._request(f"{self.REGIONAL_BASE.format(cluster=cluster)}{path}")
-
-    async def _cached(self, cache_dir, match_id: str, url: str) -> Any:
-        """Obtiene una partida/timeline desde disco o la descarga y la cachea."""
-        cache_dir.mkdir(parents=True, exist_ok=True)
-        path = cache_dir / f"{match_id}.json"
-        if path.is_file():
-            return json.loads(path.read_text(encoding="utf-8"))
-        data = await self._request(url)
-        try:
-            path.write_text(json.dumps(data), encoding="utf-8")
-        except OSError:
-            pass
-        return data
 
     async def get_account_by_riot_id(self, region: str, game_name: str, tag: str) -> dict:
         name = quote(game_name.strip(), safe=" ")
@@ -118,35 +103,6 @@ class RiotClient:
         )
         return data if isinstance(data, list) else []
 
-    async def get_match_ids(
-        self, region: str, puuid: str, count: int, start_time: int, queue: int | None = None
-    ) -> list[str]:
-        """IDs de partidas clasificatorias (Solo/Dúo y/o Flex) de un jugador desde start_time.
-
-        queue=420 -> Solo/Dúo, queue=440 -> Flex, None -> todas las clasificatorias.
-        """
-        cluster = self._cluster_for(region)
-        url = (
-            f"{self.REGIONAL_BASE.format(cluster=cluster)}/lol/match/v5/matches/by-puuid/{puuid}/ids"
-            f"?start=0&count={count}&type=ranked&startTime={start_time}"
-        )
-        if queue is not None:
-            url += f"&queue={queue}"
-        data = await self._request(url)
-        return [m for m in data] if isinstance(data, list) else []
-
-    async def get_match(self, region: str, match_id: str) -> Any:
-        cluster = self._cluster_for(region)
-        url = f"{self.REGIONAL_BASE.format(cluster=cluster)}/lol/match/v5/matches/{match_id}"
-        return await self._cached(config.MATCH_CACHE_DIR, match_id, url)
-
-    async def get_match_timeline(self, region: str, match_id: str) -> Any:
-        cluster = self._cluster_for(region)
-        url = (
-            f"{self.REGIONAL_BASE.format(cluster=cluster)}/lol/match/v5/matches/{match_id}/timeline"
-        )
-        return await self._cached(config.TIMELINE_CACHE_DIR, match_id, url)
-
     async def get_champion_info(self) -> dict[int, dict]:
         """Mapa championId -> {name, image} (DataDragon), cacheado en disco."""
         if self._champions is not None:
@@ -178,71 +134,3 @@ class RiotClient:
         except OSError:
             pass
         return self._champions
-
-    async def get_items_info(self) -> dict[int, dict]:
-        """Mapa itemId -> {name, image} (DataDragon), cacheado en disco."""
-        if self._items is not None:
-            return self._items
-
-        path = config.ITEMS_CACHE
-        if path.is_file():
-            try:
-                raw = json.loads(path.read_text(encoding="utf-8"))
-                self._items = {int(k): v for k, v in raw.items()}
-                return self._items
-            except (ValueError, OSError):
-                pass
-
-        async with aiohttp.ClientSession() as session:
-            async with session.get(config.ITEMS_URL) as resp:
-                if resp.status != 200:
-                    raise RiotAPIError(
-                        "No se pudo obtener la lista de objetos desde DataDragon.", resp.status
-                    )
-                data = await resp.json()
-
-        self._items = {
-            int(k): {"name": v.get("name", f"Item {k}"), "image": v.get("image", {}).get("full", "")}
-            for k, v in data.get("data", {}).items()
-        }
-        try:
-            path.write_text(json.dumps(self._items), encoding="utf-8")
-        except OSError:
-            pass
-        return self._items
-
-    async def get_runes_info(self) -> dict[int, dict]:
-        """Mapa runaId -> {name, icon} (DataDragon), cacheado en disco."""
-        if self._runes is not None:
-            return self._runes
-
-        path = config.RUNES_CACHE
-        if path.is_file():
-            try:
-                raw = json.loads(path.read_text(encoding="utf-8"))
-                self._runes = {int(k): v for k, v in raw.items()}
-                return self._runes
-            except (ValueError, OSError):
-                pass
-
-        async with aiohttp.ClientSession() as session:
-            async with session.get(config.RUNES_URL) as resp:
-                if resp.status != 200:
-                    raise RiotAPIError(
-                        "No se pudo obtener las runas desde DataDragon.", resp.status
-                    )
-                data = await resp.json()
-
-        self._runes = {}
-        for tree in data:
-            for slot in tree.get("slots", []):
-                for rune in slot.get("runes", []):
-                    self._runes[int(rune["id"])] = {
-                        "name": rune.get("name", ""),
-                        "icon": rune.get("icon", ""),
-                    }
-        try:
-            path.write_text(json.dumps(self._runes), encoding="utf-8")
-        except OSError:
-            pass
-        return self._runes

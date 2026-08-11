@@ -18,8 +18,7 @@ from rifthelper import config
 from rifthelper.services.riot import RiotAPIError
 from rifthelper.server import api as api_service
 
-BASE_DIR = config.BASE_DIR
-WEB_DIST = BASE_DIR / "web" / "dist"
+WEB_DIST = config.WEB_DIST
 ASSETS_DIR = config.ASSETS_DIR
 
 app = FastAPI(title="RiftHelper API", version="1.0.0")
