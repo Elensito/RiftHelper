@@ -80,8 +80,12 @@ def _itemd(item_id, item_names: dict) -> dict | None:
 
 
 async def _ensure_profile_icon(icon_id) -> None:
-    """Descarga el icono de perfil del invocador si no está en disco."""
-    if not icon_id:
+    """Descarga el icono de perfil del invocador si no está en disco.
+
+    icon_id puede ser 0 (cuentas sin icono elegido): también es un icono válido
+    en DataDragon, así que solo se ignora cuando es None.
+    """
+    if icon_id is None:
         return
     base_dir = config.ASSETS_DIR / "profileicons"
     base_dir.mkdir(parents=True, exist_ok=True)
