@@ -68,13 +68,11 @@ export default function PlayerRow({ p, lang }) {
           <span className="p-stat-l">{t(lang, 'damageShort')}</span>
         </div>
 
-        <Img
-          src={p.keystone && p.keystone.src}
-          className="p-keystone"
-          title={nameOf(p.keystone, lang)}
-        />
-        <Items p={p} lang={lang} />
         {p.is_player && <span className="me-badge">{t(lang, 'you')}</span>}
+      </div>
+
+      <div className="prow-build">
+        <Items p={p} lang={lang} />
       </div>
 
       <div className="prow-sub">
