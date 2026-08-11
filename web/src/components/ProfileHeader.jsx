@@ -21,7 +21,7 @@ export default function ProfileHeader({ summoner, matches, lang }) {
           <span className="chip region">{summoner.region}</span>
         </div>
         <div className="tier-row">
-          <span className="tier-name">
+          <span className={`tier-name tier-${summoner.tier.toLowerCase()}`}>
             {summoner.tier} {summoner.division || ''}
           </span>
           <span className="chip lp">{summoner.lp} {t(lang, 'lp')}</span>

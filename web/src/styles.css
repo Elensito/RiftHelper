@@ -395,6 +395,61 @@ body {
   text-shadow: 0 0 14px rgba(139, 92, 246, 0.5);
 }
 
+.tier-name.tier-iron {
+  color: #9aa4b2;
+  text-shadow: 0 0 10px rgba(154, 164, 178, 0.5), 0 0 26px rgba(154, 164, 178, 0.2);
+}
+
+.tier-name.tier-bronze {
+  color: #e0926a;
+  text-shadow: 0 0 10px rgba(224, 146, 106, 0.55), 0 0 26px rgba(224, 146, 106, 0.25);
+}
+
+.tier-name.tier-silver {
+  color: #c7d3e0;
+  text-shadow: 0 0 10px rgba(199, 211, 224, 0.5), 0 0 26px rgba(199, 211, 224, 0.2);
+}
+
+.tier-name.tier-gold {
+  color: #ffd54f;
+  text-shadow: 0 0 10px rgba(255, 213, 79, 0.6), 0 0 28px rgba(255, 213, 79, 0.3);
+}
+
+.tier-name.tier-platinum {
+  color: #5ee0a5;
+  text-shadow: 0 0 10px rgba(94, 224, 165, 0.55), 0 0 28px rgba(94, 224, 165, 0.25);
+}
+
+.tier-name.tier-emerald {
+  color: #34d399;
+  text-shadow: 0 0 10px rgba(52, 211, 153, 0.55), 0 0 28px rgba(52, 211, 153, 0.25);
+}
+
+.tier-name.tier-diamond {
+  color: #5bb9ff;
+  text-shadow: 0 0 10px rgba(91, 185, 255, 0.6), 0 0 28px rgba(91, 185, 255, 0.3);
+}
+
+.tier-name.tier-master {
+  color: #c084fc;
+  text-shadow: 0 0 10px rgba(192, 132, 252, 0.6), 0 0 28px rgba(192, 132, 252, 0.3);
+}
+
+.tier-name.tier-grandmaster {
+  color: #ff5e5e;
+  text-shadow: 0 0 10px rgba(255, 94, 94, 0.6), 0 0 28px rgba(255, 94, 94, 0.3);
+}
+
+.tier-name.tier-challenger {
+  color: #ffe27a;
+  text-shadow: 0 0 10px rgba(255, 226, 122, 0.65), 0 0 30px rgba(255, 213, 79, 0.35);
+}
+
+.tier-name.tier-unranked {
+  color: var(--muted);
+  text-shadow: none;
+}
+
 .record {
   display: flex;
   align-items: center;
