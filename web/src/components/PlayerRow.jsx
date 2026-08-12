@@ -45,6 +45,11 @@ export default function PlayerRow({ p, lang, onOpenPlayer = () => {} }) {
             <Img src={p.champion_icon} className="p-champ-icon" title={p.champion} />
             {p.level ? <span className="p-champ-level">{p.level}</span> : null}
           </div>
+          <div className="p-spells">
+            {(p.spells || []).map((s, i) => (
+              <Img key={i} src={s && s.src} className="p-spell" title={s && s.name} />
+            ))}
+          </div>
           <div className="p-champ-name">
             {p.player_name ? (
               <button

@@ -58,6 +58,11 @@ export default function MatchCard({ match, lang, puuid, onOpenPlayer }) {
             className="m-keystone"
             title={pl.keystone && (pl.keystone[lang] || pl.keystone.en)}
           />
+          <div className="m-spells">
+            {(pl.spells || []).map((s, i) => (
+              <Img key={i} src={s && s.src} className="m-spell" title={s && s.name} />
+            ))}
+          </div>
         </div>
 
         <div className="m-kda">

@@ -169,6 +169,30 @@ export function queueLabel(lang, id) {
   return lang === 'es' ? 'Partida' : 'Match'
 }
 
+export const MAPS = {
+  1: "Summoner's Rift",
+  2: "Summoner's Rift",
+  3: 'The Proving Grounds',
+  4: 'Twisted Treeline',
+  8: 'Crystal Scar',
+  10: 'Twisted Treeline',
+  11: "Summoner's Rift",
+  12: 'Howling Abyss',
+  14: "Butcher's Bridge",
+  21: 'Rift Quest',
+  22: 'Valoran City Park',
+  23: 'Convergence',
+  30: 'Howling Abyss',
+  31: 'Nexus Blitz',
+  32: 'Nexus Blitz',
+}
+
+export function mapLabel(lang, id) {
+  const m = MAPS[id]
+  if (m) return m
+  return lang === 'es' ? 'Mapa' : 'Map'
+}
+
 export function t(lang, key) {
   const dict = STR[lang] || STR.en
   return dict[key] || STR.en[key] || key

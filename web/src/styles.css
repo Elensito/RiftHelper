@@ -644,6 +644,24 @@ body {
   box-shadow: var(--glow-cyan);
 }
 
+.m-spells {
+  position: absolute;
+  left: -8px;
+  bottom: -6px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.m-spell {
+  width: 22px;
+  height: 22px;
+  border-radius: 5px;
+  border: 1px solid var(--border);
+  object-fit: cover;
+  background: var(--card-solid);
+}
+
 .m-kda {
   display: flex;
   flex-direction: column;
@@ -1026,6 +1044,22 @@ body {
 .p-champ-icon-wrap {
   position: relative;
   flex-shrink: 0;
+}
+
+.p-spells {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex-shrink: 0;
+}
+
+.p-spell {
+  width: 22px;
+  height: 22px;
+  border-radius: 5px;
+  border: 1px solid var(--border);
+  object-fit: cover;
+  background: var(--card-solid);
 }
 
 .p-champ-level {
@@ -1533,6 +1567,18 @@ button.p-name:hover {
   font-size: 13px;
   font-weight: 700;
   color: var(--text);
+}
+
+.live-mode-sub {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--muted);
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  padding: 2px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--panel);
 }
 
 .live-dur {

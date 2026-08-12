@@ -1,5 +1,5 @@
 import Img from './Img.jsx'
-import { queueLabel, t } from '../i18n.js'
+import { queueLabel, mapLabel, t } from '../i18n.js'
 
 function fmtClock(sec) {
   sec = Math.max(0, sec || 0)
@@ -78,6 +78,8 @@ export default function LiveGame({ data, lang }) {
           {t(lang, 'liveNow')}
         </span>
         <span className="live-mode">{queueLabel(lang, game.queue)}</span>
+        {game.map ? <span className="live-mode-sub">{mapLabel(lang, game.map)}</span> : null}
+        {game.mode ? <span className="live-mode-sub">{game.mode}</span> : null}
         <span className="live-dur">{fmtClock(game.length_sec)}</span>
       </div>
 

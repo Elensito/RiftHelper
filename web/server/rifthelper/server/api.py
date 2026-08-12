@@ -156,6 +156,8 @@ def _participant_summary(
     puuid: str,
     rune_names: dict,
     item_names: dict,
+    summoner_spells: dict[int, dict],
+    spell_images: set[str],
 ) -> dict:
     champ = champ_info.get(p.get("championId"), {})
     items = [p.get(f"item{i}", 0) or 0 for i in range(7)]
@@ -163,6 +165,15 @@ def _participant_summary(
     role_boots = p.get("roleBoundItem", 0) or 0
     runes = _runes_of(p)
     cs = p.get("totalMinionsKilled", 0) + p.get("totalEnemiesSlain", 0)
+
+    spell_sids = [p.get("summoner1Id"), p.get("summoner2Id")]
+    spells = []
+    for sid in spell_sids:
+        sp = summoner_spells.get(sid, {})
+        simage = sp.get("image")
+        if simage:
+            spell_images.add(simage)
+        spells.append({"src": f"/assets/spells/{simage}" if simage else None, "name": sp.get("name", "")})
 
     return {
         "is_player": p.get("puuid") == puuid,
@@ -185,6 +196,7 @@ def _participant_summary(
         "win": bool(p.get("win")),
         "keystone": _runed(runes[0], rune_names) if runes else None,
         "runes": [_runed(r, rune_names) for r in runes],
+        "spells": spells,
         "items": [_itemd(i, item_names) for i in items[:6]],
         "boots": _itemd(role_boots, item_names) if is_adc else None,
         "trinket": _itemd(items[6], item_names) if items[6] else None,
@@ -198,6 +210,8 @@ def build_match(
     champ_info: dict[int, dict],
     rune_names: dict,
     item_names: dict,
+    summoner_spells: dict[int, dict],
+    spell_images: set[str],
 ) -> dict | None:
     player = stats_service.compute_match_stats(match, timeline, puuid, champ_info)
     if player is None:
@@ -208,7 +222,7 @@ def build_match(
     duration_min = duration_sec / 60 if duration_sec else 1
     participants = info.get("participants", [])
     players = [
-        _participant_summary(p, champ_info, duration_min, puuid, rune_names, item_names)
+        _participant_summary(p, champ_info, duration_min, puuid, rune_names, item_names, summoner_spells, spell_images)
         for p in participants
     ]
     me = next((p for p in players if p["is_player"]), {})
@@ -224,6 +238,7 @@ def build_match(
             "champion": me.get("champion", player["player_champion"]),
             "champion_icon": me.get("champion_icon"),
             "keystone": me.get("keystone"),
+            "spells": me.get("spells"),
             "kills": me.get("kills", 0),
             "deaths": me.get("deaths", 0),
             "assists": me.get("assists", 0),
@@ -255,6 +270,7 @@ async def fetch_profile(name: str, tag: str, count: int = MATCH_COUNT) -> dict:
     items_es = await riot.get_items_info("es_ES")
     runes_en = await riot.get_runes_info("en_US")
     runes_es = await riot.get_runes_info("es_ES")
+    spells_info = await riot.get_summoner_spells_info()
 
     rune_names = {
         rid: {"en": runes_en.get(rid, {}).get("name", ""), "es": runes_es.get(rid, {}).get("name", "")}
@@ -279,6 +295,7 @@ async def fetch_profile(name: str, tag: str, count: int = MATCH_COUNT) -> dict:
 
     matches = []
     rune_ids: set[int] = set()
+    spell_images: set[str] = set()
     for match_id in match_ids:
         try:
             match = await riot.get_match(region, match_id)
@@ -287,11 +304,12 @@ async def fetch_profile(name: str, tag: str, count: int = MATCH_COUNT) -> dict:
             continue
         for p in (match.get("info", {}) or {}).get("participants", []) or []:
             rune_ids.update(_runes_of(p))
-        payload = build_match(match, timeline, puuid, champ_info, rune_names, item_names)
+        payload = build_match(match, timeline, puuid, champ_info, rune_names, item_names, spells_info, spell_images)
         if payload:
             matches.append(payload)
 
     await _ensure_rune_icons(rune_ids, runes_en)
+    await _ensure_spell_icons(spell_images)
 
     wins = (rank or {}).get("wins", 0)
     losses = (rank or {}).get("losses", 0)
