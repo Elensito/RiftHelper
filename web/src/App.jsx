@@ -37,6 +37,7 @@ export default function App() {
       setQueueFilter('all')
       setLive(null)
       setError('')
+      document.title = `RiftHelper · ${data.summoner.name}#${data.summoner.tag}`
       fetchLiveGame(name, tag)
         .then((d) => setLive(d))
         .catch(() => {})
