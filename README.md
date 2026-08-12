@@ -17,6 +17,7 @@ Buscador de invocadores al estilo op.gg con tema neon:
 - Perfil con rango (color por tier), nivel, icono y winrate.
 - Últimas 20 partidas con el detalle de los **10 jugadores**: runas, build, oro, farm, daño, visión, KDA y nivel final.
 - Por partida: pestaña **General** (tablero de equipos), **Métricas** (curvas de oro, daño, XP y CS por minuto) y **Build** (habilidades Q/W/E/R y orden de habilidades del timeline).
+- Pestaña **En vivo**: si el invocador está en partida, un punto verde lo indica en el perfil y se muestran los 10 jugadores con su campeón, hechizos de invocador, runas, la cola y los baneos.
 - Enlaces compartibles: `/?name=Nombre&tag=1234`.
 
 ### Ejecutar la web
