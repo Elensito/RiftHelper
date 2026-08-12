@@ -61,6 +61,18 @@ export default function App() {
     }
   }
 
+  useEffect(() => {
+    if (tab !== 'live' || !profile) return
+    const poll = async () => {
+      try {
+        const data = await fetchLiveGame(profile.summoner.name, profile.summoner.tag)
+        setLive(data)
+      } catch (e) {}
+    }
+    const id = setInterval(poll, 30000)
+    return () => clearInterval(id)
+  }, [tab, profile])
+
   const openPlayer = (name, tag) => {
     if (!name) return
     window.history.pushState(null, '', `/?name=${encodeURIComponent(name)}&tag=${encodeURIComponent(tag)}`)
