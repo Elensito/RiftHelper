@@ -8,7 +8,7 @@ export default function QueueFilter({ matches, filter, onChange, lang }) {
     counts[g] = (counts[g] || 0) + 1
     present.add(g)
   })
-  const groups = QUEUE_FILTERS.filter((g) => present.has(g.id))
+  const groups = QUEUE_FILTERS
   const showOther = present.has('other')
 
   return (
@@ -27,7 +27,7 @@ export default function QueueFilter({ matches, filter, onChange, lang }) {
           onClick={() => onChange(g.id)}
         >
           {g[lang] || g.en}
-          <span className="q-count">{counts[g.id]}</span>
+          <span className="q-count">{counts[g.id] || 0}</span>
         </button>
       ))}
       {showOther && (

@@ -148,7 +148,8 @@ export const QUEUES = {
 export const QUEUE_FILTERS = [
   { id: 'solo', queues: [420], en: 'Solo/Duo', es: 'Solo/Dúo' },
   { id: 'flex', queues: [440], en: 'Flex', es: 'Flexible' },
-  { id: 'normal', queues: [400, 430, 480, 490], en: 'Normals', es: 'Normales' },
+  { id: 'draft', queues: [400], en: 'Draft', es: 'Draft' },
+  { id: 'normal', queues: [430, 480, 490], en: 'Normals', es: 'Normales' },
   { id: 'aram', queues: [450], en: 'ARAM', es: 'ARAM' },
   { id: 'arena', queues: [1700, 1740, 1750], en: 'Arena', es: 'Arena' },
   { id: 'clash', queues: [700, 720, 900, 902, 904, 910], en: 'Clash', es: 'Clash' },
