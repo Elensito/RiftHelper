@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import SearchBar from './components/SearchBar.jsx'
 import ProfileHeader from './components/ProfileHeader.jsx'
 import MatchCard from './components/MatchCard.jsx'
@@ -8,6 +8,8 @@ import LangSwitcher from './components/LangSwitcher.jsx'
 import ThemeToggle from './components/ThemeToggle.jsx'
 import { fetchSummoner, fetchLiveGame } from './api.js'
 import { matchGroup, t } from './i18n.js'
+
+const PAGE_SIZE = 20
 
 export default function App() {
   const [profile, setProfile] = useState(null)
@@ -20,6 +22,10 @@ export default function App() {
   const [queueFilter, setQueueFilter] = useState('all')
   const [live, setLive] = useState(null)
   const [liveLoading, setLiveLoading] = useState(false)
+  const [fetched, setFetched] = useState(0)
+  const [hasMore, setHasMore] = useState(false)
+  const [moreLoading, setMoreLoading] = useState(false)
+  const sentinelRef = useRef(null)
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme
@@ -30,9 +36,14 @@ export default function App() {
     setError('')
     if (silent) setRefreshing(true)
     else setLoading(true)
+    setFetched(0)
+    setHasMore(true)
+    setMoreLoading(false)
     try {
-      const data = await fetchSummoner(name, tag)
+      const data = await fetchSummoner(name, tag, PAGE_SIZE, 0)
       setProfile(data)
+      setFetched(PAGE_SIZE)
+      setHasMore(!!data.has_more)
       setTab('matches')
       setQueueFilter('all')
       setLive(null)
@@ -48,6 +59,47 @@ export default function App() {
       setRefreshing(false)
     }
   }
+
+  const loadMore = async () => {
+    if (!profile || moreLoading || !hasMore) return
+    setMoreLoading(true)
+    setError('')
+    try {
+      const data = await fetchSummoner(
+        profile.summoner.name,
+        profile.summoner.tag,
+        PAGE_SIZE,
+        fetched
+      )
+      setProfile((prev) => {
+        const seen = new Set(prev.matches.map((m) => m.match_id))
+        const fresh = data.matches.filter((m) => !seen.has(m.match_id))
+        return { ...prev, matches: [...prev.matches, ...fresh] }
+      })
+      setFetched((f) => f + PAGE_SIZE)
+      setHasMore(!!data.has_more)
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setMoreLoading(false)
+    }
+  }
+
+  const loadMoreRef = useRef(loadMore)
+  loadMoreRef.current = loadMore
+
+  useEffect(() => {
+    if (tab !== 'matches' || !sentinelRef.current) return
+    const el = sentinelRef.current
+    const obs = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) loadMoreRef.current()
+      },
+      { rootMargin: '250px 0px' }
+    )
+    obs.observe(el)
+    return () => obs.disconnect()
+  }, [tab, profile])
 
   const openLive = async () => {
     if (!profile) return
@@ -189,6 +241,17 @@ export default function App() {
                       onOpenPlayer={openPlayer}
                     />
                   ))}
+                <div className="load-more" ref={sentinelRef}>
+                  {moreLoading && (
+                    <div className="loader-inline">
+                      <div className="spinner spinner-sm" />
+                      {t(lang, 'loadingMore')}
+                    </div>
+                  )}
+                  {!hasMore && !moreLoading && fetched > PAGE_SIZE && (
+                    <span className="no-more">{t(lang, 'noMoreMatches')}</span>
+                  )}
+                </div>
               </div>
             )}
           </>

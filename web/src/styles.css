@@ -325,6 +325,34 @@ body {
   box-shadow: var(--glow-cyan);
 }
 
+.spinner-sm {
+  width: 20px;
+  height: 20px;
+  border-width: 2px;
+  box-shadow: none;
+}
+
+.load-more {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 60px;
+  padding: 16px 0;
+}
+
+.loader-inline {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.no-more {
+  color: var(--muted);
+  font-size: 13px;
+}
+
 .hero {
   text-align: center;
   padding: 110px 20px 60px;

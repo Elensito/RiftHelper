@@ -131,7 +131,13 @@ class RiotClient:
         return data if isinstance(data, list) else []
 
     async def get_match_ids(
-        self, region: str, puuid: str, count: int, start_time: int, queue: int | None = None
+        self,
+        region: str,
+        puuid: str,
+        count: int,
+        start_time: int,
+        start: int = 0,
+        queue: int | None = None,
     ) -> list[str]:
 
 
@@ -140,7 +146,7 @@ class RiotClient:
         cluster = self._cluster_for(region)
         url = (
             f"{self.REGIONAL_BASE.format(cluster=cluster)}/lol/match/v5/matches/by-puuid/{puuid}/ids"
-            f"?start=0&count={count}&startTime={start_time}"
+            f"?start={start}&count={count}&startTime={start_time}"
         )
         if queue is not None:
             url += f"&queue={queue}"

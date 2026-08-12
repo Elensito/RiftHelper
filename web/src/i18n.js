@@ -9,6 +9,8 @@ const EN = {
   tag: 'tag',
   update: 'Update',
   loading: 'Loading matches…',
+  loadingMore: 'Loading more matches…',
+  noMoreMatches: 'No more matches',
   heroTitle: 'Analyze any summoner matches',
   heroSub:
     'Search by Name#tag and discover runes, builds, gold and damage of all 10 players of each match.',
@@ -65,6 +67,8 @@ const ES = {
   tag: 'tag',
   update: 'Actualizar',
   loading: 'Cargando partidas…',
+  loadingMore: 'Cargando más partidas…',
+  noMoreMatches: 'No hay más partidas',
   heroTitle: 'Analiza las partidas de cualquier invocador',
   heroSub:
     'Busca por Nombre#tag y descubre runas, builds, oro y daño de los 10 jugadores de cada partida.',

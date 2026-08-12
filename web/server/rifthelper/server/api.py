@@ -258,7 +258,9 @@ def build_match(
     }
 
 
-async def fetch_profile(name: str, tag: str, count: int = MATCH_COUNT) -> dict:
+async def fetch_profile(
+    name: str, tag: str, count: int = MATCH_COUNT, start: int = 0
+) -> dict:
 
     region = config.RIOT_REGION
     riot = RiotClient()
@@ -296,7 +298,7 @@ async def fetch_profile(name: str, tag: str, count: int = MATCH_COUNT) -> dict:
     await _ensure_profile_icon(profile_icon_id)
 
     start_ts = int(datetime(datetime.now().year, 1, 1, tzinfo=timezone.utc).timestamp())
-    match_ids = await riot.get_match_ids(region, puuid, count, start_ts)
+    match_ids = await riot.get_match_ids(region, puuid, count, start_ts, start=start)
 
     matches = []
     rune_ids: set[int] = set()
@@ -338,6 +340,7 @@ async def fetch_profile(name: str, tag: str, count: int = MATCH_COUNT) -> dict:
             "winrate": round(wins / (wins + losses) * 100) if (wins + losses) else 0,
         },
         "matches": matches,
+        "has_more": len(match_ids) == count,
     }
 
 
