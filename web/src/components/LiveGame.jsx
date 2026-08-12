@@ -52,7 +52,7 @@ function LiveRow({ p, lang }) {
         </div>
         <div className="live-spells">
           {p.spells.map((s, i) => (
-            <Img key={i} src={s && s.src} className="live-spell" title={s && s.name} />
+            <Img key={i} src={s && s.src} className="live-spell" title={s && nameOf(s, lang)} />
           ))}
         </div>
         {p.is_player && <span className="me-badge">{t(lang, 'you')}</span>}

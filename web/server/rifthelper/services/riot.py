@@ -315,20 +315,27 @@ class RiotClient:
         if self._summoner_spells is not None:
             return self._summoner_spells
 
-        async with aiohttp.ClientSession() as session:
-            async with session.get(config.SUMMONER_SPELLS_URL) as resp:
-                if resp.status != 200:
-                    raise RiotAPIError(
-                        "No se pudieron obtener los hechizos de invocador desde DataDragon.",
-                        resp.status,
-                    )
-                data = await resp.json()
+        async def fetch(locale: str) -> dict:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(config.SUMMONER_SPELLS_URL.format(locale=locale)) as resp:
+                    if resp.status != 200:
+                        raise RiotAPIError(
+                            "No se pudieron obtener los hechizos de invocador desde DataDragon.",
+                            resp.status,
+                        )
+                    return await resp.json()
+
+        en = await fetch("en_US")
+        es = await fetch("es_ES")
 
         self._summoner_spells = {
             int(s["key"]): {
-                "name": s.get("name", ""),
+                "name": {
+                    "en": s.get("name", ""),
+                    "es": es.get("data", {}).get(s["id"], {}).get("name", ""),
+                },
                 "image": s.get("image", {}).get("full", ""),
             }
-            for s in data.get("data", {}).values()
+            for s in en.get("data", {}).values()
         }
         return self._summoner_spells

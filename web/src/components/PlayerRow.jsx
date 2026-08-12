@@ -47,7 +47,7 @@ export default function PlayerRow({ p, lang, onOpenPlayer = () => {} }) {
           </div>
           <div className="p-spells">
             {(p.spells || []).map((s, i) => (
-              <Img key={i} src={s && s.src} className="p-spell" title={s && s.name} />
+              <Img key={i} src={s && s.src} className="p-spell" title={s && nameOf(s, lang)} />
             ))}
           </div>
           <div className="p-champ-name">

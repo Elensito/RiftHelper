@@ -7,6 +7,10 @@ import PlayerRow from './PlayerRow.jsx'
 const MatchMetrics = lazy(() => import('./MatchMetrics.jsx'))
 const MatchBuild = lazy(() => import('./MatchBuild.jsx'))
 
+function nameOf(entry, lang) {
+  return entry ? entry[lang] || entry.en || '' : ''
+}
+
 function TeamColumn({ players, teamId, lang, onOpenPlayer }) {
   const team = sortPlayers(players.filter((p) => p.team === teamId))
   const totals = team.reduce(
@@ -60,7 +64,7 @@ export default function MatchCard({ match, lang, puuid, onOpenPlayer }) {
           />
           <div className="m-spells">
             {(pl.spells || []).map((s, i) => (
-              <Img key={i} src={s && s.src} className="m-spell" title={s && s.name} />
+              <Img key={i} src={s && s.src} className="m-spell" title={s && nameOf(s, lang)} />
             ))}
           </div>
         </div>

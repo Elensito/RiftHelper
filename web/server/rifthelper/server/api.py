@@ -173,7 +173,12 @@ def _participant_summary(
         simage = sp.get("image")
         if simage:
             spell_images.add(simage)
-        spells.append({"src": f"/assets/spells/{simage}" if simage else None, "name": sp.get("name", "")})
+        spells.append(
+            {
+                "src": f"/assets/spells/{simage}" if simage else None,
+                "name": sp.get("name") or {"en": "", "es": ""},
+            }
+        )
 
     return {
         "is_player": p.get("puuid") == puuid,
@@ -510,7 +515,12 @@ async def fetch_live_game(name: str, tag: str) -> dict:
             simage = sp.get("image")
             if simage:
                 spell_images.add(simage)
-            spells.append({"src": f"/assets/spells/{simage}" if simage else None, "name": sp.get("name", "")})
+            spells.append(
+                {
+                    "src": f"/assets/spells/{simage}" if simage else None,
+                    "name": sp.get("name") or {"en": "", "es": ""},
+                }
+            )
         riot_id = p.get("riotId") or ""
         if riot_id and "#" in riot_id:
             r_name, r_tag = riot_id.rsplit("#", 1)
