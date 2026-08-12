@@ -35,6 +35,9 @@ const EN = {
   you: 'YOU',
   match: 'Match',
   tabMatches: 'Matches',
+  filterAll: 'All',
+  filterOther: 'Other',
+  filterEmpty: 'No matches in this queue',
   tabGeneral: 'General',
   tabMetrics: 'Metrics',
   tabBuild: 'Build',
@@ -88,6 +91,9 @@ const ES = {
   you: 'TÚ',
   match: 'Partida',
   tabMatches: 'Partidas',
+  filterAll: 'Todas',
+  filterOther: 'Otras',
+  filterEmpty: 'No hay partidas en esta cola',
   tabGeneral: 'General',
   tabMetrics: 'Métricas',
   tabBuild: 'Build',
@@ -119,13 +125,42 @@ export const LANGS = [
 
 
 export const QUEUES = {
+  0: { en: 'Custom', es: 'Personalizada' },
   400: { en: 'Normal (Draft)', es: 'Normal (Draft)' },
   420: { en: 'Ranked Solo', es: 'Clasificatoria Solo' },
   430: { en: 'Normal', es: 'Normal' },
   440: { en: 'Ranked Flex', es: 'Clasificatoria Flexible' },
   450: { en: 'ARAM', es: 'ARAM' },
   480: { en: 'Swiftplay', es: 'Swiftplay' },
+  490: { en: 'Quickplay', es: 'Quickplay' },
   700: { en: 'Clash', es: 'Clash' },
+  720: { en: 'Clash', es: 'Clash' },
+  820: { en: 'Co-op vs AI', es: 'Contra IA' },
+  830: { en: 'Co-op vs AI', es: 'Contra IA' },
+  840: { en: 'Co-op vs AI', es: 'Contra IA' },
+  850: { en: 'Co-op vs AI', es: 'Contra IA' },
+  900: { en: 'Clash', es: 'Clash' },
+  1700: { en: 'Arena', es: 'Arena' },
+  1740: { en: 'Arena', es: 'Arena' },
+  1750: { en: 'Arena', es: 'Arena' },
+}
+
+export const QUEUE_FILTERS = [
+  { id: 'solo', queues: [420], en: 'Solo/Duo', es: 'Solo/Dúo' },
+  { id: 'flex', queues: [440], en: 'Flex', es: 'Flexible' },
+  { id: 'normal', queues: [400, 430, 480, 490], en: 'Normals', es: 'Normales' },
+  { id: 'aram', queues: [450], en: 'ARAM', es: 'ARAM' },
+  { id: 'arena', queues: [1700, 1740, 1750], en: 'Arena', es: 'Arena' },
+  { id: 'clash', queues: [700, 720, 900, 902, 904, 910], en: 'Clash', es: 'Clash' },
+  { id: 'coop', queues: [820, 830, 840, 850], en: 'Co-op vs AI', es: 'Contra IA' },
+  { id: 'custom', queues: [0], en: 'Custom', es: 'Personalizada' },
+]
+
+export function matchGroup(queue) {
+  for (const g of QUEUE_FILTERS) {
+    if (g.queues.includes(queue)) return g.id
+  }
+  return 'other'
 }
 
 export function queueLabel(lang, id) {

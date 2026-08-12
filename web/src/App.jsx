@@ -3,10 +3,11 @@ import SearchBar from './components/SearchBar.jsx'
 import ProfileHeader from './components/ProfileHeader.jsx'
 import MatchCard from './components/MatchCard.jsx'
 import LiveGame from './components/LiveGame.jsx'
+import QueueFilter from './components/QueueFilter.jsx'
 import LangSwitcher from './components/LangSwitcher.jsx'
 import ThemeToggle from './components/ThemeToggle.jsx'
 import { fetchSummoner, fetchLiveGame } from './api.js'
-import { t } from './i18n.js'
+import { matchGroup, t } from './i18n.js'
 
 export default function App() {
   const [profile, setProfile] = useState(null)
@@ -16,6 +17,7 @@ export default function App() {
   const [lang, setLang] = useState('en')
   const [theme, setTheme] = useState(() => localStorage.getItem('rh-theme') || 'dark')
   const [tab, setTab] = useState('matches')
+  const [queueFilter, setQueueFilter] = useState('all')
   const [live, setLive] = useState(null)
   const [liveLoading, setLiveLoading] = useState(false)
 
@@ -32,6 +34,7 @@ export default function App() {
       const data = await fetchSummoner(name, tag)
       setProfile(data)
       setTab('matches')
+      setQueueFilter('all')
       setLive(null)
       setError('')
       fetchLiveGame(name, tag)
@@ -166,15 +169,25 @@ export default function App() {
               )
             ) : (
               <div className="match-list">
-                {profile.matches.map((m) => (
-                  <MatchCard
-                    key={m.match_id}
-                    match={m}
-                    lang={lang}
-                    puuid={profile.summoner.puuid}
-                    onOpenPlayer={openPlayer}
-                  />
-                ))}
+                <QueueFilter
+                  matches={profile.matches}
+                  filter={queueFilter}
+                  onChange={setQueueFilter}
+                  lang={lang}
+                />
+                {profile.matches
+                  .filter(
+                    (m) => queueFilter === 'all' || matchGroup(m.queue) === queueFilter
+                  )
+                  .map((m) => (
+                    <MatchCard
+                      key={m.match_id}
+                      match={m}
+                      lang={lang}
+                      puuid={profile.summoner.puuid}
+                      onOpenPlayer={openPlayer}
+                    />
+                  ))}
               </div>
             )}
           </>
