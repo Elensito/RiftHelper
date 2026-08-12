@@ -33,6 +33,7 @@ class RiotClient:
         self._champion_spells: dict[int, list[dict]] | None = None
         self._items: dict[str, dict] = {}
         self._runes: dict[str, dict] = {}
+        self._summoner_spells: dict[int, dict] | None = None
 
     def _cluster_for(self, region: str) -> str:
         return config.REGIONAL_ROUTING.get(region, region)
@@ -112,6 +113,16 @@ class RiotClient:
             if entry.get("queueType") == "RANKED_SOLO_5x5":
                 return entry
         return None
+
+    async def get_active_game(self, region: str, puuid: str) -> dict | None:
+        try:
+            return await self._platform(
+                region, f"/lol/spectator/v5/active-games/by-summoner/{puuid}"
+            )
+        except RiotAPIError as e:
+            if e.status == 404:
+                return None
+            raise
 
     async def get_champion_mastery(self, region: str, puuid: str) -> list[dict]:
         data = await self._platform(
@@ -298,3 +309,26 @@ class RiotClient:
         except OSError:
             pass
         return self._runes[locale]
+
+    async def get_summoner_spells_info(self) -> dict[int, dict]:
+
+        if self._summoner_spells is not None:
+            return self._summoner_spells
+
+        async with aiohttp.ClientSession() as session:
+            async with session.get(config.SUMMONER_SPELLS_URL) as resp:
+                if resp.status != 200:
+                    raise RiotAPIError(
+                        "No se pudieron obtener los hechizos de invocador desde DataDragon.",
+                        resp.status,
+                    )
+                data = await resp.json()
+
+        self._summoner_spells = {
+            int(s["key"]): {
+                "name": s.get("name", ""),
+                "image": s.get("image", {}).get("full", ""),
+            }
+            for s in data.get("data", {}).values()
+        }
+        return self._summoner_spells

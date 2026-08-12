@@ -21,3 +21,11 @@ export async function fetchMatchBuild(matchId) {
   if (!res.ok) throw new Error(data.detail || 'Error al obtener el build')
   return data
 }
+
+export async function fetchLiveGame(name, tag) {
+  const url = `/api/live-game?name=${encodeURIComponent(name)}&tag=${encodeURIComponent(tag)}`
+  const res = await fetch(url)
+  const data = await res.json()
+  if (!res.ok) throw new Error(data.detail || 'Error al obtener la partida en vivo')
+  return data
+}

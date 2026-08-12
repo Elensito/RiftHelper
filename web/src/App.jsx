@@ -2,9 +2,10 @@ import { useEffect, useState } from 'react'
 import SearchBar from './components/SearchBar.jsx'
 import ProfileHeader from './components/ProfileHeader.jsx'
 import MatchCard from './components/MatchCard.jsx'
+import LiveGame from './components/LiveGame.jsx'
 import LangSwitcher from './components/LangSwitcher.jsx'
 import ThemeToggle from './components/ThemeToggle.jsx'
-import { fetchSummoner } from './api.js'
+import { fetchSummoner, fetchLiveGame } from './api.js'
 import { t } from './i18n.js'
 
 export default function App() {
@@ -14,6 +15,9 @@ export default function App() {
   const [error, setError] = useState('')
   const [lang, setLang] = useState('en')
   const [theme, setTheme] = useState(() => localStorage.getItem('rh-theme') || 'dark')
+  const [tab, setTab] = useState('matches')
+  const [live, setLive] = useState(null)
+  const [liveLoading, setLiveLoading] = useState(false)
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme
@@ -27,11 +31,33 @@ export default function App() {
     try {
       const data = await fetchSummoner(name, tag)
       setProfile(data)
+      setTab('matches')
+      setLive(null)
+      setError('')
+      fetchLiveGame(name, tag)
+        .then((d) => setLive(d))
+        .catch(() => {})
     } catch (e) {
       setError(e.message)
     } finally {
       setLoading(false)
       setRefreshing(false)
+    }
+  }
+
+  const openLive = async () => {
+    if (!profile) return
+    setTab('live')
+    if (live) return
+    setLiveLoading(true)
+    setError('')
+    try {
+      const data = await fetchLiveGame(profile.summoner.name, profile.summoner.tag)
+      setLive(data)
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setLiveLoading(false)
     }
   }
 
@@ -92,18 +118,53 @@ export default function App() {
 
         {profile && !loading && (
           <>
-            <ProfileHeader summoner={profile.summoner} matches={profile.matches} lang={lang} />
-            <div className="match-list">
-              {profile.matches.map((m) => (
-                <MatchCard
-                  key={m.match_id}
-                  match={m}
-                  lang={lang}
-                  puuid={profile.summoner.puuid}
-                  onOpenPlayer={openPlayer}
-                />
-              ))}
+            <ProfileHeader
+              summoner={profile.summoner}
+              matches={profile.matches}
+              lang={lang}
+              inGame={!!(live && live.in_game)}
+            />
+
+            <div className="profile-tabs">
+              <button
+                className={`tab ${tab === 'matches' ? 'active' : ''}`}
+                onClick={() => setTab('matches')}
+              >
+                {t(lang, 'tabMatches')}
+              </button>
+              <button
+                className={`tab live-tab ${tab === 'live' ? 'active' : ''}`}
+                onClick={openLive}
+              >
+                {t(lang, 'tabLive')}
+                {live && live.in_game && <span className="live-dot" />}
+              </button>
             </div>
+
+            {tab === 'live' ? (
+              liveLoading ? (
+                <div className="loader">
+                  <div className="spinner" />
+                  {t(lang, 'liveLoading')}
+                </div>
+              ) : live && live.in_game ? (
+                <LiveGame data={live} lang={lang} />
+              ) : (
+                <div className="live-empty">{t(lang, 'liveNotInGame')}</div>
+              )
+            ) : (
+              <div className="match-list">
+                {profile.matches.map((m) => (
+                  <MatchCard
+                    key={m.match_id}
+                    match={m}
+                    lang={lang}
+                    puuid={profile.summoner.puuid}
+                    onOpenPlayer={openPlayer}
+                  />
+                ))}
+              </div>
+            )}
           </>
         )}
       </main>

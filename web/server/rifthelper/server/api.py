@@ -371,6 +371,27 @@ async def _ensure_spell_icons(images: set[str]) -> None:
                         pass
 
 
+async def _ensure_champion_icons(images: set[str]) -> None:
+
+    if not images:
+        return
+    out_dir = config.CHAMPIONS_DIR
+    out_dir.mkdir(parents=True, exist_ok=True)
+    import aiohttp
+
+    async with aiohttp.ClientSession() as session:
+        for image in sorted(images):
+            path = out_dir / image
+            if path.is_file():
+                continue
+            async with session.get(config.CHAMPION_ICON_URL.format(image=image)) as resp:
+                if resp.status == 200:
+                    try:
+                        path.write_bytes(await resp.read())
+                    except OSError:
+                        pass
+
+
 async def fetch_match_build(match_id: str, puuid: str | None = None) -> dict:
 
 
@@ -420,3 +441,103 @@ async def fetch_match_build(match_id: str, puuid: str | None = None) -> dict:
 
     await _ensure_spell_icons(images)
     return {"players": players}
+
+
+async def fetch_live_game(name: str, tag: str) -> dict:
+
+    region = config.RIOT_REGION
+    riot = RiotClient()
+
+    account = await riot.get_account_by_riot_id(region, name, tag)
+    puuid = account.get("puuid", "")
+    if not puuid:
+        raise RuntimeError("No se encontró esa cuenta en EUW. Revisa el Nombre#tag.")
+
+    summoner = await riot.get_summoner_by_puuid(region, puuid)
+    game = await riot.get_active_game(region, puuid)
+    if not game:
+        return {"in_game": False}
+
+    champ_info = await riot.get_champion_info()
+    runes_en = await riot.get_runes_info("en_US")
+    runes_es = await riot.get_runes_info("es_ES")
+    spells_info = await riot.get_summoner_spells_info()
+
+    rune_names = {
+        rid: {"en": runes_en.get(rid, {}).get("name", ""), "es": runes_es.get(rid, {}).get("name", "")}
+        for rid in runes_en
+    }
+    for rid, names in STAT_MOD_NAMES.items():
+        rune_names[rid] = names
+
+    my_id = summoner.get("id", "")
+    teams = {100: [], 200: []}
+    rune_ids: set[int] = set()
+    spell_images: set[str] = set()
+    champ_images: set[str] = set()
+
+    for p in game.get("participants", []) or []:
+        team_id = p.get("teamId", 0)
+        champ = champ_info.get(p.get("championId"), {})
+        image = champ.get("image")
+        if image:
+            champ_images.add(image)
+        perks = p.get("perks", {}) or {}
+        perk_ids = perks.get("perkIds", []) or []
+        rune_ids.update(perk_ids)
+        spell_sids = p.get("spells") or [p.get("spell1Id"), p.get("spell2Id")]
+        spells = []
+        for sid in spell_sids[:2]:
+            sp = spells_info.get(sid, {})
+            simage = sp.get("image")
+            if simage:
+                spell_images.add(simage)
+            spells.append({"src": f"/assets/spells/{simage}" if simage else None, "name": sp.get("name", "")})
+        riot_id = p.get("riotId") or ""
+        if riot_id and "#" in riot_id:
+            r_name, r_tag = riot_id.rsplit("#", 1)
+        else:
+            r_name = p.get("summonerName") or p.get("riotIdGameName", "")
+            r_tag = p.get("riotIdTagline", "")
+        teams.setdefault(team_id, []).append(
+            {
+                "summoner_name": r_name,
+                "summoner_tag": r_tag,
+                "champion": champ.get("name", f"ID {p.get('championId')}"),
+                "champion_icon": _champ_url(champ),
+                "spells": spells,
+                "keystone": _runed(perk_ids[0], rune_names) if perk_ids else None,
+                "runes": [_runed(r, rune_names) for r in perk_ids],
+                "is_player": (p.get("puuid") == puuid) or (p.get("summonerId") == my_id),
+            }
+        )
+
+    bans = {100: [], 200: []}
+    for b in game.get("bannedChampions", []) or []:
+        champ = champ_info.get(b.get("championId"), {})
+        image = champ.get("image")
+        if image:
+            champ_images.add(image)
+        bans.setdefault(b.get("teamId", 0), []).append(
+            {
+                "champion": champ.get("name", f"ID {b.get('championId')}"),
+                "champion_icon": _champ_url(champ),
+            }
+        )
+
+    await _ensure_champion_icons(champ_images)
+    await _ensure_rune_icons(rune_ids, runes_en)
+    await _ensure_spell_icons(spell_images)
+
+    return {
+        "in_game": True,
+        "game": {
+            "queue": game.get("gameQueueConfigId"),
+            "map": game.get("mapId"),
+            "mode": game.get("gameMode", ""),
+            "length_sec": game.get("gameLength", 0) or 0,
+            "started": game.get("gameStartTime"),
+        },
+        "bans": bans,
+        "teams": [{"team_id": tid, "players": teams.get(tid, [])} for tid in (100, 200)],
+    }

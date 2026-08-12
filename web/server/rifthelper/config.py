@@ -42,6 +42,8 @@ RUNES_CACHE = BASE_DIR / "runes_cache.json"
 RUNES_CACHE_ES = BASE_DIR / "runes_cache_es.json"
 RUNES_DIR = ASSETS_DIR / "runes"
 
+SUMMONER_SPELLS_URL = f"https://ddragon.leagueoflegends.com/cdn/{DDG_VERSION}/data/en_US/summoner.json"
+
 
 CACHE_DIR = BASE_DIR / "cache"
 MATCH_CACHE_DIR = CACHE_DIR / "matches"

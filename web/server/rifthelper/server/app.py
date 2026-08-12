@@ -69,6 +69,19 @@ async def get_match_build(match_id: str, puuid: str | None = Query(default=None)
         raise HTTPException(status_code=e.status or 502, detail=str(e)) from e
 
 
+@app.get("/api/live-game")
+async def get_live_game(
+    name: str = Query(..., min_length=1),
+    tag: str = Query(..., min_length=1),
+):
+    try:
+        return await api_service.fetch_live_game(name.strip(), tag.strip())
+    except RiotAPIError as e:
+        raise HTTPException(status_code=e.status or 502, detail=str(e)) from e
+    except RuntimeError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+
+
 if WEB_DIST.is_dir() and (WEB_DIST / "index.html").is_file():
     app.mount("/", StaticFiles(directory=str(WEB_DIST), html=True), name="web")
 else:
