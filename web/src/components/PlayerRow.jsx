@@ -3,7 +3,9 @@ import { fmtNum, kdaRatio, roleLabel } from '../utils.js'
 import { t } from '../i18n.js'
 
 function nameOf(entry, lang) {
-  return entry ? entry[lang] || entry.en || '' : ''
+  if (!entry) return ''
+  if (typeof entry === 'string') return entry
+  return entry[lang] || entry.en || ''
 }
 
 function RuneStrip({ runes, lang }) {

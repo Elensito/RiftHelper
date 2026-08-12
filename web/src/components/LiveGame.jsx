@@ -10,6 +10,7 @@ function fmtClock(sec) {
 
 function nameOf(rune, lang) {
   if (!rune) return ''
+  if (typeof rune === 'string') return rune
   return rune[lang] || rune.en || ''
 }
 

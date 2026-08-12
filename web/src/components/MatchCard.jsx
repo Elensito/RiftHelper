@@ -8,7 +8,9 @@ const MatchMetrics = lazy(() => import('./MatchMetrics.jsx'))
 const MatchBuild = lazy(() => import('./MatchBuild.jsx'))
 
 function nameOf(entry, lang) {
-  return entry ? entry[lang] || entry.en || '' : ''
+  if (!entry) return ''
+  if (typeof entry === 'string') return entry
+  return entry[lang] || entry.en || ''
 }
 
 function TeamColumn({ players, teamId, lang, onOpenPlayer }) {
