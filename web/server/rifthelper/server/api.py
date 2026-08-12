@@ -10,7 +10,7 @@ from rifthelper import config
 from rifthelper.services import stats as stats_service
 from rifthelper.services.riot import RiotAPIError, RiotClient
 
-MATCH_COUNT = 20
+MATCH_COUNT = 30
 
 
 

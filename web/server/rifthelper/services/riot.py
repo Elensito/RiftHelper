@@ -140,7 +140,7 @@ class RiotClient:
         cluster = self._cluster_for(region)
         url = (
             f"{self.REGIONAL_BASE.format(cluster=cluster)}/lol/match/v5/matches/by-puuid/{puuid}/ids"
-            f"?start=0&count={count}&type=ranked&startTime={start_time}"
+            f"?start=0&count={count}&startTime={start_time}"
         )
         if queue is not None:
             url += f"&queue={queue}"
