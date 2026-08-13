@@ -39,9 +39,15 @@ function Items({ p, lang }) {
 }
 
 function CarryBadges({ p, lang }) {
-  if (p.carry_score == null && !p.mvp) return null
   return (
     <div className="prow-badges">
+      <span className="prow-kda" title={t(lang, 'kda')}>
+        <i className="k">{p.kills}</i>
+        <span className="sep">/</span>
+        <i className="d">{p.deaths}</i>
+        <span className="sep">/</span>
+        <i className="a">{p.assists}</i>
+      </span>
       {p.carry_score != null && (
         <span
           className={`carry-score ${p.carry_score >= 70 ? 'high' : p.carry_score >= 40 ? 'mid' : ''}`}

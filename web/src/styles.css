@@ -1657,6 +1657,31 @@ button.p-name:hover {
   margin-left: auto;
 }
 
+.prow-kda {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 3px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.prow-kda .k {
+  color: var(--green);
+}
+
+.prow-kda .d {
+  color: var(--red);
+}
+
+.prow-kda .a {
+  color: var(--text);
+}
+
+.prow-kda .sep {
+  color: var(--muted);
+  opacity: 0.6;
+}
+
 .carry-score {
   flex-shrink: 0;
   min-width: 34px;
