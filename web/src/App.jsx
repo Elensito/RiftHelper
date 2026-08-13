@@ -7,7 +7,8 @@ import QueueFilter from './components/QueueFilter.jsx'
 import LangSwitcher from './components/LangSwitcher.jsx'
 import ThemeToggle from './components/ThemeToggle.jsx'
 import Favorites from './components/Favorites.jsx'
-import { fetchSummoner, fetchLiveGame } from './api.js'
+import ChampionPage from './components/ChampionPage.jsx'
+import { fetchSummoner, fetchLiveGame, fetchChampions, fetchChampion } from './api.js'
 import { matchGroup, t } from './i18n.js'
 
 const PAGE_SIZE = 20
@@ -26,7 +27,14 @@ export default function App() {
   const [fetched, setFetched] = useState(0)
   const [hasMore, setHasMore] = useState(false)
   const [moreLoading, setMoreLoading] = useState(false)
+  const [champions, setChampions] = useState([])
+  const [champion, setChampion] = useState(null)
+  const [champLoading, setChampLoading] = useState(false)
   const sentinelRef = useRef(null)
+
+  useEffect(() => {
+    fetchChampions().then(setChampions).catch(() => {})
+  }, [])
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme
@@ -35,6 +43,7 @@ export default function App() {
 
   const load = async (name, tag, silent = false) => {
     setError('')
+    setChampion(null)
     if (silent) setRefreshing(true)
     else setLoading(true)
     setFetched(0)
@@ -136,6 +145,29 @@ export default function App() {
     load(name, tag)
   }
 
+  const openChampion = async (c) => {
+    setChampion(null)
+    setChampLoading(true)
+    setError('')
+    try {
+      const data = await fetchChampion(c.key)
+      setChampion(data)
+      document.title = `RiftHelper · ${data.name}`
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setChampLoading(false)
+    }
+  }
+
+  const goHome = () => {
+    setChampion(null)
+    setProfile(null)
+    setLive(null)
+    document.title = 'RiftHelper · Estadísticas y análisis de partidas de League of Legends'
+    window.history.pushState(null, '', '/')
+  }
+
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
     const name = params.get('name')
@@ -147,8 +179,14 @@ export default function App() {
   return (
     <div className="app">
       <header className="topbar">
-        <div className="logo">RIFT<span>HELPER</span></div>
-        <SearchBar onSearch={(n, t) => load(n, t)} loading={loading} lang={lang} />
+        <div className="logo" onClick={goHome}>RIFT<span>HELPER</span></div>
+        <SearchBar
+          onSearch={(n, t) => load(n, t)}
+          onOpenChampion={openChampion}
+          loading={loading}
+          lang={lang}
+          champions={champions}
+        />
         <button
           className="btn btn-update"
           disabled={!profile || refreshing}
@@ -171,7 +209,18 @@ export default function App() {
       )}
 
       <main className="content">
-        {!profile && !loading && !error && (
+        {champLoading && (
+          <div className="loader">
+            <div className="spinner" />
+            {t(lang, 'loading')}
+          </div>
+        )}
+
+        {champion && !champLoading && (
+          <ChampionPage champ={champion} lang={lang} onOpenPlayer={openPlayer} />
+        )}
+
+        {!champion && !champLoading && !profile && !loading && !error && (
           <div className="hero">
             <h1>{t(lang, 'heroTitle')}</h1>
             <p className="hero-sub">{t(lang, 'heroSub')}</p>
@@ -186,7 +235,7 @@ export default function App() {
           </div>
         )}
 
-        {profile && !loading && (
+        {profile && !loading && !champion && (
           <>
             <ProfileHeader
               summoner={profile.summoner}

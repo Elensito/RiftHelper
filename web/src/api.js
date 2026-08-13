@@ -29,3 +29,17 @@ export async function fetchLiveGame(name, tag) {
   if (!res.ok) throw new Error(data.detail || 'Error al obtener la partida en vivo')
   return data
 }
+
+export async function fetchChampions() {
+  const res = await fetch('/api/champions')
+  const data = await res.json()
+  if (!res.ok) throw new Error(data.detail || 'Error al obtener los campeones')
+  return data.champions || []
+}
+
+export async function fetchChampion(key) {
+  const res = await fetch(`/api/champion/${encodeURIComponent(key)}`)
+  const data = await res.json()
+  if (!res.ok) throw new Error(data.detail || 'Error al obtener el campeón')
+  return data
+}

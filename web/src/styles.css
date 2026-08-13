@@ -1908,3 +1908,233 @@ button.p-name:hover {
   opacity: 1;
   color: var(--pink);
 }
+
+.suggest-champ {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.champ-page {
+  animation: fade-in 0.3s ease;
+}
+
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+
+.champ-head {
+  display: flex;
+  gap: 22px;
+  align-items: center;
+  padding: 20px;
+  margin-bottom: 16px;
+  border-radius: 16px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  backdrop-filter: blur(6px);
+}
+
+.champ-splash {
+  width: 90px;
+  height: 90px;
+  border-radius: 16px;
+  object-fit: cover;
+  border: 1px solid var(--border);
+  box-shadow: var(--glow-cyan);
+  flex-shrink: 0;
+}
+
+.champ-head-meta {
+  flex: 1;
+  min-width: 0;
+}
+
+.champ-name {
+  margin: 0 0 8px;
+  font-size: 26px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+}
+
+.champ-role {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.champ-tier {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 1px;
+  padding: 3px 11px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+}
+
+.champ-tier.tier-s {
+  color: var(--green);
+  border-color: rgba(0, 255, 157, 0.5);
+  box-shadow: 0 0 12px rgba(0, 255, 157, 0.25);
+}
+
+.champ-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.champ-stat {
+  min-width: 92px;
+  padding: 9px 14px;
+  border-radius: 12px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+}
+
+.champ-stat-label {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 3px;
+}
+
+.champ-stat-value {
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--cyan);
+  font-variant-numeric: tabular-nums;
+}
+
+.champ-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 16px;
+}
+
+.champ-card {
+  padding: 18px;
+  border-radius: 16px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  backdrop-filter: blur(6px);
+}
+
+.champ-card h3 {
+  margin: 0 0 14px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 1.3px;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.champ-runes-row,
+.champ-items-row {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.chip {
+  flex-shrink: 0;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  color: var(--muted);
+}
+
+.chip.region {
+  color: var(--cyan);
+  border-color: rgba(0, 229, 255, 0.5);
+}
+
+.champ-rune-name,
+.champ-item-name {
+  font-size: 13.5px;
+  font-weight: 600;
+}
+
+.champ-sub {
+  margin-top: 12px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--green);
+}
+
+.champ-tough-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 340px;
+  overflow-y: auto;
+}
+
+.champ-tough-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 10px;
+  border-radius: 10px;
+  background: none;
+  border: 0;
+  color: var(--text);
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.15s;
+}
+
+.champ-tough-item:hover {
+  background: rgba(0, 229, 255, 0.08);
+}
+
+.champ-tough-name {
+  flex: 1;
+  font-weight: 600;
+  font-size: 13.5px;
+}
+
+.champ-tough-wr {
+  font-weight: 800;
+  color: var(--red);
+  font-variant-numeric: tabular-nums;
+}
+
+.champ-tough-games {
+  font-size: 11.5px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  min-width: 54px;
+  text-align: right;
+}
+
+.champ-test-note {
+  margin-top: 16px;
+  font-size: 12px;
+  color: var(--muted);
+  text-align: center;
+}
+
+@media (max-width: 640px) {
+  .champ-head {
+    flex-direction: column;
+    text-align: center;
+  }
+
+  .champ-role,
+  .champ-stats {
+    justify-content: center;
+  }
+}

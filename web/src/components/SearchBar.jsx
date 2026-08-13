@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { t } from '../i18n.js'
 import { getRecent, addRecent, clearRecent } from '../storage.js'
+import Img from './Img.jsx'
 
-export default function SearchBar({ onSearch, loading, lang }) {
+export default function SearchBar({ onSearch, onOpenChampion, loading, lang, champions = [] }) {
   const [name, setName] = useState('')
   const [tag, setTag] = useState('')
   const [open, setOpen] = useState(false)
@@ -27,6 +28,14 @@ export default function SearchBar({ onSearch, loading, lang }) {
     onSearch(r.name, r.tag)
   }
 
+  const champHits = (() => {
+    const q = name.trim().toLowerCase()
+    if (!q) return []
+    return champions
+      .filter((c) => c.name.toLowerCase().includes(q))
+      .slice(0, 5)
+  })()
+
   useEffect(() => {
     const onClick = (e) => {
       if (boxRef.current && !boxRef.current.contains(e.target)) setOpen(false)
@@ -36,6 +45,8 @@ export default function SearchBar({ onSearch, loading, lang }) {
   }, [])
 
   const showRecent = open && !loading && recents.length > 0
+  const showChamps = open && champHits.length > 0
+  const showDrop = showRecent || showChamps
 
   return (
     <form className="search" onSubmit={submit}>
@@ -52,34 +63,60 @@ export default function SearchBar({ onSearch, loading, lang }) {
           spellCheck="false"
           autoComplete="off"
         />
-        {showRecent && (
+        {showDrop && (
           <div className="suggest">
-            <div className="suggest-head">
-              <span>{t(lang, 'recentSearches')}</span>
-              <button
-                type="button"
-                className="suggest-clear"
-                onClick={() => {
-                  clearRecent()
-                  setOpen(false)
-                }}
-              >
-                {t(lang, 'clearRecent')}
-              </button>
-            </div>
-            {recents.map((r, i) => (
-              <button
-                type="button"
-                key={`${r.name}#${r.tag}-${i}`}
-                className="suggest-item"
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={() => pickRecent(r)}
-              >
-                <span className="suggest-icon">⌕</span>
-                <span className="suggest-name">{r.name}</span>
-                <span className="suggest-tag">#{r.tag}</span>
-              </button>
-            ))}
+            {showChamps && (
+              <>
+                <div className="suggest-head">
+                  <span>{t(lang, 'champions')}</span>
+                </div>
+                {champHits.map((c) => (
+                  <button
+                    type="button"
+                    key={c.key}
+                    className="suggest-item"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => {
+                      setOpen(false)
+                      onOpenChampion(c)
+                    }}
+                  >
+                    <Img className="suggest-champ" src={c.image} alt={c.name} />
+                    <span className="suggest-name">{c.name}</span>
+                  </button>
+                ))}
+              </>
+            )}
+            {showRecent && (
+              <>
+                <div className="suggest-head">
+                  <span>{t(lang, 'recentSearches')}</span>
+                  <button
+                    type="button"
+                    className="suggest-clear"
+                    onClick={() => {
+                      clearRecent()
+                      setOpen(false)
+                    }}
+                  >
+                    {t(lang, 'clearRecent')}
+                  </button>
+                </div>
+                {recents.map((r, i) => (
+                  <button
+                    type="button"
+                    key={`${r.name}#${r.tag}-${i}`}
+                    className="suggest-item"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => pickRecent(r)}
+                  >
+                    <span className="suggest-icon">⌕</span>
+                    <span className="suggest-name">{r.name}</span>
+                    <span className="suggest-tag">#{r.tag}</span>
+                  </button>
+                ))}
+              </>
+            )}
           </div>
         )}
       </div>
