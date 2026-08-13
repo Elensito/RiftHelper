@@ -32,6 +32,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+@app.get("/assets/profileicons/{icon_id}.png")
+async def get_profile_icon(icon_id: int):
+    path = await api_service.ensure_profile_icon(icon_id)
+    if not path:
+        raise HTTPException(status_code=404, detail="Icono no disponible.")
+    return FileResponse(path)
+
 app.mount("/assets", StaticFiles(directory=str(ASSETS_DIR)), name="assets")
 
 

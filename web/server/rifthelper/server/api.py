@@ -5,6 +5,7 @@
 
 
 from datetime import datetime, timezone
+from pathlib import Path
 
 from rifthelper import config
 from rifthelper.services import stats as stats_service
@@ -82,29 +83,31 @@ def _itemd(item_id, item_names: dict) -> dict | None:
     }
 
 
-async def _ensure_profile_icon(icon_id) -> None:
+async def ensure_profile_icon(icon_id) -> Path | None:
 
 
 
 
 
     if icon_id is None:
-        return
+        return None
     base_dir = config.ASSETS_DIR / "profileicons"
     base_dir.mkdir(parents=True, exist_ok=True)
     path = base_dir / f"{icon_id}.png"
     if path.is_file():
-        return
+        return path
     import aiohttp
 
     url = config.ICON_URL.format(icon_id=icon_id)
-    async with aiohttp.ClientSession() as session:
-        async with session.get(url) as resp:
-            if resp.status == 200:
-                try:
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url) as resp:
+                if resp.status == 200:
                     path.write_bytes(await resp.read())
-                except OSError:
-                    pass
+                    return path
+    except Exception:
+        return None
+    return None
 
 
 async def _ensure_rune_icons(rune_ids: set[int], runes_info: dict) -> None:
@@ -324,7 +327,7 @@ async def fetch_profile(
 
 
     profile_icon_id = summoner.get("profileIconId") or DEFAULT_PROFILE_ICON_ID
-    await _ensure_profile_icon(profile_icon_id)
+    await ensure_profile_icon(profile_icon_id)
 
     start_ts = int(datetime(datetime.now().year, 1, 1, tzinfo=timezone.utc).timestamp())
     match_ids = await riot.get_match_ids(region, puuid, count, start_ts, start=start)
