@@ -1267,15 +1267,6 @@ body {
   flex-shrink: 0;
 }
 
-.evt-assists {
-  font-size: 11px;
-  color: var(--muted);
-  padding: 2px 8px;
-  border-radius: 99px;
-  background: var(--bg-2);
-  border: 1px solid var(--border);
-}
-
 .evt-flags {
   display: inline-flex;
   gap: 5px;

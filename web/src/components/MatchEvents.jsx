@@ -205,11 +205,6 @@ export default function MatchEvents({ matchId, puuid, lang }) {
                       )}
                       <span className="evt-action">{t(lang, 'evKillFmt')}</span>
                       <PlayerChip player={ev.victim} withName />
-                      {ev.assists > 0 && (
-                        <span className="evt-assists">
-                          {ev.assists} {t(lang, 'evAssists')}
-                        </span>
-                      )}
                       <span className="evt-flags">
                         {ev.first_blood && <span className="fb-tag">{t(lang, 'evFirstBlood')}</span>}
                         {ev.shutdown && <span className="sd-tag">{t(lang, 'evShutdown')}</span>}
