@@ -3,17 +3,14 @@ import { fetchMatchEvents } from '../api.js'
 import { t } from '../i18n.js'
 import Img from './Img.jsx'
 
-const FILTERS = ['all', 'kills', 'objectives', 'buildings']
-const FILTER_TYPE = { all: null, kills: 'kill', objectives: 'objective', buildings: 'building' }
-
 const OBJ_META = {
-  DRAGON: { cls: 'dragon', label: 'evDragon', short: 'DRG' },
-  BARON: { cls: 'baron', label: 'evBaron', short: 'BAR' },
-  RIFTHERALD: { cls: 'herald', label: 'evHerald', short: 'HRD' },
-  RIFT_HERALD: { cls: 'herald', label: 'evHerald', short: 'HRD' },
-  HORDE: { cls: 'grubs', label: 'evGrubs', short: 'GRB' },
-  VOIDGRUB: { cls: 'grubs', label: 'evGrubs', short: 'GRB' },
-  ATKAHAN: { cls: 'atakhan', label: 'Atakhan', short: 'ATK' },
+  DRAGON: { cls: 'dragon', label: 'evDragon' },
+  BARON: { cls: 'baron', label: 'evBaron' },
+  RIFTHERALD: { cls: 'herald', label: 'evHerald' },
+  RIFT_HERALD: { cls: 'herald', label: 'evHerald' },
+  HORDE: { cls: 'grubs', label: 'evGrubs' },
+  VOIDGRUB: { cls: 'grubs', label: 'evGrubs' },
+  ATKAHAN: { cls: 'atakhan', label: 'Atakhan' },
 }
 
 const TOWER_TYPES = {
@@ -31,12 +28,6 @@ const LANE_LABELS = {
   BOTTOM: 'evLaneBot',
 }
 
-function fmtMss(ms) {
-  const m = Math.floor(ms / 60000)
-  const s = Math.floor((ms % 60000) / 1000)
-  return `${m}:${String(s).padStart(2, '0')}`
-}
-
 function PlayerChip({ ref, withName }) {
   if (!ref) return null
   return (
@@ -47,7 +38,7 @@ function PlayerChip({ ref, withName }) {
   )
 }
 
-function EventBadge({ ev, lang }) {
+function EventBadge({ ev }) {
   if (ev.type === 'kill') {
     return (
       <span className="evt-badge kill">
@@ -64,8 +55,8 @@ function EventBadge({ ev, lang }) {
     )
   }
   if (ev.type === 'objective') {
-    const meta = OBJ_META[ev.monster] || { cls: 'objective', label: null, short: ev.monster }
-    return <span className={`evt-badge obj ${meta.cls}`}>{meta.short}</span>
+    const meta = OBJ_META[ev.monster] || { cls: 'objective' }
+    return <span className={`evt-badge obj ${meta.cls}`} />
   }
   const building = ev.building === 'INHIBITOR' ? 'inhib' : 'tower'
   return (
@@ -86,7 +77,6 @@ function EventBadge({ ev, lang }) {
 export default function MatchEvents({ matchId, puuid, lang }) {
   const [data, setData] = useState(null)
   const [error, setError] = useState('')
-  const [filter, setFilter] = useState('all')
   const [myTeamOnly, setMyTeamOnly] = useState(false)
   const feedRef = useRef(null)
 
@@ -105,13 +95,6 @@ export default function MatchEvents({ matchId, puuid, lang }) {
     }
   }, [matchId, puuid])
 
-  const counts = useMemo(() => {
-    if (!data) return { all: 0, kills: 0, objectives: 0, buildings: 0 }
-    const c = { all: data.events.length, kills: 0, objectives: 0, buildings: 0 }
-    for (const e of data.events) c[e.type === 'kill' ? 'kills' : e.type]++
-    return c
-  }, [data])
-
   const myTeam = useMemo(() => {
     if (!data) return null
     const me = data.players.find((p) => p.is_player)
@@ -120,13 +103,9 @@ export default function MatchEvents({ matchId, puuid, lang }) {
 
   const visible = useMemo(() => {
     if (!data) return []
-    const want = FILTER_TYPE[filter]
-    return data.events.filter((e) => {
-      if (want && e.type !== want) return false
-      if (myTeamOnly && myTeam != null && e.team !== myTeam) return false
-      return true
-    })
-  }, [data, filter, myTeamOnly, myTeam])
+    if (!myTeamOnly || myTeam == null) return data.events
+    return data.events.filter((e) => e.team === myTeam)
+  }, [data, myTeamOnly, myTeam])
 
   const jumpTo = (idx) => {
     const el = document.getElementById(`evt-${matchId}-${idx}`)
@@ -145,19 +124,10 @@ export default function MatchEvents({ matchId, puuid, lang }) {
 
   return (
     <div className="events-wrap">
-      <div className="events-filters">
-        <div className="metric-pills">
-          {FILTERS.map((f) => (
-            <button
-              key={f}
-              className={`pill ${filter === f ? 'active' : ''}`}
-              onClick={() => setFilter(f)}
-            >
-              {t(lang, `ev${f.charAt(0).toUpperCase() + f.slice(1)}`)}
-              <span className="pill-count">{counts[f]}</span>
-            </button>
-          ))}
-        </div>
+      <div className="events-toolbar">
+        <span className="events-count">
+          {data.events.length} {t(lang, 'evCount')}
+        </span>
         {myTeam != null && (
           <button
             className={`evt-myteam ${myTeamOnly ? 'on' : ''}`}
@@ -171,7 +141,14 @@ export default function MatchEvents({ matchId, puuid, lang }) {
       <div className="events-ruler">
         {visible.map((e) => {
           const pct = Math.min(100, Math.max(0, (e.minute / duration) * 100))
-          const cls = e.type === 'kill' ? (e.team === 200 ? 'red' : 'blue') : e.type === 'objective' ? 'obj' : 'building'
+          const cls =
+            e.type === 'kill'
+              ? e.team === 200
+                ? 'red'
+                : 'blue'
+              : e.type === 'objective'
+                ? 'obj'
+                : 'building'
           return (
             <button
               key={data.events.indexOf(e)}
@@ -197,14 +174,9 @@ export default function MatchEvents({ matchId, puuid, lang }) {
         {visible.length === 0 ? (
           <div className="events-empty">{t(lang, 'evEmpty')}</div>
         ) : (
-          visible.map((ev, vi) => {
+          visible.map((ev) => {
             const teamCls = ev.team === 200 ? 'red' : 'blue'
-            const playerRef =
-              ev.type === 'kill'
-                ? ev.killer
-                : ev.type === 'objective'
-                  ? ev.killer
-                  : ev.killer
+            const playerRef = ev.killer
             const baseIdx = data.events.indexOf(ev)
             return (
               <div
@@ -232,7 +204,7 @@ export default function MatchEvents({ matchId, puuid, lang }) {
                     </>
                   ) : (
                     <>
-                      <EventBadge ev={ev} lang={lang} />
+                      <EventBadge ev={ev} />
                       <span className="evt-desc">
                         {ev.type === 'objective' ? (
                           <>

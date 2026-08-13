@@ -985,6 +985,21 @@ body {
   gap: 10px;
 }
 
+.events-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.events-count {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--muted);
+  letter-spacing: 0.4px;
+}
+
 .evt-myteam {
   background: var(--bg-2);
   border: 1px solid var(--border);
@@ -1158,33 +1173,35 @@ body {
   border: 1px solid rgba(255, 255, 255, 0.14);
 }
 
+.evt-badge.obj {
+  width: 18px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0;
+  border-radius: 6px;
+}
+
 .evt-badge.obj.dragon {
-  color: #04121a;
   background: linear-gradient(135deg, #8b5cf6, #c026d3);
 }
 
 .evt-badge.obj.baron {
-  color: #04121a;
   background: linear-gradient(135deg, #d946ef, #7c3aed);
 }
 
 .evt-badge.obj.herald {
-  color: #04121a;
   background: linear-gradient(135deg, #fbbf24, #d97706);
 }
 
 .evt-badge.obj.grubs {
-  color: #04121a;
   background: linear-gradient(135deg, #34d399, #059669);
 }
 
 .evt-badge.obj.atakhan {
-  color: #04121a;
   background: linear-gradient(135deg, #f43f5e, #7c2d12);
 }
 
 .evt-badge.obj.objective {
-  color: #04121a;
   background: linear-gradient(135deg, #a3e635, #65a30d);
 }
 
