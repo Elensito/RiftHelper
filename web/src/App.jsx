@@ -18,7 +18,7 @@ export default function App() {
   const [loading, setLoading] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState('')
-  const [lang, setLang] = useState('en')
+  const [lang, setLang] = useState(() => localStorage.getItem('rh-lang') || 'en')
   const [theme, setTheme] = useState(() => localStorage.getItem('rh-theme') || 'dark')
   const [tab, setTab] = useState('matches')
   const [queueFilter, setQueueFilter] = useState('all')
@@ -40,6 +40,11 @@ export default function App() {
     document.documentElement.dataset.theme = theme
     localStorage.setItem('rh-theme', theme)
   }, [theme])
+
+  useEffect(() => {
+    localStorage.setItem('rh-lang', lang)
+    document.documentElement.lang = lang
+  }, [lang])
 
   const load = async (name, tag, silent = false) => {
     setError('')

@@ -2323,6 +2323,26 @@ button.p-name:hover {
   text-shadow: 0 0 14px rgba(255, 45, 120, 0.6);
 }
 
+.share-btn {
+  background: none;
+  border: 0;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  color: var(--muted);
+  padding: 0 2px;
+  transition: color 0.15s, transform 0.15s;
+}
+
+.share-btn:hover {
+  transform: scale(1.15);
+}
+
+.share-btn.active {
+  color: var(--cyan);
+  text-shadow: 0 0 14px rgba(0, 229, 255, 0.6);
+}
+
 .favorites {
   margin-top: 34px;
   max-width: 560px;

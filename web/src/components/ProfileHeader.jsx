@@ -10,6 +10,23 @@ export default function ProfileHeader({ summoner, matches, lang, inGame = false 
   const wr = summoner.winrate || 0
   const recent = matches || []
   const [fav, setFav] = useState(() => isFavorite(summoner.name, summoner.tag))
+  const [copied, setCopied] = useState(false)
+
+  const share = async () => {
+    const url = `${location.origin}${location.pathname}?name=${encodeURIComponent(summoner.name)}&tag=${encodeURIComponent(summoner.tag)}`
+    try {
+      await navigator.clipboard.writeText(url)
+    } catch (e) {
+      const ta = document.createElement('textarea')
+      ta.value = url
+      document.body.appendChild(ta)
+      ta.select()
+      document.execCommand('copy')
+      document.body.removeChild(ta)
+    }
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
 
   const toggleFav = () => {
     if (fav) {
@@ -43,6 +60,13 @@ export default function ProfileHeader({ summoner, matches, lang, inGame = false 
             title={fav ? t(lang, 'removeFavorite') : t(lang, 'addFavorite')}
           >
             {fav ? '★' : '☆'}
+          </button>
+          <button
+            className={`share-btn ${copied ? 'active' : ''}`}
+            onClick={share}
+            title={copied ? t(lang, 'shareCopied') : t(lang, 'share')}
+          >
+            {copied ? '✓' : '↗'}
           </button>
           {inGame && (
             <span className="in-game-chip" title={t(lang, 'liveNow')}>
