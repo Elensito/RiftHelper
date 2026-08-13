@@ -6,9 +6,10 @@ import {
   YAxis,
   CartesianGrid,
   Tooltip,
+  ReferenceLine,
   ResponsiveContainer,
 } from 'recharts'
-import { fetchMatchMetrics } from '../api.js'
+import { fetchMatchEvents, fetchMatchMetrics } from '../api.js'
 import { t } from '../i18n.js'
 
 const METRICS = ['gold', 'damage', 'xp', 'cs']
@@ -54,6 +55,7 @@ function TeamIcons({ players, active, onToggle, data }) {
 
 export default function MatchMetrics({ matchId, puuid, lang }) {
   const [data, setData] = useState(null)
+  const [events, setEvents] = useState(null)
   const [error, setError] = useState('')
   const [metric, setMetric] = useState('gold')
   const [active, setActive] = useState(() => new Set())
@@ -62,6 +64,7 @@ export default function MatchMetrics({ matchId, puuid, lang }) {
     let cancelled = false
     setError('')
     setData(null)
+    setEvents(null)
     fetchMatchMetrics(matchId, puuid)
       .then((d) => {
         if (cancelled) return
@@ -70,6 +73,9 @@ export default function MatchMetrics({ matchId, puuid, lang }) {
         setActive(new Set(me ? [me.participant_id] : []))
       })
       .catch((e) => !cancelled && setError(e.message))
+    fetchMatchEvents(matchId, puuid)
+      .then((d) => !cancelled && setEvents(d))
+      .catch(() => {})
     return () => {
       cancelled = true
     }
@@ -92,6 +98,17 @@ export default function MatchMetrics({ matchId, puuid, lang }) {
       return row
     })
   }, [data, metric])
+
+  const eventLines = useMemo(() => {
+    if (!events) return []
+    return events.events
+      .filter((e) => e.type === 'objective' || e.type === 'building')
+      .map((e) => ({
+        minute: e.minute,
+        stroke: e.type === 'objective' ? 'rgba(255, 176, 32, 0.55)' : 'rgba(167, 139, 250, 0.45)',
+        dash: e.type === 'objective' ? '6 4' : '3 4',
+      }))
+  }, [events])
 
   if (error) return <div className="metrics-error">{error}</div>
   if (!data)
@@ -172,6 +189,15 @@ export default function MatchMetrics({ matchId, puuid, lang }) {
                   animationDuration={500}
                 />
               ))}
+              {eventLines.map((l, i) => (
+                <ReferenceLine
+                  key={i}
+                  x={l.minute}
+                  stroke={l.stroke}
+                  strokeDasharray={l.dash}
+                  strokeWidth={1.6}
+                />
+              ))}
             </LineChart>
           </ResponsiveContainer>
         )}
@@ -185,6 +211,19 @@ export default function MatchMetrics({ matchId, puuid, lang }) {
               {p.champion}
             </span>
           ))}
+          {eventLines.length > 0 && (
+            <>
+              <span className="legend-sep" />
+              <span className="legend-item">
+                <i style={{ background: 'rgba(255, 176, 32, 0.8)' }} />
+                {t(lang, 'metricObj')}
+              </span>
+              <span className="legend-item">
+                <i style={{ background: 'rgba(167, 139, 250, 0.8)' }} />
+                {t(lang, 'metricBuild')}
+              </span>
+            </>
+          )}
         </div>
       )}
     </div>

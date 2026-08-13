@@ -386,6 +386,19 @@ async def fetch_match_metrics(match_id: str, puuid: str | None = None) -> dict:
     return stats_service.timeline_metrics(match, timeline, champ_info, puuid or "")
 
 
+async def fetch_match_events(match_id: str, puuid: str | None = None) -> dict:
+
+    region = config.RIOT_REGION
+    riot = RiotClient()
+    try:
+        match = await riot.get_match(region, match_id)
+        timeline = await riot.get_match_timeline(region, match_id)
+    except RiotAPIError as e:
+        raise RiotAPIError(f"Partida {match_id} no disponible: {e}", 404) from e
+    champ_info = await riot.get_champion_info()
+    return stats_service.timeline_events(match, timeline, champ_info, puuid or "")
+
+
 SKILL_SLOT_KEYS = ["Q", "W", "E", "R"]
 
 

@@ -4,6 +4,7 @@ import { fmtNum, kdaRatio, sortPlayers } from '../utils.js'
 import { queueLabel, t } from '../i18n.js'
 import PlayerRow from './PlayerRow.jsx'
 
+const MatchEvents = lazy(() => import('./MatchEvents.jsx'))
 const MatchMetrics = lazy(() => import('./MatchMetrics.jsx'))
 const MatchBuild = lazy(() => import('./MatchBuild.jsx'))
 
@@ -42,7 +43,7 @@ function TeamColumn({ players, teamId, lang, onOpenPlayer }) {
 
 export default function MatchCard({ match, lang, puuid, onOpenPlayer }) {
   const [open, setOpen] = useState(false)
-  const [tab, setTab] = useState('general')
+  const [tab, setTab] = useState('events')
   const pl = match.player
   const win = match.win
 
@@ -116,6 +117,12 @@ export default function MatchCard({ match, lang, puuid, onOpenPlayer }) {
       <div className="match-body">
         <div className="match-tabs">
           <button
+            className={`tab ${tab === 'events' ? 'active' : ''}`}
+            onClick={() => setTab('events')}
+          >
+            {t(lang, 'tabEvents')}
+          </button>
+          <button
             className={`tab ${tab === 'general' ? 'active' : ''}`}
             onClick={() => setTab('general')}
           >
@@ -135,7 +142,17 @@ export default function MatchCard({ match, lang, puuid, onOpenPlayer }) {
           </button>
         </div>
 
-        {tab === 'general' ? (
+        {tab === 'events' ? (
+          <Suspense
+            fallback={
+              <div className="metrics-loading">
+                <div className="spinner" />
+              </div>
+            }
+          >
+            <MatchEvents matchId={match.match_id} puuid={puuid} lang={lang} />
+          </Suspense>
+        ) : tab === 'general' ? (
           <div className="teams">
             <TeamColumn players={match.players} teamId={100} lang={lang} onOpenPlayer={onOpenPlayer} />
             <TeamColumn players={match.players} teamId={200} lang={lang} onOpenPlayer={onOpenPlayer} />

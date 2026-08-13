@@ -184,3 +184,109 @@ def timeline_metrics(
         "buckets": [int(frames[i].get("timestamp", 0) / 60000) for i in idx],
         "players": players,
     }
+
+
+def _player_ref(p: dict, champ_info: dict[int, dict], puuid: str) -> dict:
+    champ = champ_info.get(p.get("championId"), {})
+    image = champ.get("image")
+    return {
+        "participant_id": p.get("participantId"),
+        "team": p.get("teamId", 0),
+        "champion": champ.get("name", f"ID {p.get('championId')}"),
+        "champion_icon": f"/assets/champions/{image}" if image else None,
+        "name": p.get("riotIdGameName") or p.get("summonerName") or "",
+        "tag": p.get("riotIdTagline") or "",
+        "is_player": p.get("puuid") == puuid,
+    }
+
+
+def timeline_events(match: dict, timeline: dict, champ_info: dict[int, dict], puuid: str) -> dict:
+    info = match.get("info", {}) or {}
+    participants = info.get("participants", []) or []
+    by_id = {p.get("participantId"): p for p in participants}
+    frames = timeline.get("info", {}).get("frames", []) or []
+
+    events = []
+    first_kill_done = False
+    for frame in frames:
+        for ev in frame.get("events", []) or []:
+            ts = ev.get("timestamp")
+            if ts is None:
+                continue
+            minute = int(ts // 60000)
+            time = f"{minute}:{str(int((ts % 60000) // 1000)).zfill(2)}"
+            etype = ev.get("type")
+
+            if etype == "CHAMPION_KILL":
+                killer_id = ev.get("killerId")
+                victim_id = ev.get("victimId")
+                killer = by_id.get(killer_id)
+                victim = by_id.get(victim_id)
+                events.append(
+                    {
+                        "ts": ts,
+                        "minute": minute,
+                        "time": time,
+                        "type": "kill",
+                        "team": killer.get("teamId", 0) if killer else 0,
+                        "killer": _player_ref(killer, champ_info, puuid) if killer else None,
+                        "victim": _player_ref(victim, champ_info, puuid) if victim else None,
+                        "assists": len(ev.get("assistingParticipantIds", []) or []),
+                        "first_blood": not first_kill_done,
+                        "shutdown": (ev.get("killStreak", 0) or 0) >= 3,
+                    }
+                )
+                first_kill_done = True
+
+            elif etype == "ELITE_MONSTER_KILL":
+                killer = by_id.get(ev.get("killerId"))
+                events.append(
+                    {
+                        "ts": ts,
+                        "minute": minute,
+                        "time": time,
+                        "type": "objective",
+                        "team": ev.get("killerTeamId") or 0,
+                        "monster": ev.get("monsterType") or "",
+                        "dragon_type": ev.get("dragonType") or None,
+                        "killer": _player_ref(killer, champ_info, puuid) if killer else None,
+                    }
+                )
+
+            elif etype == "BUILDING_KILL":
+                killer = by_id.get(ev.get("killerId"))
+                lane = (ev.get("lane") or (killer.get("teamPosition") if killer else "") or "").replace(
+                    "_LANE", ""
+                )
+                lane = {
+                    "MIDDLE": "MID",
+                    "BOTTOM": "BOT",
+                    "UTILITY": "BOT",
+                    "JUNGLE": "",
+                }.get(lane, lane)
+                events.append(
+                    {
+                        "ts": ts,
+                        "minute": minute,
+                        "time": time,
+                        "type": "building",
+                        "team": ev.get("teamId") or 0,
+                        "lane": lane,
+                        "building": "INHIBITOR"
+                        if ev.get("buildingType") == "INHIBITOR_BUILDING"
+                        else "TOWER",
+                        "tower": ev.get("towerType") or None,
+                        "killer": _player_ref(killer, champ_info, puuid) if killer else None,
+                    }
+                )
+
+    events.sort(key=lambda e: e["ts"])
+    for e in events:
+        e.pop("ts", None)
+    duration_min = int((info.get("gameDuration") or 0) / 60)
+
+    return {
+        "duration_min": duration_min,
+        "players": [_player_ref(p, champ_info, puuid) for p in participants],
+        "events": events,
+    }

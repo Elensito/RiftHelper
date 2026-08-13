@@ -71,6 +71,14 @@ async def get_match_build(match_id: str, puuid: str | None = Query(default=None)
         raise HTTPException(status_code=e.status or 502, detail=str(e)) from e
 
 
+@app.get("/api/match/{match_id}/events")
+async def get_match_events(match_id: str, puuid: str | None = Query(default=None)):
+    try:
+        return await api_service.fetch_match_events(match_id, puuid)
+    except RiotAPIError as e:
+        raise HTTPException(status_code=e.status or 502, detail=str(e)) from e
+
+
 @app.get("/api/live-game")
 async def get_live_game(
     name: str = Query(..., min_length=1),
