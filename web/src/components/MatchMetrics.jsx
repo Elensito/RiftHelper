@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
 import {
   LineChart,
   Line,
@@ -11,6 +11,8 @@ import {
 } from 'recharts'
 import { fetchMatchEvents, fetchMatchMetrics } from '../api.js'
 import { t } from '../i18n.js'
+
+const MatchEvents = lazy(() => import('./MatchEvents.jsx'))
 
 const METRICS = ['gold', 'damage', 'xp', 'cs']
 const BLUE_COLORS = ['#00e5ff', '#38bdf8', '#60a5fa', '#818cf8', '#22d3ee']
@@ -59,6 +61,7 @@ export default function MatchMetrics({ matchId, puuid, lang }) {
   const [error, setError] = useState('')
   const [metric, setMetric] = useState('gold')
   const [active, setActive] = useState(() => new Set())
+  const [view, setView] = useState('events')
 
   useEffect(() => {
     let cancelled = false
@@ -73,13 +76,21 @@ export default function MatchMetrics({ matchId, puuid, lang }) {
         setActive(new Set(me ? [me.participant_id] : []))
       })
       .catch((e) => !cancelled && setError(e.message))
+    return () => {
+      cancelled = true
+    }
+  }, [matchId, puuid])
+
+  useEffect(() => {
+    if (view !== 'curves') return
+    let cancelled = false
     fetchMatchEvents(matchId, puuid)
       .then((d) => !cancelled && setEvents(d))
       .catch(() => {})
     return () => {
       cancelled = true
     }
-  }, [matchId, puuid])
+  }, [matchId, puuid, view])
 
   const toggle = (pid) => {
     setActive((prev) => {
@@ -123,8 +134,41 @@ export default function MatchMetrics({ matchId, puuid, lang }) {
   const activePlayers = data.players.filter((p) => active.has(p.participant_id))
   const metricLabel = t(lang, `metric${cap(metric)}`)
 
+  if (view === 'events') {
+    return (
+      <div className="metrics-wrap">
+        <div className="metric-subtabs">
+          <button className={`subtab ${view === 'events' ? 'active' : ''}`} onClick={() => setView('events')}>
+            {t(lang, 'tabEvents')}
+          </button>
+          <button className={`subtab ${view === 'curves' ? 'active' : ''}`} onClick={() => setView('curves')}>
+            {t(lang, 'tabCurves')}
+          </button>
+        </div>
+        <Suspense
+          fallback={
+            <div className="metrics-loading">
+              <div className="spinner" />
+            </div>
+          }
+        >
+          <MatchEvents matchId={matchId} puuid={puuid} lang={lang} />
+        </Suspense>
+      </div>
+    )
+  }
+
   return (
     <div className="metrics-wrap">
+      <div className="metric-subtabs">
+        <button className={`subtab ${view === 'events' ? 'active' : ''}`} onClick={() => setView('events')}>
+          {t(lang, 'tabEvents')}
+        </button>
+        <button className={`subtab ${view === 'curves' ? 'active' : ''}`} onClick={() => setView('curves')}>
+          {t(lang, 'tabCurves')}
+        </button>
+      </div>
+
       <div className="metric-pills">
         {METRICS.map((m) => (
           <button

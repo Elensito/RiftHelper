@@ -885,6 +885,38 @@ body {
   padding: 6px 18px 18px;
 }
 
+.metric-subtabs {
+  display: inline-flex;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 12px;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  align-self: flex-start;
+}
+
+.subtab {
+  background: transparent;
+  border: 0;
+  color: var(--muted);
+  padding: 7px 18px;
+  border-radius: 9px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.subtab:hover {
+  color: var(--cyan);
+}
+
+.subtab.active {
+  background: linear-gradient(135deg, var(--cyan), var(--violet));
+  color: #04121a;
+  box-shadow: var(--glow-cyan);
+}
+
 .metric-pills {
   display: flex;
   flex-wrap: wrap;
