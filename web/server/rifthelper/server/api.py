@@ -208,6 +208,34 @@ def _participant_summary(
     }
 
 
+def _carry_score(p: dict, team_kills: int, team_damage: int) -> int:
+    kills = p.get("kills", 0)
+    deaths = p.get("deaths", 0)
+    assists = p.get("assists", 0)
+    kp = (kills + assists) / max(1, team_kills)
+    dmg = p.get("damage", 0) / max(1, team_damage)
+    kda = min(1.5, (kills + assists) / max(1, deaths)) / 1.5
+    return min(100, round(100 * (kp + dmg + kda) / 3))
+
+
+def _mark_mvps(players: list[dict]) -> None:
+    teams: dict[int, list[dict]] = {100: [], 200: []}
+    for p in players:
+        teams.setdefault(p.get("team", 0), []).append(p)
+    for plist in teams.values():
+        if not plist:
+            continue
+        team_kills = sum(p.get("kills", 0) for p in plist)
+        team_damage = sum(p.get("damage", 0) for p in plist)
+        best = plist[0]
+        for p in plist:
+            score = _carry_score(p, team_kills, team_damage)
+            p["carry_score"] = score
+            if score > best.get("carry_score", 0):
+                best = p
+        best["mvp"] = True
+
+
 def build_match(
     match: dict,
     timeline: dict,
@@ -230,6 +258,7 @@ def build_match(
         _participant_summary(p, champ_info, duration_min, puuid, rune_names, item_names, summoner_spells, spell_images)
         for p in participants
     ]
+    _mark_mvps(players)
     me = next((p for p in players if p["is_player"]), {})
 
     return {

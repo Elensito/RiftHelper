@@ -69,6 +69,13 @@ export default function PlayerRow({ p, lang, onOpenPlayer = () => {} }) {
           </div>
         </div>
 
+        {p.carry_score != null && (
+          <span className={`carry-score ${p.carry_score >= 70 ? 'high' : p.carry_score >= 40 ? 'mid' : ''}`} title={t(lang, 'carryScore')}>
+            {p.carry_score}
+          </span>
+        )}
+        {p.mvp && <span className="mvp-badge" title={t(lang, 'mvp')}>{t(lang, 'mvp')}</span>}
+
         <div className="p-kda">
           <span className="p-kills">{p.kills}</span>
           <span className="p-deaths">{p.deaths}</span>
