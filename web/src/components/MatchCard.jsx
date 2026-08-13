@@ -42,7 +42,7 @@ function TeamColumn({ players, teamId, lang, onOpenPlayer }) {
 
 export default function MatchCard({ match, lang, puuid, onOpenPlayer }) {
   const [open, setOpen] = useState(false)
-  const [tab, setTab] = useState('metrics')
+  const [tab, setTab] = useState('general')
   const pl = match.player
   const win = match.win
 

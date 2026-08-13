@@ -28,12 +28,12 @@ const LANE_LABELS = {
   BOTTOM: 'evLaneBot',
 }
 
-function PlayerChip({ ref, withName }) {
-  if (!ref) return null
+function PlayerChip({ player, withName }) {
+  if (!player) return null
   return (
-    <span className={`evt-player ${ref.is_player ? 'me' : ''}`}>
-      <Img src={ref.champion_icon} className="evt-avatar" alt={ref.champion} title={ref.champion} />
-      {withName && <span className="evt-pname">{ref.name || ref.champion}</span>}
+    <span className={`evt-player ${player.is_player ? 'me' : ''}`}>
+      <Img src={player.champion_icon} className="evt-avatar" alt={player.champion} title={player.champion} />
+      {withName && <span className="evt-pname">{player.name || player.champion}</span>}
     </span>
   )
 }
@@ -189,9 +189,9 @@ export default function MatchEvents({ matchId, puuid, lang }) {
                 <div className="evt-main">
                   {ev.type === 'kill' ? (
                     <>
-                      <PlayerChip ref={ev.killer} withName />
+                      <PlayerChip player={ev.killer} withName />
                       <span className="evt-action">{t(lang, 'evKillFmt')}</span>
-                      <PlayerChip ref={ev.victim} withName />
+                      <PlayerChip player={ev.victim} withName />
                       {ev.assists > 0 && (
                         <span className="evt-assists">
                           {ev.assists} {t(lang, 'evAssists')}
@@ -210,7 +210,7 @@ export default function MatchEvents({ matchId, puuid, lang }) {
                           <>
                             {OBJ_META[ev.monster] ? t(lang, OBJ_META[ev.monster].label) : ev.monster}
                             <span className="evt-by">
-                              {t(lang, 'evObjectiveTakenBy')} <PlayerChip ref={playerRef} withName />
+                              {t(lang, 'evObjectiveTakenBy')} <PlayerChip player={playerRef} withName />
                             </span>
                           </>
                         ) : (
@@ -223,7 +223,7 @@ export default function MatchEvents({ matchId, puuid, lang }) {
                               <span className="evt-sub">· {t(lang, LANE_LABELS[ev.lane])}</span>
                             ) : null}
                             <span className="evt-by">
-                              {t(lang, 'evBuildingDestroyed')} <PlayerChip ref={playerRef} withName />
+                              {t(lang, 'evBuildingDestroyed')} <PlayerChip player={playerRef} withName />
                             </span>
                           </>
                         )}
