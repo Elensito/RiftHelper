@@ -1,5 +1,5 @@
 import Img from './Img.jsx'
-import { fmtNum, kdaRatio, roleLabel } from '../utils.js'
+import { fmtNum, roleLabel } from '../utils.js'
 import { t } from '../i18n.js'
 
 function nameOf(entry, lang) {
@@ -90,13 +90,6 @@ export default function PlayerRow({ p, lang, onOpenPlayer = () => {} }) {
             )}
             <span className="p-role">{roleLabel(p.role)}</span>
           </div>
-        </div>
-
-        <div className="p-kda">
-          <span className="p-kills">{p.kills}</span>
-          <span className="p-deaths">{p.deaths}</span>
-          <span className="p-assists">{p.assists}</span>
-          <span className="p-kda-ratio">{kdaRatio(p.kills, p.deaths, p.assists)}</span>
         </div>
 
         <div className="p-stat">
