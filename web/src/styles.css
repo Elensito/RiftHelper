@@ -2324,9 +2324,10 @@ button.p-name:hover {
 }
 
 .share-btn {
+  display: inline-flex;
+  align-items: center;
   background: none;
   border: 0;
-  font-size: 18px;
   line-height: 1;
   cursor: pointer;
   color: var(--muted);
