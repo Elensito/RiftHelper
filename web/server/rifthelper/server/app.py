@@ -53,9 +53,12 @@ async def get_summoner(
     tag: str = Query(..., min_length=1),
     count: int = Query(api_service.MATCH_COUNT, ge=1, le=50),
     start: int = Query(0, ge=0),
+    refresh: bool = Query(False),
 ):
     try:
-        return await api_service.fetch_profile(name.strip(), tag.strip(), count=count, start=start)
+        return await api_service.fetch_profile(
+            name.strip(), tag.strip(), count=count, start=start, refresh=refresh
+        )
     except RiotAPIError as e:
         raise HTTPException(status_code=e.status or 502, detail=str(e)) from e
     except RuntimeError as e:

@@ -55,7 +55,7 @@ export default function App() {
     setHasMore(true)
     setMoreLoading(false)
     try {
-      const data = await fetchSummoner(name, tag, PAGE_SIZE, 0)
+      const data = await fetchSummoner(name, tag, PAGE_SIZE, 0, silent)
       setProfile(data)
       setFetched(PAGE_SIZE)
       setHasMore(!!data.has_more)

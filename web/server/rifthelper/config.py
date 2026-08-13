@@ -54,6 +54,8 @@ SUMMONER_SPELLS_URL = f"https://ddragon.leagueoflegends.com/cdn/{DDG_VERSION}/da
 CACHE_DIR = BASE_DIR / "cache"
 MATCH_CACHE_DIR = CACHE_DIR / "matches"
 TIMELINE_CACHE_DIR = CACHE_DIR / "timelines"
+PROFILE_CACHE_DIR = CACHE_DIR / "profiles"
+PROFILE_CACHE_TTL = int(os.getenv("PROFILE_CACHE_TTL", "300"))
 
 PATCH_DIR = CACHE_DIR / f"patch_{PATCH}"
 PATCH_MATCHES_DIR = PATCH_DIR / "matches"

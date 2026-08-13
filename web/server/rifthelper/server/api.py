@@ -5,7 +5,9 @@
 
 
 from datetime import datetime, timezone
+import json
 from pathlib import Path
+import time
 
 from rifthelper import config
 from rifthelper.services import stats as stats_service
@@ -290,9 +292,44 @@ def build_match(
     }
 
 
+def _profile_cache_path(name: str, tag: str, start: int) -> Path:
+    n = " ".join(name.strip().lower().split())
+    tg = " ".join(tag.strip().lower().split())
+    key = f"{config.RIOT_REGION}#{n}#{tg}__{start}"
+    safe = "".join(c if c.isalnum() else "_" for c in key)
+    return config.PROFILE_CACHE_DIR / f"{safe}.json"
+
+
+def _profile_cache_get(name: str, tag: str, start: int) -> dict | None:
+    path = _profile_cache_path(name, tag, start)
+    if not path.is_file():
+        return None
+    try:
+        if time.time() - path.stat().st_mtime > config.PROFILE_CACHE_TTL:
+            return None
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+
+
+def _profile_cache_set(name: str, tag: str, start: int, data: dict) -> None:
+    try:
+        config.PROFILE_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        _profile_cache_path(name, tag, start).write_text(
+            json.dumps(data, ensure_ascii=False), encoding="utf-8"
+        )
+    except OSError:
+        pass
+
+
 async def fetch_profile(
-    name: str, tag: str, count: int = MATCH_COUNT, start: int = 0
+    name: str, tag: str, count: int = MATCH_COUNT, start: int = 0, refresh: bool = False
 ) -> dict:
+
+    if not refresh:
+        cached = _profile_cache_get(name, tag, start)
+        if cached is not None:
+            return cached
 
     region = config.RIOT_REGION
     riot = RiotClient()
@@ -355,7 +392,7 @@ async def fetch_profile(
     tier = (rank or {}).get("tier", "UNRANKED")
     division = (rank or {}).get("rank", "")
 
-    return {
+    result = {
         "summoner": {
             "name": game_name,
             "tag": tag_line,
@@ -374,6 +411,9 @@ async def fetch_profile(
         "matches": matches,
         "has_more": len(match_ids) == count,
     }
+
+    _profile_cache_set(name, tag, start, result)
+    return result
 
 
 async def fetch_match_metrics(match_id: str, puuid: str | None = None) -> dict:
