@@ -1,19 +1,8 @@
 import json
-import random
-from datetime import datetime, timezone
 
 from rifthelper import config
 
 _LRU: dict = {}
-
-ROLE_LABELS = {
-    "top": "Top",
-    "jungle": "Jungle",
-    "mid": "Mid",
-    "bot": "Bot",
-    "support": "Support",
-    "other": "Other",
-}
 
 
 def _load_json(path, key):
@@ -173,6 +162,7 @@ def _real_detail(champ_key: int, champ: dict, stats: dict) -> dict | None:
     ]
 
     return {
+        "available": True,
         "key": champ_key,
         "id": champ["id"],
         "name": champ["name"],
@@ -232,125 +222,13 @@ def _spell_name(spell_id) -> str | None:
     return _SPELL_NAMES.get(str(spell_id))
 
 
-# ---------------------------------------------------------------------------
-# Datos de prueba (fallback)
-# ---------------------------------------------------------------------------
-
-ROLES = [
-    {"id": "top", "tier": "S"},
-    {"id": "jungle", "tier": "A"},
-    {"id": "mid", "tier": "S"},
-    {"id": "bot", "tier": "B"},
-    {"id": "support", "tier": "A"},
-]
-
-KEYS = ["Conqueror", "Press the Attack", "Lethal Tempo", "Fleet Footwork", "Electrocute", "Dark Harvest", "Grasp of the Undying", "Arcane Comet"]
-
-PRIMARY = [
-    "Triumph",
-    "Legend: Haste",
-    "Last Stand",
-    "Cheap Shot",
-    "Taste of Blood",
-    "Conditioning",
-    "Second Wind",
-]
-
-SECONDARY = ["Revitalize", "Bone Plating", "Overgrowth", "Eyeball Collection", "Ingenious Hunter", "Presence of Mind"]
-
-STARTING = [
-    "Doran's Blade",
-    "Doran's Ring",
-    "Doran's Shield",
-    "Long Sword",
-    "Amplifying Tome",
-    "Relic Shield",
-    "Spellthief's Edge",
-]
-
-CORE = [
-    "Spear of Shojin",
-    "Black Cleaver",
-    "Sundered Sky",
-    "Eclipse",
-    "Stridebreaker",
-    "Liandry's Torment",
-    "Rabadon's Deathcap",
-    "Trinity Force",
-]
-
-
-def _rng(champ_key: int) -> random.Random:
-    return random.Random(1000 + champ_key)
-
-
-def _test_detail(champ: dict) -> dict:
-    champ_key = champ["key"]
-    rng = _rng(champ_key)
-    role = rng.choice(ROLES)
-
-    winrate = round(rng.uniform(47.0, 54.5), 2)
-    pick = round(rng.uniform(1.5, 9.0), 1)
-    ban = round(rng.uniform(0.5, 12.0), 1)
-    matches = int(rng.uniform(3000, 30000))
-
-    keystone = rng.choice(KEYS)
-    primary = rng.sample(PRIMARY, 3)
-    secondary = rng.sample(SECONDARY, 2)
-    rune_page = {
-        "keystone": keystone,
-        "primary": [keystone] + primary,
-        "secondary": secondary,
-        "shards": ["Adaptive Force", "Adaptive Force", "Health"],
-    }
-
-    starting = rng.sample(STARTING, 2)
-    core_items = rng.sample(CORE, 3)
-
-    others = [c for c in _unique_champions() if c["key"] != champ_key]
-    rng.shuffle(others)
-    tough = []
-    for c in others[:8]:
-        tough.append(
-            {
-                "key": c["key"],
-                "name": c["name"],
-                "image": c["image"],
-                "winrate": round(rng.uniform(35.0, 49.5), 1),
-                "matches": int(rng.uniform(50, 1500)),
-            }
-        )
-    tough.sort(key=lambda m: m["winrate"])
-
+def _no_data_detail(champ: dict) -> dict:
     return {
-        "key": champ_key,
+        "key": champ["key"],
         "id": champ["id"],
         "name": champ["name"],
         "image": champ["image"],
-        "role": role["id"],
-        "tier": role["tier"],
-        "winrate": winrate,
-        "pick_rate": pick,
-        "ban_rate": ban,
-        "matches": matches,
-        "rank": int(rng.uniform(1, 61)),
-        "summoner_spells": rng.choice(
-            [
-                ["Flash", "Ignite"],
-                ["Flash", "Teleport"],
-                ["Flash", "Ghost"],
-                ["Flash", "Exhaust"],
-            ]
-        ),
-        "runes": rune_page,
-        "runes_winrate": round(winrate + rng.uniform(-0.5, 3.5), 2),
-        "runes_matches": int(matches * rng.uniform(0.25, 0.5)),
-        "starting_items": starting,
-        "core_items": core_items,
-        "skill_priority": rng.choice(["Q > E > W", "Q > W > E", "E > Q > W", "W > Q > E"]),
-        "skill_path": rng.choice(["QWEQ", "QWQE", "EQWQ", "WQEQ"]),
-        "toughest_matchups": tough,
-        "test_data": True,
+        "available": False,
     }
 
 
@@ -363,4 +241,4 @@ def champion_detail(champ_key: int) -> dict | None:
         real = _real_detail(champ_key, champ, stats)
         if real:
             return real
-    return _test_detail(champ)
+    return _no_data_detail(champ)

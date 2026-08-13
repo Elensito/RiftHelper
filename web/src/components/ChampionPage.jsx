@@ -22,7 +22,22 @@ function WrRow({ wr, matches }) {
 export default function ChampionPage({ champ, lang, onOpenPlayer }) {
   if (!champ) return null
 
-  const isReal = !champ.test_data
+  if (!champ.available) {
+    return (
+      <section className="champ-page">
+        <div className="champ-head">
+          <Img className="champ-splash" src={champ.image} alt={champ.name} />
+          <div className="champ-head-meta">
+            <h1 className="champ-name">{champ.name}</h1>
+            <div className="champ-role" />
+          </div>
+        </div>
+        <div className="champ-empty-block">{t(lang, 'champNoData')}</div>
+      </section>
+    )
+  }
+
+  const isReal = true
   const matchups = champ.matchups || champ.toughest_matchups || []
 
   const runePages = isReal
@@ -192,9 +207,7 @@ export default function ChampionPage({ champ, lang, onOpenPlayer }) {
       </div>
 
       <p className="champ-test-note">
-        {isReal
-          ? `${t(lang, 'realDataNote')} · ${t(lang, 'patch')} ${champ.patch} · ${champ.patch_total_matches?.toLocaleString()} ${t(lang, 'matches')}`
-          : t(lang, 'testDataNote')}
+        {`${t(lang, 'realDataNote')} · ${t(lang, 'patch')} ${champ.patch} · ${champ.patch_total_matches?.toLocaleString()} ${t(lang, 'matches')}`}
       </p>
     </section>
   )

@@ -2115,6 +2115,17 @@ button.p-name:hover {
   padding: 10px 0;
 }
 
+.champ-empty-block {
+  margin-top: 18px;
+  padding: 24px;
+  border: 1px dashed var(--border);
+  border-radius: 12px;
+  color: var(--muted);
+  font-size: 14px;
+  text-align: center;
+  line-height: 1.5;
+}
+
 .champ-runes {
   margin-bottom: 2px;
 }
