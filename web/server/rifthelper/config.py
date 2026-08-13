@@ -13,9 +13,7 @@ RIOT_API_KEY = os.getenv("RIOT_API_KEY", "")
 RIOT_REGION = os.getenv("RIOT_REGION", "euw1").strip().lower()
 
 
-# Prefijo del gameVersion real (p.ej. "16.16" de la temporada 26.16 de 2026).
 PATCH = os.getenv("PATCH", "16.16").strip()
-# Inicio del parche en segundos (epoch UTC). Ajustable desde .env si hace falta.
 PATCH_START = int(os.getenv("PATCH_START", "1785888000"))
 CRAWL_RATE_PER_SEC = float(os.getenv("CRAWL_RATE_PER_SEC", "40"))
 CRAWL_TIMELINE_BUDGET = int(os.getenv("CRAWL_TIMELINE_BUDGET", "150000"))

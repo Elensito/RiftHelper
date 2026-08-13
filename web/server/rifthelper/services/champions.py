@@ -93,10 +93,6 @@ def _names(items) -> list[str]:
     return out
 
 
-# ---------------------------------------------------------------------------
-# Datos reales del parche (aggregator)
-# ---------------------------------------------------------------------------
-
 def _real_detail(champ_key: int, champ: dict, stats: dict) -> dict | None:
     roles = stats.get("champions", {}).get(str(champ_key), [])
     if not roles:

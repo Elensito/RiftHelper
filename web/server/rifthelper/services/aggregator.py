@@ -58,8 +58,7 @@ def aggregate(patch: str | None = None) -> Path:
 
     totals = {"matches": 0, "bans": 0}
     queues: dict = defaultdict(int)
-    # champ-role -> counters
-    st = defaultdict(lambda: defaultdict(int))       # ["games","wins"]
+    st = defaultdict(lambda: defaultdict(int))
     bans = defaultdict(int)
     roles_games = defaultdict(int)
     pick_games = defaultdict(int)
@@ -139,7 +138,6 @@ def aggregate(patch: str | None = None) -> Path:
 
     print(f"Procesados {n} matches en {time.time()-t0:.0f}s")
 
-    # ---- rank y tier por rol ----
     role_wr: dict[str, list[tuple[float, tuple]]] = defaultdict(list)
     for (champ, role), d in st.items():
         if d["games"] >= 300:
@@ -226,7 +224,6 @@ def aggregate(patch: str | None = None) -> Path:
         }
         champions.setdefault(str(champ), []).append(entry)
 
-    # ordenar roles por partidas y elegir main_role
     for champ, roles in champions.items():
         roles.sort(key=lambda r: r["games"], reverse=True)
 

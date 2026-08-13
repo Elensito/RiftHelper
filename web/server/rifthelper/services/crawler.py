@@ -21,7 +21,7 @@ import aiohttp
 from rifthelper import config
 from rifthelper.services.riot import RiotAPIError, RiotClient
 
-POLL_INTERVAL = 6 * 3600  # re-pollear un puuid ya visto tras 6h
+POLL_INTERVAL = 6 * 3600
 LEAGUES = ["CHALLENGER", "GRANDMASTER", "MASTER"]
 TRINKETS = {3340, 3363, 3364, 3513}
 STARTERS = {1001, 1004, 1011, 1018, 1026, 1027, 1028, 1029, 1031, 1033, 1036, 1037,
@@ -60,8 +60,6 @@ class Crawler:
         self._session: aiohttp.ClientSession | None = None
         self._next_slot = 0.0
         self.timeline_budget = config.CRAWL_TIMELINE_BUDGET
-
-    # ---- infra ----
 
     def _ensure_dirs(self):
         for d in (self.matches_dir, self.rows_dir, self.raw_tl_dir, self.extract_dir, self.db_path.parent):
@@ -174,8 +172,6 @@ class Crawler:
         with gzip.open(path, "rt", encoding="utf-8") as f:
             return json.load(f)
 
-    # ---- seeds ----
-
     async def _seed_league(self, league: str):
         url = (f"https://{self.region}.api.riotgames.com/lol/league/v4/{league}"
                f"/by-queue/RANKED_SOLO_5x5")
@@ -212,8 +208,6 @@ class Crawler:
             await self._seed_league(league)
         print("Sembrando partidas en vivo...")
         await self._seed_featured()
-
-    # ---- descubrimiento ----
 
     async def discover_puuid(self, puuid: str) -> int:
         cluster = self.client._cluster_for(self.region)
@@ -314,8 +308,6 @@ class Crawler:
         seen_versions[version] = seen_versions.get(version, 0) + 1
         for p in info.get("participants", []) or []:
             self._add_puuid(p.get("puuid"))
-
-    # ---- timeline (muestra con borrado) ----
 
     def _extract_timeline(self, match_id: str, timeline: dict) -> dict:
         frames = (timeline.get("info", {}) or {}).get("frames", []) or []
