@@ -14,6 +14,9 @@ aiohttp = ">=3.9.0"
 
 [tool.poetry.scripts]
 rifthelper-web = "rifthelper.server.app:main"
+rifthelper-crawl = "rifthelper.services.crawler:main_cli"
+rifthelper-incremental = "rifthelper.services.crawler:main_incremental_cli"
+rifthelper-aggregate = "rifthelper.services.aggregator:main"
 
 [build-system]
 requires = ["poetry-core"]

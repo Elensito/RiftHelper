@@ -2074,6 +2074,51 @@ button.p-name:hover {
   color: var(--green);
 }
 
+.champ-wr-row {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  flex-shrink: 0;
+}
+
+.champ-wr-value {
+  font-weight: 800;
+  color: var(--green);
+  font-variant-numeric: tabular-nums;
+}
+
+.champ-wr-matches {
+  font-size: 11px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.champ-sep {
+  height: 1px;
+  margin: 12px 0;
+  background: var(--border);
+}
+
+.champ-subhead {
+  margin: 16px 0 12px !important;
+  font-size: 11px !important;
+  font-weight: 700 !important;
+  letter-spacing: 1.3px !important;
+  text-transform: uppercase !important;
+  color: var(--muted) !important;
+}
+
+.champ-empty {
+  color: var(--muted);
+  font-size: 13px;
+  padding: 10px 0;
+}
+
+.champ-runes {
+  margin-bottom: 2px;
+}
+
 .champ-tough-list {
   display: flex;
   flex-direction: column;
