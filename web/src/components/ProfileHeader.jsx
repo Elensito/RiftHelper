@@ -1,5 +1,7 @@
+import { useState } from 'react'
 import Img from './Img.jsx'
 import { t } from '../i18n.js'
+import { isFavorite, addFavorite, removeFavorite } from '../storage.js'
 
 export default function ProfileHeader({ summoner, matches, lang, inGame = false }) {
   const wins = summoner.wins || 0
@@ -7,6 +9,22 @@ export default function ProfileHeader({ summoner, matches, lang, inGame = false 
   const total = wins + losses
   const wr = summoner.winrate || 0
   const recent = matches || []
+  const [fav, setFav] = useState(() => isFavorite(summoner.name, summoner.tag))
+
+  const toggleFav = () => {
+    if (fav) {
+      removeFavorite(summoner.name, summoner.tag)
+      setFav(false)
+    } else {
+      addFavorite({
+        name: summoner.name,
+        tag: summoner.tag,
+        region: summoner.region,
+        profile_icon: summoner.profile_icon,
+      })
+      setFav(true)
+    }
+  }
 
   return (
     <section className="profile">
@@ -19,6 +37,13 @@ export default function ProfileHeader({ summoner, matches, lang, inGame = false 
           <h1 className="summoner-name">{summoner.name}</h1>
           <span className="summoner-tag">#{summoner.tag}</span>
           <span className="chip region">{summoner.region}</span>
+          <button
+            className={`fav-btn ${fav ? 'active' : ''}`}
+            onClick={toggleFav}
+            title={fav ? t(lang, 'removeFavorite') : t(lang, 'addFavorite')}
+          >
+            {fav ? '★' : '☆'}
+          </button>
           {inGame && (
             <span className="in-game-chip" title={t(lang, 'liveNow')}>
               <span className="live-dot" />

@@ -14,25 +14,6 @@ function nameOf(rune, lang) {
   return rune[lang] || rune.en || ''
 }
 
-function RuneStrip({ runes, lang }) {
-  if (!runes || runes.length === 0) return null
-  return (
-    <div className="rune-strip">
-      {runes.slice(0, 4).map((r, i) => (
-        <Img key={`p${i}`} src={r && r.src} className="rune" title={nameOf(r, lang)} />
-      ))}
-      <span className="rune-sep" />
-      {runes.slice(4, 6).map((r, i) => (
-        <Img key={`s${i}`} src={r && r.src} className="rune" title={nameOf(r, lang)} />
-      ))}
-      <span className="rune-sep" />
-      {runes.slice(6).map((r, i) => (
-        <Img key={`t${i}`} src={r && r.src} className="rune shard" title={nameOf(r, lang)} />
-      ))}
-    </div>
-  )
-}
-
 function LiveRow({ p, lang }) {
   return (
     <div className={`prow live-row ${p.is_player ? 'me' : ''}`}>
@@ -59,7 +40,11 @@ function LiveRow({ p, lang }) {
         {p.is_player && <span className="me-badge">{t(lang, 'you')}</span>}
       </div>
       <div className="prow-sub">
-        <RuneStrip runes={p.runes} lang={lang} />
+        {p.keystone && (
+          <div className="rune-strip">
+            <Img src={p.keystone.src} className="rune" title={nameOf(p.keystone, lang)} />
+          </div>
+        )}
       </div>
     </div>
   )

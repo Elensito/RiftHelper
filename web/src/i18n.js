@@ -14,6 +14,11 @@ const EN = {
   heroTitle: 'Analyze any summoner matches',
   heroSub:
     'Search by Name#tag and discover runes, builds, gold and damage of all 10 players of each match.',
+  favorites: 'Favorites',
+  addFavorite: 'Add to favorites',
+  removeFavorite: 'Remove from favorites',
+  recentSearches: 'Recent searches',
+  clearRecent: 'Clear',
   lp: 'LP',
   level: 'Lv',
   wins: 'W',
@@ -72,6 +77,11 @@ const ES = {
   heroTitle: 'Analiza las partidas de cualquier invocador',
   heroSub:
     'Busca por Nombre#tag y descubre runas, builds, oro y daño de los 10 jugadores de cada partida.',
+  favorites: 'Favoritos',
+  addFavorite: 'Añadir a favoritos',
+  removeFavorite: 'Quitar de favoritos',
+  recentSearches: 'Búsquedas recientes',
+  clearRecent: 'Limpiar',
   lp: 'LP',
   level: 'Nv',
   wins: 'V',

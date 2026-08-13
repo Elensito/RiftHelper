@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://rift-helper.com/sitemap.xml

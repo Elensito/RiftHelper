@@ -6,6 +6,7 @@ import LiveGame from './components/LiveGame.jsx'
 import QueueFilter from './components/QueueFilter.jsx'
 import LangSwitcher from './components/LangSwitcher.jsx'
 import ThemeToggle from './components/ThemeToggle.jsx'
+import Favorites from './components/Favorites.jsx'
 import { fetchSummoner, fetchLiveGame } from './api.js'
 import { matchGroup, t } from './i18n.js'
 
@@ -174,6 +175,7 @@ export default function App() {
           <div className="hero">
             <h1>{t(lang, 'heroTitle')}</h1>
             <p className="hero-sub">{t(lang, 'heroSub')}</p>
+            <Favorites onOpen={openPlayer} lang={lang} />
           </div>
         )}
 
