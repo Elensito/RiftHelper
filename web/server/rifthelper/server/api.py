@@ -396,7 +396,15 @@ async def fetch_match_events(match_id: str, puuid: str | None = None) -> dict:
     except RiotAPIError as e:
         raise RiotAPIError(f"Partida {match_id} no disponible: {e}", 404) from e
     champ_info = await riot.get_champion_info()
-    return stats_service.timeline_events(match, timeline, champ_info, puuid or "")
+    payload = stats_service.timeline_events(match, timeline, champ_info, puuid or "")
+    images: set[str] = set()
+    for ev in payload.get("events", []):
+        for ref in (ev.get("killer"), ev.get("victim")):
+            icon = ref and ref.get("champion_icon")
+            if icon:
+                images.add(icon.rsplit("/", 1)[-1])
+    await _ensure_champion_icons(images)
+    return payload
 
 
 SKILL_SLOT_KEYS = ["Q", "W", "E", "R"]
