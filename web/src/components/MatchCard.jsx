@@ -49,7 +49,12 @@ export default function MatchCard({ match, lang, puuid, onOpenPlayer }) {
   return (
     <article className={`match ${open ? 'open' : ''}`}>
       <div className="match-head" onClick={() => setOpen(!open)}>
-        <div className={`badge ${win ? 'win' : 'loss'}`}>{win ? t(lang, 'win') : t(lang, 'loss')}</div>
+        <div
+          className={`badge ${match.remake ? 'remake' : win ? 'win' : 'loss'}`}
+          title={match.remake ? t(lang, 'remake') : ''}
+        >
+          {match.remake ? 'R' : win ? t(lang, 'win') : t(lang, 'loss')}
+        </div>
 
         <div className="m-meta">
           <span className="m-mode">{queueLabel(lang, match.queue)}</span>

@@ -621,6 +621,12 @@ body {
   box-shadow: var(--glow-red);
 }
 
+.badge.remake {
+  background: linear-gradient(135deg, #6b7280, #4b5563);
+  color: #e5e7eb;
+  box-shadow: none;
+}
+
 .m-meta {
   display: flex;
   flex-direction: column;

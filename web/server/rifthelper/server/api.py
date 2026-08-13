@@ -273,6 +273,7 @@ def build_match(
         "duration": _fmt_duration(duration_sec),
         "duration_sec": duration_sec,
         "win": player["win"],
+        "remake": bool(duration_sec and duration_sec < 240),
         "player": {
             "champion": me.get("champion", player["player_champion"]),
             "champion_icon": me.get("champion_icon"),
