@@ -190,6 +190,19 @@ export default function MatchEvents({ matchId, puuid, lang }) {
                   {ev.type === 'kill' ? (
                     <>
                       <PlayerChip player={ev.killer} withName />
+                      {ev.assisters && ev.assisters.length > 0 && (
+                        <span className="evt-assist-icons">
+                          {ev.assisters.map((a, i) => (
+                            <Img
+                              key={i}
+                              src={a.champion_icon}
+                              className="evt-assist-avatar"
+                              alt={a.champion}
+                              title={a.name || a.champion}
+                            />
+                          ))}
+                        </span>
+                      )}
                       <span className="evt-action">{t(lang, 'evKillFmt')}</span>
                       <PlayerChip player={ev.victim} withName />
                       {ev.assists > 0 && (

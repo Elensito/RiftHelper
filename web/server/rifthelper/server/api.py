@@ -399,7 +399,9 @@ async def fetch_match_events(match_id: str, puuid: str | None = None) -> dict:
     payload = stats_service.timeline_events(match, timeline, champ_info, puuid or "")
     images: set[str] = set()
     for ev in payload.get("events", []):
-        for ref in (ev.get("killer"), ev.get("victim")):
+        refs = [ev.get("killer"), ev.get("victim")]
+        refs.extend(ev.get("assisters") or [])
+        for ref in refs:
             icon = ref and ref.get("champion_icon")
             if icon:
                 images.add(icon.rsplit("/", 1)[-1])

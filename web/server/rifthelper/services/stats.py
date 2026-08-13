@@ -232,6 +232,10 @@ def timeline_events(match: dict, timeline: dict, champ_info: dict[int, dict], pu
                         "killer": _player_ref(killer, champ_info, puuid) if killer else None,
                         "victim": _player_ref(victim, champ_info, puuid) if victim else None,
                         "assists": len(ev.get("assistingParticipantIds", []) or []),
+                        "assisters": [
+                            _player_ref(by_id.get(pid), champ_info, puuid)
+                            for pid in (ev.get("assistingParticipantIds", []) or [])
+                        ],
                         "first_blood": not first_kill_done,
                         "shutdown": (ev.get("killStreak", 0) or 0) >= 3,
                     }
