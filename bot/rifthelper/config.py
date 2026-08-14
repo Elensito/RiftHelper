@@ -13,6 +13,7 @@ RIOT_API_KEY = os.getenv("RIOT_API_KEY", "")
 
 RIOT_REGION = os.getenv("RIOT_REGION", "euw1").strip().lower()
 REGION_LABEL = "EUW · Europa Oeste"
+SITE_URL = os.getenv("SITE_URL", "https://rift-helper.com")
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent

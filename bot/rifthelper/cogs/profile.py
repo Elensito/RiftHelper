@@ -29,7 +29,9 @@ class ProfileCog(commands.Cog):
             return
 
         embed, file = presentation.profile_embed(data, rank, summoner)
-        await interaction.followup.send(embed=embed, file=file)
+        await interaction.followup.send(
+            embed=embed, file=file, view=presentation.profile_view(data)
+        )
 
 
 async def setup(bot: commands.Bot):

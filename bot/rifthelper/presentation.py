@@ -1,4 +1,5 @@
 import discord
+from urllib.parse import quote
 
 from rifthelper import config
 
@@ -79,6 +80,24 @@ def verify_fail_embed() -> discord.Embed:
     return embed
 
 
+def profile_url(data: dict) -> str:
+    name = data.get("game_name", "")
+    tag = data.get("tag", "")
+    return f"{config.SITE_URL}/?name={quote(name)}&tag={quote(tag)}"
+
+
+def profile_view(data: dict) -> discord.ui.View:
+    view = discord.ui.View()
+    view.add_item(
+        discord.ui.Button(
+            label="📊 Ver stats en RiftHelper",
+            style=discord.ButtonStyle.url,
+            url=profile_url(data),
+        )
+    )
+    return view
+
+
 def profile_embed(data: dict, rank: dict | None, summoner: dict | None) -> tuple[discord.Embed, discord.File | None]:
     game_name = data.get("game_name", "Invocador")
     tag = data.get("tag", "")
@@ -122,6 +141,11 @@ def profile_embed(data: dict, rank: dict | None, summoner: dict | None) -> tuple
         )
 
     embed.set_author(name=f"{full_name} · Nivel {level}", icon_url=icon_url)
+    embed.add_field(
+        name="🌐 Stats en RiftHelper",
+        value=f"[Abre tu página de estadísticas]({profile_url(data)})",
+        inline=False,
+    )
     return embed, rank_file
 
 
