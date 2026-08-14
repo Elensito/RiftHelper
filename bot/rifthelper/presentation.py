@@ -141,11 +141,6 @@ def profile_embed(data: dict, rank: dict | None, summoner: dict | None) -> tuple
         )
 
     embed.set_author(name=f"{full_name} · Nivel {level}", icon_url=icon_url)
-    embed.add_field(
-        name="🌐 Stats en RiftHelper",
-        value=f"[Abre tu página de estadísticas]({profile_url(data)})",
-        inline=False,
-    )
     return embed, rank_file
 
 
