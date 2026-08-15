@@ -5,7 +5,7 @@
 
 const EN = {
   search: 'Search',
-  placeholder: 'Summoner name',
+  placeholder: 'Summoner name#tag',
   tag: 'tag',
   update: 'Update',
   loading: 'Loading matches…',
@@ -158,7 +158,7 @@ const EN = {
 
 const ES = {
   search: 'Buscar',
-  placeholder: 'Nombre de invocador',
+  placeholder: 'Nombre de invocador#tag',
   tag: 'tag',
   update: 'Actualizar',
   loading: 'Cargando partidas…',

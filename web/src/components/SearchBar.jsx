@@ -3,9 +3,17 @@ import { t } from '../i18n.js'
 import { getRecent, addRecent, clearRecent } from '../storage.js'
 import Img from './Img.jsx'
 
+function parseQuery(raw) {
+  const idx = raw.indexOf('#')
+  if (idx === -1) return null
+  const name = raw.slice(0, idx).trim()
+  const tag = raw.slice(idx + 1).trim().replace(/^#/, '')
+  if (!name || !tag) return null
+  return { name, tag }
+}
+
 export default function SearchBar({ onSearch, onOpenChampion, loading, lang, champions = [] }) {
-  const [name, setName] = useState('')
-  const [tag, setTag] = useState('')
+  const [query, setQuery] = useState('')
   const [open, setOpen] = useState(false)
   const boxRef = useRef(null)
 
@@ -13,23 +21,20 @@ export default function SearchBar({ onSearch, onOpenChampion, loading, lang, cha
 
   const submit = (e) => {
     e.preventDefault()
-    const n = name.trim()
-    const tg = tag.trim().replace(/^#/, '')
-    if (n && tg) {
-      onSearch(n, tg)
-      addRecent(n, tg)
-    }
+    const p = parseQuery(query)
+    if (!p) return
+    onSearch(p.name, p.tag)
+    addRecent(p.name, p.tag)
   }
 
   const pickRecent = (r) => {
-    setName(r.name)
-    setTag(r.tag)
+    setQuery(`${r.name}#${r.tag}`)
     setOpen(false)
     onSearch(r.name, r.tag)
   }
 
   const champHits = (() => {
-    const q = name.trim().toLowerCase()
+    const q = query.split('#')[0].trim().toLowerCase()
     if (!q) return []
     return champions
       .filter((c) => c.name.toLowerCase().includes(q))
@@ -52,8 +57,8 @@ export default function SearchBar({ onSearch, onOpenChampion, loading, lang, cha
     <form className="search" onSubmit={submit}>
       <div className="search-field suggest-field" ref={boxRef}>
         <input
-          value={name}
-          onChange={(e) => setName(e.target.value)}
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
           onFocus={() => setOpen(true)}
           onKeyDown={(e) => {
             if (e.key === 'Escape') setOpen(false)
@@ -119,16 +124,6 @@ export default function SearchBar({ onSearch, onOpenChampion, loading, lang, cha
             )}
           </div>
         )}
-      </div>
-      <div className="search-field tag-field">
-        <span className="hash">#</span>
-        <input
-          value={tag}
-          onChange={(e) => setTag(e.target.value)}
-          placeholder={t(lang, 'tag')}
-          spellCheck="false"
-          autoComplete="off"
-        />
       </div>
       <button className="btn btn-search" type="submit" disabled={loading}>
         <span>⌕</span> {t(lang, 'search')}
