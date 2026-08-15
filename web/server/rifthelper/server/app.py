@@ -75,6 +75,18 @@ async def get_summoner(
         raise HTTPException(status_code=404, detail=str(e)) from e
 
 
+@app.get("/api/summoner/check")
+async def check_new_matches(
+    name: str = Query(..., min_length=1),
+    tag: str = Query(..., min_length=1),
+):
+    try:
+        latest = await api_service.fetch_latest_match_id(name, tag)
+        return {"latest_match_id": latest}
+    except RiotAPIError as e:
+        raise HTTPException(status_code=e.status or 502, detail=str(e)) from e
+
+
 @app.get("/api/match/{match_id}/metrics")
 async def get_match_metrics(match_id: str, puuid: str | None = Query(default=None)):
     try:

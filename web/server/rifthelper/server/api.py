@@ -420,6 +420,28 @@ def _profile_cache_set(name: str, tag: str, start: int, data: dict) -> None:
         pass
 
 
+_check_puuid_cache: dict[tuple[str, str], tuple[float, str]] = {}
+
+
+async def fetch_latest_match_id(name: str, tag: str) -> str | None:
+    region = config.RIOT_REGION
+    riot = RiotClient()
+    key = (name.strip().lower(), tag.strip().lower())
+    now = time.time()
+    cached = _check_puuid_cache.get(key)
+    if cached and now - cached[0] < 300:
+        puuid = cached[1]
+    else:
+        account = await riot.get_account_by_riot_id(region, name, tag)
+        puuid = account.get("puuid", "")
+        if not puuid:
+            return None
+        _check_puuid_cache[key] = (now, puuid)
+    start_ts = int(datetime(datetime.now().year, 1, 1, tzinfo=timezone.utc).timestamp())
+    match_ids = await riot.get_match_ids(region, puuid, 1, start_ts)
+    return match_ids[0] if match_ids else None
+
+
 async def fetch_profile(
     name: str, tag: str, count: int = MATCH_COUNT, start: int = 0, refresh: bool = False
 ) -> dict:

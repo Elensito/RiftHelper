@@ -11,7 +11,7 @@ import Favorites from './components/Favorites.jsx'
 import ChampionPage from './components/ChampionPage.jsx'
 import Mastery from './components/Mastery.jsx'
 import Tooltip from './components/Tooltip.jsx'
-import { fetchSummoner, fetchLiveGame, fetchMastery, fetchChampions, fetchChampion } from './api.js'
+import { fetchSummoner, fetchLatestMatch, fetchLiveGame, fetchMastery, fetchChampions, fetchChampion } from './api.js'
 import { matchGroup, t } from './i18n.js'
 
 const PAGE_SIZE = 20
@@ -36,6 +36,13 @@ export default function App() {
   const [mastery, setMastery] = useState(null)
   const [masteryLoading, setMasteryLoading] = useState(false)
   const sentinelRef = useRef(null)
+  const latestMatchRef = useRef(null)
+  const busyRef = useRef(false)
+  const loadRef = useRef(null)
+
+  useEffect(() => {
+    loadRef.current = load
+  })
 
   useEffect(() => {
     fetchChampions().then(setChampions).catch(() => {})
@@ -54,6 +61,7 @@ export default function App() {
   const load = async (name, tag, silent = false) => {
     setError('')
     setChampion(null)
+    busyRef.current = true
     if (silent) setRefreshing(true)
     else setLoading(true)
     setFetched(0)
@@ -62,6 +70,7 @@ export default function App() {
     try {
       const data = await fetchSummoner(name, tag, PAGE_SIZE, 0, silent)
       setProfile(data)
+      latestMatchRef.current = (data.matches[0] && data.matches[0].match_id) || null
       setFetched(PAGE_SIZE)
       setHasMore(!!data.has_more)
       setTab('matches')
@@ -76,6 +85,7 @@ export default function App() {
     } catch (e) {
       setError(e.message)
     } finally {
+      busyRef.current = false
       setLoading(false)
       setRefreshing(false)
     }
@@ -151,6 +161,27 @@ export default function App() {
     return () => clearInterval(id)
   }, [tab, profile])
 
+  useEffect(() => {
+    if (!profile) return
+    let stopped = false
+    const check = async () => {
+      if (busyRef.current) return
+      try {
+        const res = await fetchLatestMatch(profile.summoner.name, profile.summoner.tag)
+        if (stopped || !res.latest_match_id) return
+        if (res.latest_match_id !== latestMatchRef.current) {
+          latestMatchRef.current = res.latest_match_id
+          loadRef.current(profile.summoner.name, profile.summoner.tag, true)
+        }
+      } catch (e) {}
+    }
+    const id = setInterval(check, 30000)
+    return () => {
+      stopped = true
+      clearInterval(id)
+    }
+  }, [profile])
+
   const openPlayer = (name, tag) => {
     if (!name) return
     window.history.pushState(null, '', `/?name=${encodeURIComponent(name)}&tag=${encodeURIComponent(tag)}`)
@@ -216,49 +247,51 @@ export default function App() {
           lang={lang}
           champions={champions}
         />
-        <button
-          className="btn btn-update"
-          disabled={!profile || refreshing}
-          onClick={() =>
-            profile && load(profile.summoner.name, profile.summoner.tag, true)
-          }
-        >
-          {refreshing ? (
-            <span className="btn-spinner" aria-hidden="true" />
-          ) : (
-            <svg
-              className="refresh-icon"
-              width="15"
-              height="15"
-              viewBox="0 0 24 24"
-              fill="none"
-              aria-hidden="true"
-            >
-              <path
-                d="M23 4v6h-6"
-                stroke="currentColor"
-                strokeWidth="2.4"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-              <path
-                d="M1 20v-6h6"
-                stroke="currentColor"
-                strokeWidth="2.4"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-              <path
-                d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"
-                stroke="currentColor"
-                strokeWidth="2.4"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
-          )}
-          {t(lang, 'update')}
-        </button>
+        {profile && (
+          <button
+            className="btn btn-update"
+            disabled={refreshing}
+            onClick={() =>
+              profile && load(profile.summoner.name, profile.summoner.tag, true)
+            }
+          >
+            {refreshing ? (
+              <span className="btn-spinner" aria-hidden="true" />
+            ) : (
+              <svg
+                className="refresh-icon"
+                width="15"
+                height="15"
+                viewBox="0 0 24 24"
+                fill="none"
+                aria-hidden="true"
+              >
+                <path
+                  d="M23 4v6h-6"
+                  stroke="currentColor"
+                  strokeWidth="2.4"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+                <path
+                  d="M1 20v-6h6"
+                  stroke="currentColor"
+                  strokeWidth="2.4"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+                <path
+                  d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"
+                  stroke="currentColor"
+                  strokeWidth="2.4"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            )}
+            {t(lang, 'update')}
+          </button>
+        )}
         <LangSwitcher lang={lang} onChange={setLang} />
         <DiscordButton lang={lang} />
       </header>
