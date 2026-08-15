@@ -3552,3 +3552,237 @@ button.p-name:hover {
   line-height: 1.55;
   color: #ffd9a0;
 }
+
+/* ===== Responsive ===== */
+
+@media (max-width: 900px) {
+  .app {
+    padding: 0 14px 48px;
+  }
+
+  .topbar {
+    flex-wrap: wrap;
+    gap: 10px 14px;
+    padding: 12px 0;
+  }
+
+  .topbar .logo {
+    order: 1;
+  }
+
+  .topbar .lang-switcher {
+    order: 2;
+    margin-left: auto;
+  }
+
+  .topbar .discord-btn {
+    order: 3;
+  }
+
+  .topbar .search {
+    order: 10;
+    flex: 1 1 260px;
+    max-width: none;
+  }
+
+  .topbar .btn-update {
+    order: 11;
+    flex-shrink: 0;
+  }
+
+  .team-panel {
+    min-width: 780px;
+  }
+
+  .team-panel-head {
+    position: sticky;
+    left: 0;
+    z-index: 1;
+    background: var(--card-solid);
+  }
+}
+
+@media (max-width: 640px) {
+  .hero {
+    padding: 60px 12px 36px;
+  }
+
+  .hero h1 {
+    font-size: 24px;
+  }
+
+  .hero-sub {
+    font-size: 13.5px;
+  }
+
+  .profile {
+    flex-wrap: wrap;
+    gap: 14px;
+    padding: 16px;
+    margin: 14px 0 20px;
+  }
+
+  .rank-icon {
+    width: 74px;
+    height: 74px;
+  }
+
+  .profile-mid {
+    flex: 1 1 100%;
+    min-width: 0;
+  }
+
+  .summoner-name {
+    font-size: 22px;
+  }
+
+  .summoner-tag {
+    font-size: 17px;
+  }
+
+  .profile-icon {
+    width: 62px;
+    height: 62px;
+  }
+
+  .record {
+    flex-wrap: wrap;
+    row-gap: 6px;
+  }
+
+  .match-head {
+    flex-wrap: wrap;
+    gap: 10px 14px;
+    padding: 12px 14px;
+  }
+
+  .m-meta {
+    width: auto;
+  }
+
+  .m-champ {
+    width: 48px;
+    height: 48px;
+  }
+
+  .m-champ-icon {
+    width: 48px;
+    height: 48px;
+  }
+
+  .m-kda {
+    min-width: 84px;
+  }
+
+  .m-stats {
+    flex: 1 1 100%;
+    gap: 16px;
+    justify-content: space-between;
+  }
+
+  .m-stat b {
+    font-size: 13px;
+  }
+
+  .chevron {
+    margin-left: auto;
+  }
+
+  .match-tabs {
+    padding: 12px 12px 0;
+    overflow-x: auto;
+  }
+
+  .match-tabs .tab {
+    padding: 8px 10px;
+    font-size: 12px;
+    white-space: nowrap;
+  }
+
+  .teams {
+    gap: 12px;
+    padding: 6px 10px 14px;
+  }
+
+  .metrics-teams {
+    grid-template-columns: 1fr;
+  }
+
+  .metric-subtabs {
+    align-self: stretch;
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+
+  .chart-box {
+    height: 240px;
+  }
+
+  .live-head {
+    flex-wrap: wrap;
+    gap: 8px 12px;
+    padding: 12px;
+  }
+
+  .live-mode-sub {
+    font-size: 10.5px;
+    padding: 2px 7px;
+  }
+
+  .prow {
+    padding: 8px 10px;
+  }
+
+  .p-champ {
+    min-width: 0;
+  }
+
+  .champ-head {
+    padding: 16px;
+    gap: 14px;
+  }
+
+  .champ-splash {
+    width: 68px;
+    height: 68px;
+  }
+
+  .champ-name {
+    font-size: 21px;
+  }
+
+  .champ-stat {
+    min-width: 82px;
+    padding: 8px 12px;
+  }
+
+  .champ-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .champ-card {
+    padding: 14px;
+  }
+
+  .champ-runes-row,
+  .champ-items-row {
+    flex-wrap: wrap;
+  }
+
+  .queue-filter {
+    padding: 10px;
+  }
+
+  .mastery-stat {
+    min-width: 100px;
+  }
+
+  .tt {
+    max-width: calc(100vw - 24px);
+  }
+
+  .footer {
+    margin-top: 30px;
+    padding: 0 10px;
+  }
+}
