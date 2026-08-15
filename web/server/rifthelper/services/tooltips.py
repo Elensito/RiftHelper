@@ -92,7 +92,6 @@ _TAG_HTML = {
 
 _STATS_RE = re.compile(r"<stats>(.*?)</stats>", re.DOTALL)
 _ATTN_RE = re.compile(r"<attention>(.*?)</attention>(.*)", re.DOTALL)
-_MAINTEXT_RE = re.compile(r"<mainText>(.*?)</mainText>", re.DOTALL)
 _BR_RE = re.compile(r"<br\s*/?>", re.IGNORECASE)
 
 
@@ -149,21 +148,6 @@ def _body_html(description: str) -> str:
     return html_body
 
 
-def _item_lore(item: dict) -> str:
-    lore = (item.get("plaintext") or "").strip()
-    if lore:
-        return _to_html(lore)
-    desc = item.get("description", "") or ""
-    m = _MAINTEXT_RE.search(desc)
-    if not m:
-        return ""
-    text = _STATS_RE.sub("", m.group(1))
-    text = _strip_tags(text)
-    text = html.unescape(text)
-    text = re.sub(r"\s+", " ", text).strip()
-    return text
-
-
 def item_tooltip(item_id, lang: str) -> dict | None:
     lang_code = "es" if lang == "es" else "en"
     item = _data("item", lang_code).get(str(item_id))
@@ -181,7 +165,6 @@ def item_tooltip(item_id, lang: str) -> dict | None:
         "stats": _stat_rows(description),
         "plaintext": item.get("plaintext", ""),
         "description": _body_html(description),
-        "lore": _item_lore(item),
         "version": config.DDG_VERSION,
     }
 
@@ -192,14 +175,12 @@ def rune_tooltip(rune_id, lang: str) -> dict | None:
     if not rune:
         return None
     desc = rune.get("longDesc") or rune.get("shortDesc") or ""
-    short = rune.get("shortDesc") or ""
     return {
         "kind": "rune",
         "id": rune_id,
         "name": rune.get("name", ""),
         "image": f"/assets/runes/{rune_id}.png",
         "description": _to_html(desc),
-        "lore": _to_html(short) if short else "",
         "version": config.DDG_VERSION,
     }
 
@@ -266,7 +247,6 @@ async def ability_tooltip(champ_key: str, slot: int, lang: str) -> dict | None:
         "name": sp.get("name", ""),
         "image": f"/assets/spells/{image}" if image else None,
         "description": description,
-        "lore": description,
         "cooldown": sp.get("cooldownBurn", ""),
         "cost": sp.get("costBurn", ""),
         "cost_label": cost_label,

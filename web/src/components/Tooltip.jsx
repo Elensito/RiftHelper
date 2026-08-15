@@ -103,6 +103,7 @@ export default function Tooltip() {
             ))}
           </div>
         )}
+        {d && d.plaintext ? <div className="tt-plain">{d.plaintext}</div> : null}
         {showDesc ? (
           <div className="tt-desc" dangerouslySetInnerHTML={{ __html: d.description }} />
         ) : null}
