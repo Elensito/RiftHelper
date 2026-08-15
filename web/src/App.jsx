@@ -426,6 +426,7 @@ export default function App() {
 
       <footer className="footer">
         RiftHelper · {t(lang, 'footerRiot')} · {new Date().getFullYear()}
+        <p className="footer-seo">{t(lang, 'seoFooter')}</p>
       </footer>
     </div>
   )

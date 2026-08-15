@@ -2277,6 +2277,15 @@ button.p-name:hover {
   font-size: 12px;
 }
 
+.footer-seo {
+  max-width: 720px;
+  margin: 10px auto 0;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--muted);
+  opacity: 0.85;
+}
+
 ::-webkit-scrollbar {
   width: 10px;
 }
