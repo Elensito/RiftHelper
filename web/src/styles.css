@@ -2307,11 +2307,11 @@ button.p-name:hover {
 
 .theme-toggle {
   position: fixed;
-  right: 20px;
+  left: 20px;
   bottom: 20px;
   z-index: 50;
-  width: 46px;
-  height: 46px;
+  width: 54px;
+  height: 54px;
   border-radius: 50%;
   border: 1px solid var(--border);
   background: var(--card-solid);
@@ -2329,8 +2329,8 @@ button.p-name:hover {
 }
 
 .theme-toggle svg {
-  width: 22px;
-  height: 22px;
+  width: 26px;
+  height: 26px;
 }
 
 .profile-tabs {
