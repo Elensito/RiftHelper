@@ -897,7 +897,7 @@ body {
 .ghead,
 .grow {
   display: grid;
-  grid-template-columns: 44px 26px 26px 150px 60px 84px 110px 64px 42px 46px 1fr;
+  grid-template-columns: 44px 26px 26px 150px 60px 84px 110px 64px 42px 58px 1fr;
   gap: 7px;
   align-items: center;
 }
