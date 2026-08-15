@@ -25,16 +25,13 @@ function SummaryStat({ label, value }) {
 
 function MasteryItem({ m, index, lang }) {
   const lv = m.level || 0
-  const maxed = lv >= 7
+  const maxed = !m.points_until_next
   const nextPct =
-    maxed || !m.points_until_next
-      ? 100
-      : Math.min(100, Math.round((m.points_since_last_level / m.points_until_next) * 100))
-  const maxLv = Math.max(1, lv)
+    maxed ? 100 : Math.min(100, Math.round((m.points_since_last_level / m.points_until_next) * 100))
   const points = m.points || 0
 
   return (
-    <div className={`mastery-item lvl-${Math.min(7, maxLv)}`}>
+    <div className={`mastery-item lvl-${Math.min(7, Math.max(1, lv))}`}>
       <span className="mastery-rank">{index + 1}</span>
       <div className="mastery-ico-wrap">
         <Img className="mastery-ico" src={m.icon} alt={m.name} title={m.name} />
