@@ -1,6 +1,9 @@
+import { useState } from 'react'
 import Img from './Img.jsx'
 import { fmtNum } from '../utils.js'
 import { t } from '../i18n.js'
+
+const PAGE_SIZE = 12
 
 function fmtAgo(ts, lang) {
   if (!ts) return ''
@@ -75,28 +78,35 @@ function MasteryItem({ m, index, lang }) {
 }
 
 export default function Mastery({ data, lang }) {
+  const [visible, setVisible] = useState(PAGE_SIZE)
   const s = data.summary || {}
+  const total = data.mastery.length
+  const hasMore = visible < total
   return (
     <section className="mastery">
       <div className="mastery-head">
         <div className="mastery-head-title">
           <h2>{t(lang, 'masteryTitle')}</h2>
-          <span className="mastery-head-sub">
-            {data.summoner.name}#{data.summoner.tag}
-          </span>
         </div>
         <div className="mastery-stats">
-          <SummaryStat label={t(lang, 'masteryTotalPoints')} value={fmtNum(s.total_points)} />
           <SummaryStat label={t(lang, 'masteryChampions')} value={s.champion_count || 0} />
-          <SummaryStat label={t(lang, 'masteryAvgLevel')} value={(s.average_level || 0).toFixed(1)} />
         </div>
       </div>
 
       <div className="mastery-grid">
-        {data.mastery.map((m, i) => (
+        {data.mastery.slice(0, visible).map((m, i) => (
           <MasteryItem key={m.champion_id || i} m={m} index={i} lang={lang} />
         ))}
       </div>
+
+      {hasMore && (
+        <button
+          className="btn btn-search mastery-more"
+          onClick={() => setVisible((v) => v + PAGE_SIZE)}
+        >
+          {t(lang, 'loadMore')}
+        </button>
+      )}
     </section>
   )
 }

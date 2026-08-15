@@ -139,6 +139,7 @@ const EN = {
   masteryHour: 'h',
   masteryDay: 'd',
   masteryChest: 'Chest granted',
+  loadMore: 'Load more',
 }
 
 const ES = {
@@ -277,6 +278,7 @@ const ES = {
   masteryHour: 'h',
   masteryDay: 'd',
   masteryChest: 'Cofre obtenido',
+  loadMore: 'Cargar más',
 }
 
 export const STR = { en: EN, es: ES }

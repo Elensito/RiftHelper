@@ -586,12 +586,9 @@ async def fetch_mastery(name: str, tag: str) -> dict:
     data = await riot.get_champion_mastery(region, puuid)
     champ_info = await riot.get_champion_info()
 
-    total_points = sum(m.get("championPoints", 0) for m in data)
-    levels = [m.get("championLevel", 0) for m in data]
-
     champions = []
     images: set[str] = set()
-    for m in data[:10]:
+    for m in data:
         champ = champ_info.get(m.get("championId"), {})
         image = champ.get("image")
         if image:
@@ -618,11 +615,7 @@ async def fetch_mastery(name: str, tag: str) -> dict:
             "tag": tag_line,
             "puuid": puuid,
         },
-        "summary": {
-            "total_points": total_points,
-            "champion_count": len(data),
-            "average_level": round(sum(levels) / len(levels), 1) if levels else 0,
-        },
+        "summary": {"champion_count": len(data)},
         "mastery": champions,
     }
     _mastery_cache[puuid] = (time.time(), result)
