@@ -10,7 +10,7 @@ class MasteryCog(commands.Cog):
 
 
     @app_commands.command(
-        name="maestria", description="Muestra los 10 campeones con más maestría de tu cuenta"
+        name="mastery", description="Muestra los 10 campeones con más maestría de tu cuenta"
     )
     async def mastery(self, interaction: discord.Interaction):
         data = interaction.client.storage.get_user(interaction.user.id)

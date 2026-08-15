@@ -13,23 +13,28 @@ from rifthelper.services.riot import RiotAPIError
 VERIFY_INTRO_BUTTON_ID = "verify:intro"
 
 
-async def apply_rank_role(member: discord.Member, tier: str) -> discord.Role | None:
+async def apply_rank_role(member: discord.Member, tier: str) -> tuple[discord.Role | None, bool]:
     tier = (tier or "UNRANKED").upper()
     role_id = config.RANK_ROLES.get(tier, "")
     role = member.guild.get_role(int(role_id)) if role_id else None
-    current = [
+
+    remove = [
         r for r in member.roles
         if r.id in config.RANK_ROLE_IDS and (role is None or r.id != role.id)
     ]
+    add = role is not None and role not in member.roles
+    changed = bool(remove) or add
+
+    if not changed:
+        return role, False
     try:
-        if current:
-            await member.remove_roles(*current, reason="Actualización de rol según rango de LoL")
-        if role is not None:
-            await member.add_roles(role, reason="Verificación de cuenta de League of Legends")
-            return role
+        if remove:
+            await member.remove_roles(*remove, reason="Actualización de rol según rango de LoL")
+        if add:
+            await member.add_roles(role, reason="Actualización de rol según rango de LoL")
     except discord.HTTPException:
-        return None
-    return role
+        return role, False
+    return role, True
 
 
 class VerifyModal(Modal):
@@ -61,7 +66,7 @@ class VerifyModal(Modal):
         return game_name, tag
 
     async def on_submit(self, interaction: discord.Interaction):
-        await interaction.response.defer(ephemeral=False)
+        await interaction.response.defer(ephemeral=True)
 
         parsed = self.parse_riot_id(self.riot_id.value)
         if parsed is None:
@@ -191,12 +196,12 @@ class VerifyView(View):
 
         role_name = None
         if isinstance(interaction.user, discord.Member):
-            role = await apply_rank_role(interaction.user, tier)
+            role, _ = await apply_rank_role(interaction.user, tier)
             role_name = role.name if role else None
 
         embed = presentation.verify_success_embed(p["summoner"], rank_label)
         await interaction.message.edit(embed=embed, view=None)
-        message = "✅ **¡Verificado!** Ya puedes usar **`/perfil`** para ver tu rango y LP."
+        message = "✅ **¡Verificado!** Ya puedes usar **`/profile`** para ver tu rango y LP."
         if role_name:
             message += f"\n🎖️ Se te ha asignado el rol **{role_name}**."
         await interaction.followup.send(message, ephemeral=True)
@@ -212,7 +217,7 @@ class VerifyCog(commands.Cog):
         self.bot.add_view(VerifyIntroView())
 
     @app_commands.command(
-        name="configurar-verificacion",
+        name="setup-verification",
         description="Registra el canal donde se muestra el mensaje con el botón de verificación",
     )
     @app_commands.guild_only()

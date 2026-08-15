@@ -52,7 +52,6 @@ def verify_prompt_embed(summoner: dict, icon_id: int) -> tuple[discord.Embed, di
         inline=False,
     )
     embed.set_image(url="attachment://verification_icon.png")
-    embed.set_thumbnail(url=config.ICON_URL.format(icon_id=icon_id))
 
     file = discord.File(config.VERIFICATION_ICONS[icon_id]["file"], filename="verification_icon.png")
     return embed, file
@@ -73,7 +72,21 @@ def verify_success_embed(summoner: dict, rank: str) -> discord.Embed:
     embed.add_field(name="📊 Rango", value=rank, inline=True)
     embed.add_field(
         name="🚀 Siguiente paso",
-        value="Usa **`/perfil`** para ver tu perfil con tu rango y LP.",
+        value="Usa **`/profile`** para ver tu perfil con tu rango y LP.",
+        inline=False,
+    )
+    return embed
+
+
+def unlink_embed(account: str) -> discord.Embed:
+    embed = base_embed(
+        "🔓 Cuenta desvinculada",
+        f"Se ha desvinculado **{account}** de tu perfil de Discord.",
+        color=config.BRAND["green"],
+    )
+    embed.add_field(
+        name="📌 ¿Quieres vincular otra?",
+        value="Pulsa el botón **🔐 Empezar verificación** en el canal de verificación del servidor.",
         inline=False,
     )
     return embed

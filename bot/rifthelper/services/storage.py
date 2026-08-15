@@ -42,6 +42,11 @@ class Storage:
             self._data[str(discord_id)] = profile
         await self.save()
 
+    async def remove_user(self, discord_id: int):
+        async with self._lock:
+            self._data.pop(str(discord_id), None)
+        await self.save()
+
     def get_config(self, key: str) -> str | None:
         return self._data.get(key)
 
