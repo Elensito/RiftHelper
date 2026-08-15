@@ -1,0 +1,19 @@
+name: Render keep-alive
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Render health endpoint
+        run: |
+          code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 60 https://rift-helper.com/health)
+          echo "HTTP $code"
+          if [ "$code" != "200" ]; then
+            echo "Health check returned $code" >&2
+            exit 1
+          fi
