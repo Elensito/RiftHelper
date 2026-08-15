@@ -279,13 +279,27 @@ body {
   font-weight: 800;
 }
 
-.refresh {
-  display: inline-block;
-  font-size: 16px;
+.refresh-icon {
+  flex-shrink: 0;
+  transition: transform 0.45s cubic-bezier(0.2, 0.7, 0.2, 1);
 }
 
-.refresh.spin {
-  animation: spin 0.9s linear infinite;
+.btn-update:hover:not(:disabled) .refresh-icon {
+  transform: rotate(180deg);
+}
+
+.btn-update:disabled .refresh-icon {
+  opacity: 0.6;
+}
+
+.btn-spinner {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  border-top-color: #fff;
+  animation: spin 0.7s linear infinite;
+  flex-shrink: 0;
 }
 
 @keyframes spin {
