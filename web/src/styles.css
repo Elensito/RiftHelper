@@ -897,8 +897,8 @@ body {
 .ghead,
 .grow {
   display: grid;
-  grid-template-columns: 46px 30px 54px 150px 60px 84px 110px 64px 42px 46px 1fr;
-  gap: 10px;
+  grid-template-columns: 44px 26px 26px 150px 60px 84px 110px 64px 42px 46px 1fr;
+  gap: 7px;
   align-items: center;
 }
 
@@ -1006,6 +1006,7 @@ body {
 .g-name {
   display: flex;
   flex-direction: column;
+  align-items: center;
   gap: 3px;
   min-width: 0;
 }
