@@ -125,6 +125,20 @@ const EN = {
   metricHint: 'Click a champion to track its curve',
   minShort: 'min',
   footerRiot: 'unofficial data provided by Riot Games',
+  tabMastery: 'Mastery',
+  masteryLoading: 'Loading mastery…',
+  masteryEmpty: 'No champions played yet',
+  masteryTitle: 'Champion mastery',
+  masteryTotalPoints: 'Total points',
+  masteryChampions: 'Champions',
+  masteryAvgLevel: 'Avg level',
+  masteryPts: 'pts',
+  masteryNext: 'to next level',
+  masteryJustNow: 'just now',
+  masteryMin: 'm',
+  masteryHour: 'h',
+  masteryDay: 'd',
+  masteryChest: 'Chest granted',
 }
 
 const ES = {
@@ -249,6 +263,20 @@ const ES = {
   metricHint: 'Pulsa un campeón para activar su curva',
   minShort: 'min',
   footerRiot: 'datos no oficiales de Riot Games',
+  tabMastery: 'Maestría',
+  masteryLoading: 'Cargando maestría…',
+  masteryEmpty: 'Aún no has jugado con ningún campeón',
+  masteryTitle: 'Maestría de campeones',
+  masteryTotalPoints: 'Puntos totales',
+  masteryChampions: 'Campeones',
+  masteryAvgLevel: 'Nivel medio',
+  masteryPts: 'pts',
+  masteryNext: 'para el siguiente nivel',
+  masteryJustNow: 'ahora',
+  masteryMin: 'min',
+  masteryHour: 'h',
+  masteryDay: 'd',
+  masteryChest: 'Cofre obtenido',
 }
 
 export const STR = { en: EN, es: ES }

@@ -8,7 +8,8 @@ import LangSwitcher from './components/LangSwitcher.jsx'
 import ThemeToggle from './components/ThemeToggle.jsx'
 import Favorites from './components/Favorites.jsx'
 import ChampionPage from './components/ChampionPage.jsx'
-import { fetchSummoner, fetchLiveGame, fetchChampions, fetchChampion } from './api.js'
+import Mastery from './components/Mastery.jsx'
+import { fetchSummoner, fetchLiveGame, fetchMastery, fetchChampions, fetchChampion } from './api.js'
 import { matchGroup, t } from './i18n.js'
 
 const PAGE_SIZE = 20
@@ -30,6 +31,8 @@ export default function App() {
   const [champions, setChampions] = useState([])
   const [champion, setChampion] = useState(null)
   const [champLoading, setChampLoading] = useState(false)
+  const [mastery, setMastery] = useState(null)
+  const [masteryLoading, setMasteryLoading] = useState(false)
   const sentinelRef = useRef(null)
 
   useEffect(() => {
@@ -62,6 +65,7 @@ export default function App() {
       setTab('matches')
       setQueueFilter('all')
       setLive(null)
+      setMastery(null)
       setError('')
       document.title = `RiftHelper · ${data.summoner.name}#${data.summoner.tag}`
       fetchLiveGame(name, tag)
@@ -173,6 +177,22 @@ export default function App() {
     window.history.pushState(null, '', '/')
   }
 
+  const openMastery = async () => {
+    if (!profile) return
+    setTab('mastery')
+    if (mastery) return
+    setMasteryLoading(true)
+    setError('')
+    try {
+      const data = await fetchMastery(profile.summoner.name, profile.summoner.tag)
+      setMastery(data)
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setMasteryLoading(false)
+    }
+  }
+
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
     const name = params.get('name')
@@ -263,6 +283,12 @@ export default function App() {
                 {t(lang, 'tabLive')}
                 {live && live.in_game && <span className="live-dot" />}
               </button>
+              <button
+                className={`tab ${tab === 'mastery' ? 'active' : ''}`}
+                onClick={openMastery}
+              >
+                {t(lang, 'tabMastery')}
+              </button>
             </div>
 
             {tab === 'live' ? (
@@ -275,6 +301,17 @@ export default function App() {
                 <LiveGame data={live} lang={lang} />
               ) : (
                 <div className="live-empty">{t(lang, 'liveNotInGame')}</div>
+              )
+            ) : tab === 'mastery' ? (
+              masteryLoading ? (
+                <div className="loader">
+                  <div className="spinner" />
+                  {t(lang, 'masteryLoading')}
+                </div>
+              ) : mastery && mastery.mastery.length ? (
+                <Mastery data={mastery} lang={lang} />
+              ) : (
+                <div className="live-empty">{t(lang, 'masteryEmpty')}</div>
               )
             ) : (
               <div className="match-list">

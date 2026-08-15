@@ -102,6 +102,19 @@ async def get_live_game(
         raise HTTPException(status_code=404, detail=str(e)) from e
 
 
+@app.get("/api/mastery")
+async def get_mastery(
+    name: str = Query(..., min_length=1),
+    tag: str = Query(..., min_length=1),
+):
+    try:
+        return await api_service.fetch_mastery(name.strip(), tag.strip())
+    except RiotAPIError as e:
+        raise HTTPException(status_code=e.status or 502, detail=str(e)) from e
+    except RuntimeError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+
+
 @app.get("/api/champions")
 def get_champions():
     return {"champions": champions_service.list_champions()}

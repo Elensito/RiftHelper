@@ -14,6 +14,8 @@ from rifthelper.services import stats as stats_service
 from rifthelper.services.riot import RiotAPIError, RiotClient
 
 MATCH_COUNT = 30
+MASTERY_CACHE_TTL = 300
+_mastery_cache: dict[str, tuple[float, dict]] = {}
 
 
 
@@ -563,6 +565,68 @@ async def fetch_match_build(match_id: str, puuid: str | None = None) -> dict:
 
     await _ensure_spell_icons(images)
     return {"players": players}
+
+
+async def fetch_mastery(name: str, tag: str) -> dict:
+
+    region = config.RIOT_REGION
+    riot = RiotClient()
+
+    account = await riot.get_account_by_riot_id(region, name, tag)
+    puuid = account.get("puuid", "")
+    if not puuid:
+        raise RuntimeError("No se encontró esa cuenta en EUW. Revisa el Nombre#tag.")
+    game_name = account.get("gameName") or name
+    tag_line = account.get("tagLine") or tag
+
+    cached = _mastery_cache.get(puuid)
+    if cached and time.time() - cached[0] < MASTERY_CACHE_TTL:
+        return cached[1]
+
+    data = await riot.get_champion_mastery(region, puuid)
+    champ_info = await riot.get_champion_info()
+
+    total_points = sum(m.get("championPoints", 0) for m in data)
+    levels = [m.get("championLevel", 0) for m in data]
+
+    champions = []
+    images: set[str] = set()
+    for m in data[:10]:
+        champ = champ_info.get(m.get("championId"), {})
+        image = champ.get("image")
+        if image:
+            images.add(image)
+        champions.append(
+            {
+                "champion_id": m.get("championId"),
+                "name": champ.get("name", f"ID {m.get('championId')}"),
+                "icon": _champ_url(champ),
+                "level": m.get("championLevel", 0),
+                "points": m.get("championPoints", 0),
+                "points_since_last_level": m.get("championPointsSinceLastLevel", 0),
+                "points_until_next": m.get("championPointsUntilNextLevel", 0),
+                "chest_granted": bool(m.get("chestGranted")),
+                "tokens": m.get("tokensEarned", 0),
+                "last_played": m.get("lastPlayTime", 0),
+            }
+        )
+    await _ensure_champion_icons(images)
+
+    result = {
+        "summoner": {
+            "name": game_name,
+            "tag": tag_line,
+            "puuid": puuid,
+        },
+        "summary": {
+            "total_points": total_points,
+            "champion_count": len(data),
+            "average_level": round(sum(levels) / len(levels), 1) if levels else 0,
+        },
+        "mastery": champions,
+    }
+    _mastery_cache[puuid] = (time.time(), result)
+    return result
 
 
 async def fetch_live_game(name: str, tag: str) -> dict:

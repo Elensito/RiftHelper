@@ -38,6 +38,14 @@ export async function fetchLiveGame(name, tag) {
   return data
 }
 
+export async function fetchMastery(name, tag) {
+  const url = `/api/mastery?name=${encodeURIComponent(name)}&tag=${encodeURIComponent(tag)}`
+  const res = await fetch(url)
+  const data = await res.json()
+  if (!res.ok) throw new Error(data.detail || 'Error al obtener la maestría')
+  return data
+}
+
 export async function fetchChampions() {
   const res = await fetch('/api/champions')
   const data = await res.json()
