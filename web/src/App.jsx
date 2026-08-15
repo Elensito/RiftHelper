@@ -6,6 +6,7 @@ import LiveGame from './components/LiveGame.jsx'
 import QueueFilter from './components/QueueFilter.jsx'
 import LangSwitcher from './components/LangSwitcher.jsx'
 import ThemeToggle from './components/ThemeToggle.jsx'
+import DiscordButton from './components/DiscordButton.jsx'
 import Favorites from './components/Favorites.jsx'
 import ChampionPage from './components/ChampionPage.jsx'
 import Mastery from './components/Mastery.jsx'
@@ -259,6 +260,7 @@ export default function App() {
           {t(lang, 'update')}
         </button>
         <LangSwitcher lang={lang} onChange={setLang} />
+        <DiscordButton lang={lang} />
       </header>
 
       <ThemeToggle theme={theme} onChange={setTheme} />
