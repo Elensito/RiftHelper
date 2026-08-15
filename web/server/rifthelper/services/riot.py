@@ -331,6 +331,44 @@ class RiotClient:
             pass
         return {int(k): v for k, v in self._runes[locale].items() if isinstance(k, int)}
 
+    async def get_rune_trees(self, locale: str = "en_US") -> dict[int, dict]:
+        if not hasattr(self, "_trees"):
+            self._trees = {}
+        if locale in self._trees:
+            return self._trees[locale]
+
+        path = config.RUNES_TREES_CACHE if locale == "en_US" else config.RUNES_TREES_CACHE_ES
+        url = config.RUNES_URL.format(locale=locale)
+        raw = None
+        if path.is_file():
+            try:
+                raw = json.loads(path.read_text(encoding="utf-8"))
+            except (ValueError, OSError):
+                raw = None
+        if raw and raw.get("_v") == config.DDG_VERSION:
+            self._trees[locale] = {int(k): v for k, v in raw.items() if k.isdigit()}
+            return self._trees[locale]
+
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url) as resp:
+                if resp.status != 200:
+                    raise RiotAPIError(
+                        "No se pudieron obtener los árboles de runas desde DataDragon.", resp.status
+                    )
+                data = await resp.json()
+
+        self._trees[locale] = {
+            int(tree["id"]): {"name": tree.get("name", ""), "icon": tree.get("icon", "")}
+            for tree in data
+        }
+        payload = dict(self._trees[locale])
+        payload["_v"] = config.DDG_VERSION
+        try:
+            path.write_text(json.dumps(payload), encoding="utf-8")
+        except OSError:
+            pass
+        return self._trees[locale]
+
     async def get_summoner_spells_info(self) -> dict[int, dict]:
 
         if self._summoner_spells is not None:

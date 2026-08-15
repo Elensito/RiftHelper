@@ -5,6 +5,7 @@
 
 
 from datetime import datetime, timezone
+import asyncio
 import json
 from pathlib import Path
 import time
@@ -16,7 +17,9 @@ from rifthelper.services.riot import RiotAPIError, RiotClient
 
 MATCH_COUNT = 30
 MASTERY_CACHE_TTL = 300
+RANK_CACHE_TTL = 600
 _mastery_cache: dict[str, tuple[float, dict]] = {}
+_rank_cache: dict[str, tuple[float, dict | None]] = {}
 _VALIDATED_TOOLTIP: set[tuple[str, str, str]] = set()
 _SUMMONER_SPELLS_INFO: dict = {}
 
@@ -92,6 +95,20 @@ def _itemd(item_id, item_names: dict) -> dict | None:
     }
 
 
+def _treed(tree_id, rune_trees: dict) -> dict | None:
+    if not tree_id:
+        return None
+    info = rune_trees.get(tree_id)
+    if not info:
+        return None
+    return {
+        "id": tree_id,
+        "src": f"/assets/runetrees/{tree_id}.png",
+        "en": info.get("en", ""),
+        "es": info.get("es", ""),
+    }
+
+
 async def ensure_profile_icon(icon_id) -> Path | None:
 
 
@@ -119,8 +136,59 @@ async def ensure_profile_icon(icon_id) -> Path | None:
     return None
 
 
-async def _ensure_rune_icons(rune_ids: set[int], runes_info: dict) -> None:
+async def _ensure_tree_icons(rune_trees: dict) -> None:
+    if not rune_trees:
+        return
+    out_dir = config.RUNE_TREES_DIR
+    out_dir.mkdir(parents=True, exist_ok=True)
+    import aiohttp
 
+    async with aiohttp.ClientSession() as session:
+        for tid, info in rune_trees.items():
+            path = out_dir / f"{tid}.png"
+            if path.is_file():
+                continue
+            icon = info.get("icon") if isinstance(info, dict) else None
+            if not icon:
+                continue
+            url = config.RUNE_ICON_URL.format(icon=icon)
+            try:
+                async with session.get(url) as resp:
+                    if resp.status == 200:
+                        path.write_bytes(await resp.read())
+            except OSError:
+                pass
+
+
+async def _fetch_player_ranks(region: str, puuids: set[str]) -> dict:
+    if not puuids:
+        return {}
+    now = time.time()
+    todo = [p for p in puuids if p and (p not in _rank_cache or now - _rank_cache[p][0] > RANK_CACHE_TTL)]
+    if todo:
+        riot = RiotClient()
+        sem = asyncio.Semaphore(3)
+
+        async def one(puuid: str) -> None:
+            async with sem:
+                try:
+                    entry = await riot.get_solo_rank(region, puuid)
+                except RiotAPIError:
+                    entry = None
+            if entry:
+                _rank_cache[puuid] = (now, {
+                    "tier": entry.get("tier") or "UNRANKED",
+                    "division": entry.get("rank") or "",
+                    "lp": entry.get("leaguePoints") or 0,
+                })
+            else:
+                _rank_cache[puuid] = (now, {"tier": "UNRANKED", "division": "", "lp": 0})
+
+        await asyncio.gather(*(one(p) for p in todo))
+    return {p: _rank_cache[p][1] for p in puuids if p in _rank_cache}
+
+
+async def _ensure_rune_icons(rune_ids: set[int], runes_info: dict) -> None:
     if not rune_ids:
         return
     out_dir = config.ASSETS_DIR / "runes"
@@ -170,6 +238,8 @@ def _participant_summary(
     item_names: dict,
     summoner_spells: dict[int, dict],
     spell_images: set[str],
+    rune_trees: dict,
+    rank_map: dict,
 ) -> dict:
     champ = champ_info.get(p.get("championId"), {})
     items = [p.get(f"item{i}", 0) or 0 for i in range(7)]
@@ -177,6 +247,14 @@ def _participant_summary(
     role_boots = p.get("roleBoundItem", 0) or 0
     runes = _runes_of(p)
     cs = p.get("totalMinionsKilled", 0) + p.get("totalEnemiesSlain", 0)
+
+    styles = (p.get("perks", {}) or {}).get("styles", []) or []
+    primary_tree_id = styles[0].get("style") if len(styles) > 0 else None
+    secondary_tree_id = styles[1].get("style") if len(styles) > 1 else None
+
+    rank = (rank_map or {}).get(p.get("puuid")) or {}
+    tier = rank.get("tier") or "UNRANKED"
+    division = rank.get("division") or ""
 
     spell_sids = [p.get("summoner1Id"), p.get("summoner2Id")]
     spells = []
@@ -214,8 +292,15 @@ def _participant_summary(
         "win": bool(p.get("win")),
         "keystone": _runed(runes[0], rune_names) if runes else None,
         "runes": [_runed(r, rune_names) for r in runes],
+        "primary_tree": _treed(primary_tree_id, rune_trees),
+        "secondary_tree": _treed(secondary_tree_id, rune_trees),
+        "tier": tier,
+        "division": division,
+        "rank_icon": f"/assets/ranks/{tier.lower()}.png",
+        "lp": rank.get("lp") or 0,
         "spells": spells,
         "items": [_itemd(i, item_names) for i in items[:6]],
+        "role_item": _itemd(role_boots, item_names) if role_boots else None,
         "boots": _itemd(role_boots, item_names) if is_adc else None,
         "trinket": _itemd(items[6], item_names) if items[6] else None,
     }
@@ -258,6 +343,8 @@ def build_match(
     item_names: dict,
     summoner_spells: dict[int, dict],
     spell_images: set[str],
+    rune_trees: dict,
+    rank_map: dict,
 ) -> dict | None:
     player = stats_service.compute_match_stats(match, timeline, puuid, champ_info)
     if player is None:
@@ -268,7 +355,9 @@ def build_match(
     duration_min = duration_sec / 60 if duration_sec else 1
     participants = info.get("participants", [])
     players = [
-        _participant_summary(p, champ_info, duration_min, puuid, rune_names, item_names, summoner_spells, spell_images)
+        _participant_summary(
+            p, champ_info, duration_min, puuid, rune_names, item_names, summoner_spells, spell_images, rune_trees, rank_map
+        )
         for p in participants
     ]
     _mark_mvps(players)
@@ -355,6 +444,8 @@ async def fetch_profile(
     items_es = await riot.get_items_info("es_ES")
     runes_en = await riot.get_runes_info("en_US")
     runes_es = await riot.get_runes_info("es_ES")
+    trees_en = await riot.get_rune_trees("en_US")
+    trees_es = await riot.get_rune_trees("es_ES")
     spells_info = await riot.get_summoner_spells_info()
 
     rune_names = {
@@ -366,6 +457,14 @@ async def fetch_profile(
     item_names = {
         iid: {"en": items_en.get(iid, {}).get("name", ""), "es": items_es.get(iid, {}).get("name", "")}
         for iid in items_en
+    }
+    rune_trees = {
+        tid: {
+            "en": trees_en.get(tid, {}).get("name", ""),
+            "es": trees_es.get(tid, {}).get("name", ""),
+            "icon": trees_en.get(tid, {}).get("icon", ""),
+        }
+        for tid in trees_en
     }
 
     summoner = await riot.get_summoner_by_puuid(region, puuid)
@@ -382,6 +481,7 @@ async def fetch_profile(
     rune_ids: set[int] = set()
     item_ids: set[int] = set()
     spell_images: set[str] = set()
+    player_puuids: set[str] = set()
     for match_id in match_ids:
         try:
             match = await riot.get_match(region, match_id)
@@ -389,14 +489,31 @@ async def fetch_profile(
         except RiotAPIError:
             continue
         for p in (match.get("info", {}) or {}).get("participants", []) or []:
+            if p.get("puuid"):
+                player_puuids.add(p["puuid"])
             rune_ids.update(_runes_of(p))
             item_ids.update(p.get(f"item{i}", 0) or 0 for i in range(7))
             item_ids.add(p.get("roleBoundItem", 0) or 0)
-        payload = build_match(match, timeline, puuid, champ_info, rune_names, item_names, spells_info, spell_images)
+
+    rank_map = await _fetch_player_ranks(region, player_puuids)
+    rank_map[puuid] = {
+        "tier": (rank or {}).get("tier", "UNRANKED"),
+        "division": (rank or {}).get("rank", ""),
+        "lp": (rank or {}).get("leaguePoints", 0),
+    }
+
+    for match_id in match_ids:
+        try:
+            match = await riot.get_match(region, match_id)
+            timeline = await riot.get_match_timeline(region, match_id)
+        except RiotAPIError:
+            continue
+        payload = build_match(match, timeline, puuid, champ_info, rune_names, item_names, spells_info, spell_images, rune_trees, rank_map)
         if payload:
             matches.append(payload)
 
     await _ensure_rune_icons(rune_ids, runes_en)
+    await _ensure_tree_icons(rune_trees)
     await _ensure_spell_icons(spell_images)
     await _ensure_item_icons(item_ids)
 

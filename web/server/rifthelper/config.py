@@ -67,6 +67,9 @@ ITEMS_DIR = ASSETS_DIR / "items"
 RUNES_CACHE = BASE_DIR / "runes_cache.json"
 RUNES_CACHE_ES = BASE_DIR / "runes_cache_es.json"
 RUNES_DIR = ASSETS_DIR / "runes"
+RUNES_TREES_CACHE = BASE_DIR / "runes_trees_cache.json"
+RUNES_TREES_CACHE_ES = BASE_DIR / "runes_trees_cache_es.json"
+RUNE_TREES_DIR = ASSETS_DIR / "runetrees"
 
 
 CACHE_DIR = BASE_DIR / "cache"

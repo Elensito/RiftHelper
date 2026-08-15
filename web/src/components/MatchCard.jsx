@@ -13,8 +13,9 @@ function nameOf(entry, lang) {
   return entry[lang] || entry.en || ''
 }
 
-function TeamColumn({ players, teamId, lang, onOpenPlayer }) {
+function TeamPanel({ players, teamId, allMaxDamage, lang, onOpenPlayer }) {
   const team = sortPlayers(players.filter((p) => p.team === teamId))
+  const won = team.some((p) => p.win)
   const totals = team.reduce(
     (acc, p) => {
       acc.kills += p.kills || 0
@@ -25,16 +26,32 @@ function TeamColumn({ players, teamId, lang, onOpenPlayer }) {
     { kills: 0, deaths: 0, assists: 0 }
   )
   return (
-    <div className={`team-col ${teamId === 100 ? 'blue' : 'red'}`}>
-      <div className="team-header">
+    <div className={`team-panel ${teamId === 100 ? 'blue' : 'red'}`}>
+      <div className="team-panel-head">
         <span className="team-dot" />
-        {teamId === 100 ? t(lang, 'blueTeam') : t(lang, 'redTeam')}
+        <span className="team-name">{teamId === 100 ? t(lang, 'blueTeam') : t(lang, 'redTeam')}</span>
+        <span className={`team-result ${won ? 'win' : 'loss'}`}>
+          {won ? t(lang, 'victory') : t(lang, 'defeat')}
+        </span>
         <span className="team-kda">
           {totals.kills} <i>/</i> {totals.deaths} <i>/</i> {totals.assists}
         </span>
       </div>
+      <div className="ghead">
+        <span />
+        <span />
+        <span />
+        <span />
+        <span className="ghead-label">{t(lang, 'carry')}</span>
+        <span className="ghead-label">{t(lang, 'kda')}</span>
+        <span className="ghead-label">{t(lang, 'damage')}</span>
+        <span className="ghead-label">{t(lang, 'gold')}</span>
+        <span className="ghead-label">{t(lang, 'cs')}</span>
+        <span className="ghead-label">{t(lang, 'visionShort')}</span>
+        <span className="ghead-label">{t(lang, 'build')}</span>
+      </div>
       {team.map((p, i) => (
-        <PlayerRow key={i} p={p} lang={lang} onOpenPlayer={onOpenPlayer} />
+        <PlayerRow key={i} p={p} lang={lang} maxDamage={allMaxDamage} onOpenPlayer={onOpenPlayer} />
       ))}
     </div>
   )
@@ -142,8 +159,20 @@ export default function MatchCard({ match, lang, puuid, onOpenPlayer }) {
 
         {tab === 'general' ? (
           <div className="teams">
-            <TeamColumn players={match.players} teamId={100} lang={lang} onOpenPlayer={onOpenPlayer} />
-            <TeamColumn players={match.players} teamId={200} lang={lang} onOpenPlayer={onOpenPlayer} />
+            <TeamPanel
+              players={match.players}
+              teamId={100}
+              lang={lang}
+              onOpenPlayer={onOpenPlayer}
+              allMaxDamage={Math.max(...match.players.map((p) => p.damage || 0))}
+            />
+            <TeamPanel
+              players={match.players}
+              teamId={200}
+              lang={lang}
+              onOpenPlayer={onOpenPlayer}
+              allMaxDamage={Math.max(...match.players.map((p) => p.damage || 0))}
+            />
           </div>
         ) : tab === 'metrics' ? (
           <Suspense

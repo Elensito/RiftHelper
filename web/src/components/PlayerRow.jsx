@@ -1,6 +1,6 @@
 import Img from './Img.jsx'
 import { TooltipTarget } from './Tooltip.jsx'
-import { fmtNum, roleLabel } from '../utils.js'
+import { fmtNum, kdaRatio } from '../utils.js'
 import { t } from '../i18n.js'
 
 function nameOf(entry, lang) {
@@ -19,134 +19,157 @@ function iconId(entry) {
   return 0
 }
 
-function RuneStrip({ runes, lang }) {
-  if (!runes || runes.length === 0) return null
+function ItemCell({ it, lang, className = 'g-item' }) {
   return (
-    <div className="rune-strip">
-      {runes.slice(0, 4).map((r, i) => (
-        <TooltipTarget key={`p${i}`} kind="rune" id={iconId(r)} lang={lang} src={r && r.src} name={nameOf(r, lang)}>
-          <Img src={r && r.src} className="rune" />
-        </TooltipTarget>
-      ))}
-      <span className="rune-sep" />
-      {runes.slice(4, 6).map((r, i) => (
-        <TooltipTarget key={`s${i}`} kind="rune" id={iconId(r)} lang={lang} src={r && r.src} name={nameOf(r, lang)}>
-          <Img src={r && r.src} className="rune" />
-        </TooltipTarget>
-      ))}
-      <span className="rune-sep" />
-      {runes.slice(6).map((r, i) => (
-        <TooltipTarget key={`t${i}`} kind="rune" id={iconId(r)} lang={lang} src={r && r.src} name={nameOf(r, lang)}>
-          <Img src={r && r.src} className="rune shard" />
-        </TooltipTarget>
-      ))}
-    </div>
+    <TooltipTarget kind="item" id={iconId(it)} lang={lang} src={it && it.src} name={nameOf(it, lang)}>
+      <Img src={it && it.src} className={className} />
+    </TooltipTarget>
   )
 }
 
-function Items({ p, lang }) {
-  const items = [...(p.items || []), ...(p.boots ? [p.boots] : []), ...(p.trinket ? [p.trinket] : [])]
+function SpellCell({ s, lang }) {
   return (
-    <div className="items">
-      {items.map((it, i) => (
-        <TooltipTarget key={i} kind="item" id={iconId(it)} lang={lang} src={it && it.src} name={nameOf(it, lang)}>
-          <Img src={it && it.src} className="item" />
-        </TooltipTarget>
-      ))}
-    </div>
+    <TooltipTarget
+      kind="spell"
+      id={s && s.id}
+      lang={lang}
+      src={s && s.src}
+      name={s && nameOf(s.name, lang)}
+    >
+      <Img src={s && s.src} className="g-spell" />
+    </TooltipTarget>
   )
 }
 
-function CarryBadges({ p, lang }) {
+export default function PlayerRow({ p, lang, maxDamage = 0, onOpenPlayer = () => {} }) {
+  const dmgPct = maxDamage > 0 ? Math.min(100, Math.round((p.damage / maxDamage) * 100)) : 0
   return (
-    <div className="prow-badges">
-      <span className="prow-kda" title={t(lang, 'kda')}>
-        <i className="k">{p.kills}</i>
-        <span className="sep">/</span>
-        <i className="d">{p.deaths}</i>
-        <span className="sep">/</span>
-        <i className="a">{p.assists}</i>
-      </span>
-      {p.carry_score != null && (
-        <span
-          className={`carry-score ${p.carry_score >= 70 ? 'high' : p.carry_score >= 40 ? 'mid' : ''}`}
-          title={t(lang, 'carryScore')}
-        >
-          {p.carry_score}
+    <div className={`grow ${p.is_player ? 'me' : ''}`}>
+      <div className="g-champ">
+        <div className="g-champ-wrap">
+          <Img src={p.champion_icon} className="g-champ-icon" title={p.champion} />
+          {p.level ? <span className="g-champ-level">{p.level}</span> : null}
+        </div>
+      </div>
+
+      <div className="g-spells">
+        {(p.spells || []).map((s, i) => (
+          <SpellCell key={i} s={s} lang={lang} />
+        ))}
+      </div>
+
+      <div className="g-runes">
+        {p.keystone ? (
+          <TooltipTarget
+            kind="rune"
+            id={p.keystone.id}
+            lang={lang}
+            src={p.keystone.src}
+            name={nameOf(p.keystone, lang)}
+          >
+            <Img src={p.keystone.src} className="g-rune" />
+          </TooltipTarget>
+        ) : null}
+        {p.secondary_tree ? (
+          <Img
+            src={p.secondary_tree.src}
+            className="g-rune g-tree"
+            title={nameOf(p.secondary_tree, lang)}
+          />
+        ) : null}
+      </div>
+
+      <div className="g-name">
+        {p.player_name ? (
+          <button
+            className="g-pname"
+            title={`${p.player_name}#${p.player_tag}`}
+            onClick={() => onOpenPlayer(p.player_name, p.player_tag)}
+          >
+            {p.player_name}
+          </button>
+        ) : (
+          <span className="g-pname">{p.champion}</span>
+        )}
+        <div className="g-rank">
+          <Img
+            src={p.rank_icon}
+            className="g-rank-icon"
+            title={`${p.tier}${p.division ? ` ${p.division}` : ''}`}
+          />
+          {p.division ? <span className="g-rank-div">{p.division}</span> : null}
+        </div>
+      </div>
+
+      <div className="g-carry">
+        {p.carry_score != null && (
+          <span
+            className={`carry-score ${p.carry_score >= 70 ? 'high' : p.carry_score >= 40 ? 'mid' : ''}`}
+            title={t(lang, 'carryScore')}
+          >
+            {p.carry_score}
+          </span>
+        )}
+        {p.mvp && (
+          <span className="mvp-badge" title={t(lang, 'mvp')}>
+            {t(lang, 'mvp')}
+          </span>
+        )}
+      </div>
+
+      <div className="g-kda">
+        <span className="g-kda-line">
+          <i className="k">{p.kills}</i>
+          <i className="sep">/</i>
+          <i className="d">{p.deaths}</i>
+          <i className="sep">/</i>
+          <i className="a">{p.assists}</i>
         </span>
-      )}
-      {p.mvp && <span className="mvp-badge" title={t(lang, 'mvp')}>{t(lang, 'mvp')}</span>}
-    </div>
-  )
-}
-
-export default function PlayerRow({ p, lang, onOpenPlayer = () => {} }) {
-  return (
-    <div className={`prow ${p.is_player ? 'me' : ''}`}>
-      <div className="prow-main">
-        <div className="p-champ">
-          <div className="p-champ-icon-wrap">
-            <Img src={p.champion_icon} className="p-champ-icon" title={p.champion} />
-            {p.level ? <span className="p-champ-level">{p.level}</span> : null}
-          </div>
-          <div className="p-spells">
-            {(p.spells || []).map((s, i) => (
-              <TooltipTarget
-                key={i}
-                kind="spell"
-                id={s && s.id}
-                lang={lang}
-                src={s && s.src}
-                name={s && nameOf(s.name, lang)}
-              >
-                <Img src={s && s.src} className="p-spell" />
-              </TooltipTarget>
-            ))}
-          </div>
-          <div className="p-champ-name">
-            {p.player_name ? (
-              <button
-                className="p-name"
-                title={`${p.player_name}#${p.player_tag}`}
-                onClick={() => onOpenPlayer(p.player_name, p.player_tag)}
-              >
-                {p.player_name}
-                {p.player_tag ? <span className="p-tag">#{p.player_tag}</span> : null}
-              </button>
-            ) : (
-              <span className="p-name">{p.champion}</span>
-            )}
-            <span className="p-role">{roleLabel(p.role)}</span>
-          </div>
-        </div>
-
-        <div className="p-stat">
-          <span className="p-stat-v">{p.cs}</span>
-          <span className="p-stat-l">{p.cs_per_min}/m {t(lang, 'cs')}</span>
-        </div>
-        <div className="p-stat">
-          <span className="p-stat-v">{fmtNum(p.gold)}</span>
-          <span className="p-stat-l">{t(lang, 'goldShort')}</span>
-        </div>
-        <div className="p-stat">
-          <span className="p-stat-v">{fmtNum(p.damage)}</span>
-          <span className="p-stat-l">{t(lang, 'damageShort')}</span>
-        </div>
-        <div className="p-stat">
-          <span className="p-stat-v">{p.vision}</span>
-          <span className="p-stat-l">{t(lang, 'visionShort')}</span>
-        </div>
-
-        {p.is_player && <span className="me-badge">{t(lang, 'you')}</span>}
+        <span className="g-kda-ratio">
+          {kdaRatio(p.kills, p.deaths, p.assists)} {t(lang, 'kda')}
+        </span>
       </div>
 
-      <div className="prow-build">
-        <Items p={p} lang={lang} />
+      <div className="g-dmg">
+        <span className="g-dmg-val">{fmtNum(p.damage)}</span>
+        <div className="g-dmg-bar">
+          <div className="g-dmg-fill" style={{ width: `${dmgPct}%` }} />
+        </div>
       </div>
 
-      <div className="prow-sub">
-        <RuneStrip runes={p.runes} lang={lang} />
-        <CarryBadges p={p} lang={lang} />
+      <div className="g-stat">
+        <span className="g-stat-v">{fmtNum(p.gold)}</span>
+        <span className="g-stat-l">{t(lang, 'goldShort')}</span>
+      </div>
+      <div className="g-stat">
+        <span className="g-stat-v">{p.cs}</span>
+        <span className="g-stat-l">{t(lang, 'cs')}</span>
+      </div>
+      <div className="g-stat">
+        <span className="g-stat-v">{p.vision}</span>
+        <span className="g-stat-l">{t(lang, 'visionShort')}</span>
+      </div>
+
+      <div className="g-items">
+        {p.role_item ? (
+          <TooltipTarget
+            kind="item"
+            id={p.role_item.id}
+            lang={lang}
+            src={p.role_item.src}
+            name={nameOf(p.role_item, lang)}
+          >
+            <Img
+              src={p.role_item.src}
+              className="g-item mission"
+              title={`${t(lang, 'mission')} · ${nameOf(p.role_item, lang)}`}
+            />
+          </TooltipTarget>
+        ) : null}
+        {(p.items || []).map((it, i) => (
+          <ItemCell key={i} it={it} lang={lang} />
+        ))}
+        {p.trinket ? <ItemCell it={p.trinket} lang={lang} /> : null}
       </div>
     </div>
   )
