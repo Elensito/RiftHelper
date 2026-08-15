@@ -41,3 +41,11 @@ class Storage:
         async with self._lock:
             self._data[str(discord_id)] = profile
         await self.save()
+
+    def get_config(self, key: str) -> str | None:
+        return self._data.get(key)
+
+    async def set_config(self, key: str, value: str):
+        async with self._lock:
+            self._data[key] = value
+        await self.save()

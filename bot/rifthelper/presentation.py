@@ -13,6 +13,24 @@ def base_embed(title: str, description: str = "", color: int = config.BRAND["acc
     return embed
 
 
+def verify_intro_embed() -> discord.Embed:
+    embed = base_embed(
+        "🔐 Verificación de cuenta",
+        "Vincula tu cuenta de **League of Legends** a tu perfil de Discord y obtén el rol de tu rango.",
+    )
+    embed.add_field(
+        name="📋 Pasos a seguir",
+        value=(
+            "1️⃣ Pulsa el botón **🔐 Empezar verificación**\n"
+            "2️⃣ Escribe tu **Riot ID** completo (`Nombre#TAG`)\n"
+            "3️⃣ Equipa el icono que te mostrará el bot\n"
+            "4️⃣ Confirma la verificación y recibirás el rol de tu rango"
+        ),
+        inline=False,
+    )
+    return embed
+
+
 def verify_prompt_embed(summoner: dict, icon_id: int) -> tuple[discord.Embed, discord.File]:
     game_name = summoner.get("gameName") or summoner.get("name") or "Invocador"
     tag = summoner.get("tagLine", "")
@@ -192,8 +210,8 @@ def not_verified_embed() -> discord.Embed:
         color=config.BRAND["red"],
     )
     embed.add_field(
-        name="📌 ¿Cómo verificarme?",
-        value="Usa el comando **`/verificar`** y sigue las instrucciones del bot.",
+        name=        "📌 ¿Cómo verificarme?",
+        value="Pulsa el botón **🔐 Empezar verificación** en el canal de verificación del servidor.",
         inline=False,
     )
     return embed

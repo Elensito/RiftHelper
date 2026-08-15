@@ -47,6 +47,22 @@ VERIFICATION_ICONS = {
 }
 
 
+RANK_ROLES = {
+    "UNRANKED": os.getenv("RANK_ROLE_UNRANKED", ""),
+    "IRON": os.getenv("RANK_ROLE_IRON", ""),
+    "BRONZE": os.getenv("RANK_ROLE_BRONZE", ""),
+    "SILVER": os.getenv("RANK_ROLE_SILVER", ""),
+    "GOLD": os.getenv("RANK_ROLE_GOLD", ""),
+    "PLATINUM": os.getenv("RANK_ROLE_PLATINUM", ""),
+    "EMERALD": os.getenv("RANK_ROLE_EMERALD", ""),
+    "DIAMOND": os.getenv("RANK_ROLE_DIAMOND", ""),
+    "MASTER": os.getenv("RANK_ROLE_MASTER", ""),
+    "GRANDMASTER": os.getenv("RANK_ROLE_GRANDMASTER", ""),
+    "CHALLENGER": os.getenv("RANK_ROLE_CHALLENGER", ""),
+}
+RANK_ROLE_IDS = {int(v) for v in RANK_ROLES.values() if v}
+
+
 RANKS_DIR = ASSETS_DIR / "ranks"
 RANK_ICONS = {
     "UNRANKED": RANKS_DIR / "unranked.png",
