@@ -2964,3 +2964,245 @@ button.p-name:hover {
     grid-template-columns: 1fr;
   }
 }
+
+.tt-target {
+  display: inline-flex;
+  flex-shrink: 0;
+}
+
+.tt {
+  position: fixed;
+  z-index: 9999;
+  max-width: 350px;
+  pointer-events: none;
+  background: linear-gradient(160deg, rgba(9, 13, 24, 0.97), rgba(15, 21, 38, 0.97));
+  border: 1px solid rgba(0, 229, 255, 0.4);
+  border-radius: 10px;
+  box-shadow:
+    0 0 22px rgba(0, 229, 255, 0.18),
+    0 14px 36px rgba(0, 0, 0, 0.6);
+  padding: 10px 12px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: #e8eeff;
+  backdrop-filter: blur(8px);
+}
+
+.tt-head {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding-bottom: 8px;
+  margin-bottom: 8px;
+  border-bottom: 1px solid rgba(0, 229, 255, 0.22);
+}
+
+.tt-icon {
+  width: 42px;
+  height: 42px;
+  border-radius: 8px;
+  border: 1px solid rgba(0, 229, 255, 0.35);
+  box-shadow: 0 0 14px rgba(0, 229, 255, 0.25);
+  object-fit: cover;
+  flex-shrink: 0;
+  background: #0e1222;
+}
+
+.tt-icon-empty {
+  background:
+    repeating-conic-gradient(rgba(0, 229, 255, 0.12) 0% 25%, rgba(14, 18, 34, 0.5) 0% 50%);
+  background-size: 10px 10px;
+}
+
+.tt-titles {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.tt-name {
+  font-weight: 800;
+  font-size: 13px;
+  letter-spacing: 0.3px;
+  background: linear-gradient(90deg, #00e5ff, #8b5cf6);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.tt-gold {
+  font-size: 11px;
+  font-weight: 700;
+  color: #ffd24a;
+}
+
+.tt-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.tt-loading {
+  color: #8490b8;
+  font-style: italic;
+}
+
+.tt-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 6px 8px;
+  background: rgba(0, 229, 255, 0.06);
+  border-left: 2px solid #00e5ff;
+  border-radius: 0 6px 6px 0;
+}
+
+.tt-stat {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.tt-stat-v {
+  color: #00e5ff;
+  font-weight: 800;
+  min-width: 34px;
+  text-align: right;
+  text-shadow: 0 0 10px rgba(0, 229, 255, 0.5);
+}
+
+.tt-stat-l {
+  color: #e8eeff;
+}
+
+.tt-plain {
+  font-style: italic;
+  color: #8490b8;
+}
+
+.tt-desc {
+  color: #cdd7f0;
+}
+
+.tt-desc .tt-passive,
+.tt-desc .tt-active {
+  display: block;
+  font-weight: 800;
+  color: #00e5ff;
+  margin-top: 4px;
+}
+
+.tt-desc .tt-rules {
+  color: #aeb9dc;
+  font-style: italic;
+}
+
+.tt-desc .tt-magic {
+  color: #b388ff;
+  font-weight: 700;
+}
+
+.tt-desc .tt-physical {
+  color: #ff6b7d;
+  font-weight: 700;
+}
+
+.tt-desc .tt-true {
+  color: #ffffff;
+  font-weight: 700;
+}
+
+.tt-desc .tt-shield {
+  color: #00e5ff;
+  font-weight: 700;
+}
+
+.tt-desc .tt-as {
+  color: #ffd24a;
+  font-weight: 700;
+}
+
+.tt-desc .tt-keyword {
+  color: #ff5c93;
+  font-weight: 700;
+}
+
+.tt-desc .tt-attn {
+  color: #00e5ff;
+}
+
+.tt-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 4px;
+  padding-top: 6px;
+  border-top: 1px dashed rgba(255, 255, 255, 0.14);
+  color: #8490b8;
+}
+
+.tt-meta-i {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+}
+
+.tt-meta-i b {
+  color: #00e5ff;
+  font-weight: 700;
+}
+
+.tt-lore {
+  position: relative;
+  margin-top: 2px;
+  padding: 8px 11px 9px 14px;
+  border-radius: 9px;
+  background: linear-gradient(160deg, rgba(0, 229, 255, 0.08), rgba(139, 92, 246, 0.06));
+  border: 1px solid rgba(0, 229, 255, 0.16);
+  overflow: hidden;
+}
+
+.tt-lore::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 7px;
+  bottom: 7px;
+  width: 3px;
+  border-radius: 3px;
+  background: linear-gradient(180deg, #00e5ff, #a78bfa);
+  box-shadow: 0 0 10px rgba(0, 229, 255, 0.7);
+}
+
+.tt-lore::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(120% 120% at 100% 0%, rgba(167, 139, 250, 0.1), transparent 55%);
+  pointer-events: none;
+}
+
+.tt-lore-label {
+  position: relative;
+  z-index: 1;
+  display: block;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  background: linear-gradient(90deg, #00e5ff, #a78bfa);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  margin-bottom: 3px;
+}
+
+.tt-lore-text {
+  position: relative;
+  z-index: 1;
+  display: block;
+  font-style: italic;
+  line-height: 1.55;
+  color: #ffd9a0;
+}

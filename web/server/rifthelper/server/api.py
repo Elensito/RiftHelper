@@ -11,11 +11,14 @@ import time
 
 from rifthelper import config
 from rifthelper.services import stats as stats_service
+from rifthelper.services import tooltips as tooltips_service
 from rifthelper.services.riot import RiotAPIError, RiotClient
 
 MATCH_COUNT = 30
 MASTERY_CACHE_TTL = 300
 _mastery_cache: dict[str, tuple[float, dict]] = {}
+_VALIDATED_TOOLTIP: set[tuple[str, str, str]] = set()
+_SUMMONER_SPELLS_INFO: dict = {}
 
 
 
@@ -70,6 +73,7 @@ def _runed(rune_id, rune_names: dict) -> dict | None:
         return None
     name = rune_names.get(rune_id, {})
     return {
+        "id": rune_id,
         "src": f"/assets/runes/{rune_id}.png",
         "en": name.get("en", ""),
         "es": name.get("es", ""),
@@ -81,6 +85,7 @@ def _itemd(item_id, item_names: dict) -> dict | None:
         return None
     name = item_names.get(item_id, {})
     return {
+        "id": item_id,
         "src": f"/assets/items/{item_id}.png",
         "en": name.get("en", ""),
         "es": name.get("es", ""),
@@ -184,6 +189,7 @@ def _participant_summary(
             {
                 "src": f"/assets/spells/{simage}" if simage else None,
                 "name": sp.get("name") or {"en": "", "es": ""},
+                "id": sid,
             }
         )
 
@@ -374,6 +380,7 @@ async def fetch_profile(
 
     matches = []
     rune_ids: set[int] = set()
+    item_ids: set[int] = set()
     spell_images: set[str] = set()
     for match_id in match_ids:
         try:
@@ -383,12 +390,15 @@ async def fetch_profile(
             continue
         for p in (match.get("info", {}) or {}).get("participants", []) or []:
             rune_ids.update(_runes_of(p))
+            item_ids.update(p.get(f"item{i}", 0) or 0 for i in range(7))
+            item_ids.add(p.get("roleBoundItem", 0) or 0)
         payload = build_match(match, timeline, puuid, champ_info, rune_names, item_names, spells_info, spell_images)
         if payload:
             matches.append(payload)
 
     await _ensure_rune_icons(rune_ids, runes_en)
     await _ensure_spell_icons(spell_images)
+    await _ensure_item_icons(item_ids)
 
     wins = (rank or {}).get("wins", 0)
     losses = (rank or {}).get("losses", 0)
@@ -516,6 +526,66 @@ async def _ensure_champion_icons(images: set[str]) -> None:
                         pass
 
 
+async def _ensure_item_icons(item_ids: set[int]) -> None:
+
+    if not item_ids:
+        return
+    out_dir = config.ITEMS_DIR
+    out_dir.mkdir(parents=True, exist_ok=True)
+    import aiohttp
+
+    async with aiohttp.ClientSession() as session:
+        for iid in sorted(item_ids):
+            path = out_dir / f"{iid}.png"
+            if path.is_file():
+                continue
+            async with session.get(config.ITEM_ICON_URL.format(image=f"{iid}.png")) as resp:
+                if resp.status == 200:
+                    try:
+                        path.write_bytes(await resp.read())
+                    except OSError:
+                        pass
+
+
+async def fetch_tooltip(kind: str, target_id: int, lang: str = "es", champ: str | None = None) -> dict:
+
+    kind = kind.lower()
+    if kind not in ("item", "rune", "spell", "ability"):
+        raise RuntimeError(f"Tipo de tooltip no soportado: {kind}")
+    lang_code = "es" if lang == "es" else "en"
+    locale = "es_ES" if lang == "es" else "en_US"
+
+    if kind == "ability":
+        if not champ:
+            raise RuntimeError("Se requiere el campeón para el tooltip de habilidad.")
+        data = await tooltips_service.ability_tooltip(champ, target_id, lang_code)
+        if data is None:
+            raise RuntimeError(f"No se encontró la habilidad {target_id} de {champ}.")
+        return data
+
+    key = (kind, lang_code, config.DDG_VERSION)
+    if key not in _VALIDATED_TOOLTIP:
+        riot = RiotClient()
+        if kind == "item":
+            await riot.get_items_info(locale)
+        elif kind == "rune":
+            await riot.get_runes_info(locale)
+        else:
+            _SUMMONER_SPELLS_INFO.clear()
+            _SUMMONER_SPELLS_INFO.update(await riot.get_summoner_spells_info())
+        _VALIDATED_TOOLTIP.add(key)
+
+    if kind == "item":
+        data = tooltips_service.item_tooltip(target_id, lang_code)
+    elif kind == "rune":
+        data = tooltips_service.rune_tooltip(target_id, lang_code)
+    else:
+        data = tooltips_service.spell_tooltip(target_id, lang_code, _SUMMONER_SPELLS_INFO)
+    if data is None:
+        raise RuntimeError(f"No se encontró {kind} {target_id}.")
+    return data
+
+
 async def fetch_match_build(match_id: str, puuid: str | None = None) -> dict:
 
 
@@ -531,6 +601,7 @@ async def fetch_match_build(match_id: str, puuid: str | None = None) -> dict:
         raise RiotAPIError(f"Partida {match_id} no disponible: {e}", 404) from e
 
     participants = (match.get("info", {}) or {}).get("participants", []) or []
+    champ_info = await riot.get_champion_info()
     spells_map = await riot.get_champion_spells(
         [p.get("championId") for p in participants if p.get("championId")]
     )
@@ -549,6 +620,7 @@ async def fetch_match_build(match_id: str, puuid: str | None = None) -> dict:
             spells.append(
                 {
                     "key": SKILL_SLOT_KEYS[i],
+                    "index": i,
                     "name": s.get("name", ""),
                     "icon": f"/assets/spells/{image}",
                 }
@@ -558,6 +630,7 @@ async def fetch_match_build(match_id: str, puuid: str | None = None) -> dict:
                 "participant_id": pid,
                 "team": p.get("teamId", 0),
                 "champion": p.get("championName", f"ID {p.get('championId')}"),
+                "champion_key": champ_info.get(p.get("championId"), {}).get("id", ""),
                 "spells": spells,
                 "skill_order": _skill_order(timeline, pid) if pid in player_ids else [],
             }
@@ -679,6 +752,7 @@ async def fetch_live_game(name: str, tag: str) -> dict:
                 {
                     "src": f"/assets/spells/{simage}" if simage else None,
                     "name": sp.get("name") or {"en": "", "es": ""},
+                    "id": sid,
                 }
             )
         riot_id = p.get("riotId") or ""

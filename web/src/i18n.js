@@ -140,6 +140,14 @@ const EN = {
   masteryDay: 'd',
   masteryChest: 'Chest granted',
   loadMore: 'Load more',
+  tooltipLoading: 'Loading…',
+  tooltipError: 'No details available',
+  ttSell: 'sells for',
+  ttCooldown: 'Cooldown',
+  ttCost: 'Cost',
+  ttRange: 'Range',
+  ttMaxRank: 'Max rank',
+  ttLore: 'Lore',
 }
 
 const ES = {
@@ -279,6 +287,14 @@ const ES = {
   masteryDay: 'd',
   masteryChest: 'Cofre obtenido',
   loadMore: 'Cargar más',
+  tooltipLoading: 'Cargando…',
+  tooltipError: 'No hay más detalles',
+  ttSell: 'venta por',
+  ttCooldown: 'Enfriamiento',
+  ttCost: 'Coste',
+  ttRange: 'Alcance',
+  ttMaxRank: 'Nivel máx.',
+  ttLore: 'Lore',
 }
 
 export const STR = { en: EN, es: ES }

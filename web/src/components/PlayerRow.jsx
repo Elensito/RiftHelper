@@ -1,4 +1,5 @@
 import Img from './Img.jsx'
+import { TooltipTarget } from './Tooltip.jsx'
 import { fmtNum, roleLabel } from '../utils.js'
 import { t } from '../i18n.js'
 
@@ -8,20 +9,36 @@ function nameOf(entry, lang) {
   return entry[lang] || entry.en || ''
 }
 
+function iconId(entry) {
+  if (!entry) return 0
+  if (entry.id) return entry.id
+  if (entry.src) {
+    const m = String(entry.src).match(/\d+/)
+    return m ? parseInt(m[0], 10) : 0
+  }
+  return 0
+}
+
 function RuneStrip({ runes, lang }) {
   if (!runes || runes.length === 0) return null
   return (
     <div className="rune-strip">
       {runes.slice(0, 4).map((r, i) => (
-        <Img key={`p${i}`} src={r && r.src} className="rune" title={nameOf(r, lang)} />
+        <TooltipTarget key={`p${i}`} kind="rune" id={iconId(r)} lang={lang} src={r && r.src} name={nameOf(r, lang)}>
+          <Img src={r && r.src} className="rune" />
+        </TooltipTarget>
       ))}
       <span className="rune-sep" />
       {runes.slice(4, 6).map((r, i) => (
-        <Img key={`s${i}`} src={r && r.src} className="rune" title={nameOf(r, lang)} />
+        <TooltipTarget key={`s${i}`} kind="rune" id={iconId(r)} lang={lang} src={r && r.src} name={nameOf(r, lang)}>
+          <Img src={r && r.src} className="rune" />
+        </TooltipTarget>
       ))}
       <span className="rune-sep" />
       {runes.slice(6).map((r, i) => (
-        <Img key={`t${i}`} src={r && r.src} className="rune shard" title={nameOf(r, lang)} />
+        <TooltipTarget key={`t${i}`} kind="rune" id={iconId(r)} lang={lang} src={r && r.src} name={nameOf(r, lang)}>
+          <Img src={r && r.src} className="rune shard" />
+        </TooltipTarget>
       ))}
     </div>
   )
@@ -32,7 +49,9 @@ function Items({ p, lang }) {
   return (
     <div className="items">
       {items.map((it, i) => (
-        <Img key={i} src={it && it.src} className="item" title={nameOf(it, lang)} />
+        <TooltipTarget key={i} kind="item" id={iconId(it)} lang={lang} src={it && it.src} name={nameOf(it, lang)}>
+          <Img src={it && it.src} className="item" />
+        </TooltipTarget>
       ))}
     </div>
   )
@@ -72,7 +91,16 @@ export default function PlayerRow({ p, lang, onOpenPlayer = () => {} }) {
           </div>
           <div className="p-spells">
             {(p.spells || []).map((s, i) => (
-              <Img key={i} src={s && s.src} className="p-spell" title={s && nameOf(s.name, lang)} />
+              <TooltipTarget
+                key={i}
+                kind="spell"
+                id={s && s.id}
+                lang={lang}
+                src={s && s.src}
+                name={s && nameOf(s.name, lang)}
+              >
+                <Img src={s && s.src} className="p-spell" />
+              </TooltipTarget>
             ))}
           </div>
           <div className="p-champ-name">

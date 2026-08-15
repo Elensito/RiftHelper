@@ -19,6 +19,7 @@ web/server/items_cache.json
 web/server/items_cache_es.json
 web/server/runes_cache.json
 web/server/runes_cache_es.json
+web/server/ddragon_version.json
 web/server/cache/
 
 # Frontend (React)

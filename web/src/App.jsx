@@ -9,6 +9,7 @@ import ThemeToggle from './components/ThemeToggle.jsx'
 import Favorites from './components/Favorites.jsx'
 import ChampionPage from './components/ChampionPage.jsx'
 import Mastery from './components/Mastery.jsx'
+import Tooltip from './components/Tooltip.jsx'
 import { fetchSummoner, fetchLiveGame, fetchMastery, fetchChampions, fetchChampion } from './api.js'
 import { matchGroup, t } from './i18n.js'
 
@@ -204,6 +205,7 @@ export default function App() {
 
   return (
     <div className="app">
+      <Tooltip />
       <header className="topbar">
         <div className="logo" onClick={goHome}>RIFT<span>HELPER</span></div>
         <SearchBar

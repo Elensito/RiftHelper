@@ -6,6 +6,8 @@
 
 
 
+import asyncio
+from contextlib import asynccontextmanager
 import sys
 from pathlib import Path
 
@@ -18,11 +20,19 @@ from rifthelper import config
 from rifthelper.services.riot import RiotAPIError
 from rifthelper.server import api as api_service
 from rifthelper.services import champions as champions_service
+from rifthelper.services import ddragon as ddragon_service
 
 WEB_DIST = config.WEB_DIST
 ASSETS_DIR = config.ASSETS_DIR
 
-app = FastAPI(title="RiftHelper API", version="1.0.0")
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    await asyncio.to_thread(ddragon_service.latest_version)
+    yield
+
+
+app = FastAPI(title="RiftHelper API", version="1.0.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -118,6 +128,19 @@ async def get_mastery(
 @app.get("/api/champions")
 def get_champions():
     return {"champions": champions_service.list_champions()}
+
+
+@app.get("/api/tooltip")
+async def get_tooltip(
+    kind: str = Query(..., pattern="^(item|rune|spell|ability)$"),
+    id: int = Query(..., ge=0),
+    lang: str = Query("es", pattern="^(en|es)$"),
+    champ: str | None = Query(None),
+):
+    try:
+        return await api_service.fetch_tooltip(kind, id, lang, champ)
+    except RuntimeError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
 
 
 @app.get("/api/champion/{champ_key}")

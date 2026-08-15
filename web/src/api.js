@@ -59,3 +59,12 @@ export async function fetchChampion(key) {
   if (!res.ok) throw new Error(data.detail || 'Error al obtener el campeón')
   return data
 }
+
+export async function fetchTooltip(kind, id, lang, champ) {
+  let url = `/api/tooltip?kind=${encodeURIComponent(kind)}&id=${encodeURIComponent(id)}&lang=${encodeURIComponent(lang || 'es')}`
+  if (champ) url += `&champ=${encodeURIComponent(champ)}`
+  const res = await fetch(url)
+  const data = await res.json()
+  if (!res.ok) throw new Error(data.detail || 'Error al obtener la información')
+  return data
+}

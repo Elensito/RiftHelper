@@ -1,4 +1,5 @@
 import Img from './Img.jsx'
+import { TooltipTarget } from './Tooltip.jsx'
 import { queueLabel, mapLabel, t } from '../i18n.js'
 
 function fmtClock(sec) {
@@ -34,7 +35,16 @@ function LiveRow({ p, lang }) {
         </div>
         <div className="live-spells">
           {p.spells.map((s, i) => (
-            <Img key={i} src={s && s.src} className="live-spell" title={s && nameOf(s.name, lang)} />
+            <TooltipTarget
+              key={i}
+              kind="spell"
+              id={s && s.id}
+              lang={lang}
+              src={s && s.src}
+              name={s && nameOf(s.name, lang)}
+            >
+              <Img src={s && s.src} className="live-spell" />
+            </TooltipTarget>
           ))}
         </div>
         {p.is_player && <span className="me-badge">{t(lang, 'you')}</span>}
@@ -42,7 +52,15 @@ function LiveRow({ p, lang }) {
       <div className="prow-sub">
         {p.keystone && (
           <div className="rune-strip">
-            <Img src={p.keystone.src} className="rune" title={nameOf(p.keystone, lang)} />
+            <TooltipTarget
+              kind="rune"
+              id={p.keystone.id}
+              lang={lang}
+              src={p.keystone.src}
+              name={nameOf(p.keystone, lang)}
+            >
+              <Img src={p.keystone.src} className="rune" />
+            </TooltipTarget>
           </div>
         )}
       </div>

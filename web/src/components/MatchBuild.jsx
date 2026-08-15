@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { fetchMatchBuild } from '../api.js'
 import { t } from '../i18n.js'
+import { TooltipTarget } from './Tooltip.jsx'
 
 function teamColor(p, players) {
   const team = players.filter((x) => x.team === p.team)
@@ -32,12 +33,23 @@ function TeamTiles({ players, selected, onSelect, data }) {
   )
 }
 
-function SpellIcon({ spell, level }) {
+function SpellIcon({ spell, level, champ }) {
+  const label = level ? `Lv ${level} · ${spell.name}` : spell.name
   return (
-    <div className="spell-cell" title={level ? `Lv ${level} · ${spell.name}` : spell.name}>
-      <img src={spell.icon} alt={spell.name} draggable="false" />
-      <span className="spell-key">{spell.key}</span>
-    </div>
+    <TooltipTarget
+      as="div"
+      kind="ability"
+      id={spell.index}
+      champ={champ}
+      src={spell.icon}
+      name={label}
+      className="spell-cell-wrap"
+    >
+      <div className="spell-cell" title={label}>
+        <img src={spell.icon} alt={spell.name} draggable="false" />
+        <span className="spell-key">{spell.key}</span>
+      </div>
+    </TooltipTarget>
   )
 }
 
@@ -110,7 +122,7 @@ export default function MatchBuild({ matchId, puuid, lang, players }) {
             <span className="build-label">{t(lang, 'buildSpells')}</span>
             <div className="spell-row">
               {spells.map((s) => (
-                <SpellIcon key={s.key} spell={s} />
+                <SpellIcon key={s.key} spell={s} champ={b.champion_key} />
               ))}
             </div>
           </div>
@@ -123,7 +135,7 @@ export default function MatchBuild({ matchId, puuid, lang, players }) {
               {b.skill_order.map((slot, i) => {
                 const spell = keyOf(slot)
                 if (!spell) return null
-                return <SpellIcon key={i} spell={spell} level={i + 2} />
+                return <SpellIcon key={i} spell={spell} level={i + 2} champ={b.champion_key} />
               })}
             </div>
           </div>
@@ -133,18 +145,36 @@ export default function MatchBuild({ matchId, puuid, lang, players }) {
           <div className="build-section">
             <span className="build-label">{t(lang, 'buildRunes')}</span>
             <div className="rune-row">
-              <div
-                className="rune-icon rune-keystone"
-                title={keystone[lang] || keystone.en}
+              <TooltipTarget
+                as="div"
+                kind="rune"
+                id={keystone.id}
+                lang={lang}
+                src={keystone.src}
+                name={keystone[lang] || keystone.en}
+                className="rune-icon-wrap"
               >
-                <img src={keystone.src} alt={keystone.en} draggable="false" />
-              </div>
+                <div className="rune-icon rune-keystone">
+                  <img src={keystone.src} alt={keystone.en} draggable="false" />
+                </div>
+              </TooltipTarget>
               <div className="rune-minor">
                 {minor.map((r, i) =>
                   r ? (
-                    <div key={i} className="rune-icon" title={r[lang] || r.en}>
-                      <img src={r.src} alt={r.en} draggable="false" />
-                    </div>
+                    <TooltipTarget
+                      key={i}
+                      as="div"
+                      kind="rune"
+                      id={r.id}
+                      lang={lang}
+                      src={r.src}
+                      name={r[lang] || r.en}
+                      className="rune-icon-wrap"
+                    >
+                      <div className="rune-icon">
+                        <img src={r.src} alt={r.en} draggable="false" />
+                      </div>
+                    </TooltipTarget>
                   ) : null
                 )}
               </div>

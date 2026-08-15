@@ -24,31 +24,49 @@ ASSETS_DIR = ROOT_DIR / "assets"
 WEB_DIST = ROOT_DIR / "web" / "dist"
 
 
-DDG_VERSION = "16.15.1"
-ICON_URL = f"https://ddragon.leagueoflegends.com/cdn/{DDG_VERSION}/img/profileicon/{{icon_id}}.png"
-CHAMPIONS_URL = f"https://ddragon.leagueoflegends.com/cdn/{DDG_VERSION}/data/en_US/champion.json"
-CHAMPION_ICON_URL = f"https://ddragon.leagueoflegends.com/cdn/{DDG_VERSION}/img/champion/{{image}}"
+DDG_VERSION = "16.16.1"
+DDG_VERSION_CACHE = BASE_DIR / "ddragon_version.json"
+
+
+def _build_urls() -> None:
+    global ICON_URL, CHAMPIONS_URL, CHAMPION_ICON_URL, CHAMPION_SPELLS_URL, CHAMPION_URL
+    global SPELL_ICON_URL, ITEMS_URL, ITEM_ICON_URL, RUNES_URL, RUNE_ICON_URL, SUMMONER_SPELLS_URL
+    v = DDG_VERSION
+    ICON_URL = f"https://ddragon.leagueoflegends.com/cdn/{v}/img/profileicon/{{icon_id}}.png"
+    CHAMPIONS_URL = f"https://ddragon.leagueoflegends.com/cdn/{v}/data/en_US/champion.json"
+    CHAMPION_ICON_URL = f"https://ddragon.leagueoflegends.com/cdn/{v}/img/champion/{{image}}"
+    CHAMPION_SPELLS_URL = f"https://ddragon.leagueoflegends.com/cdn/{v}/data/en_US/champion/{{id}}.json"
+    CHAMPION_URL = f"https://ddragon.leagueoflegends.com/cdn/{v}/data/{{locale}}/champion/{{key}}.json"
+    SPELL_ICON_URL = f"https://ddragon.leagueoflegends.com/cdn/{v}/img/spell/{{image}}"
+    ITEMS_URL = f"https://ddragon.leagueoflegends.com/cdn/{v}/data/{{locale}}/item.json"
+    ITEM_ICON_URL = f"https://ddragon.leagueoflegends.com/cdn/{v}/img/item/{{image}}"
+    RUNES_URL = f"https://ddragon.leagueoflegends.com/cdn/{v}/data/{{locale}}/runesReforged.json"
+    RUNE_ICON_URL = "https://ddragon.leagueoflegends.com/cdn/img/{icon}"
+    SUMMONER_SPELLS_URL = f"https://ddragon.leagueoflegends.com/cdn/{v}/data/{{locale}}/summoner.json"
+
+
+_build_urls()
+
+
+def set_dd_version(version: str) -> None:
+    global DDG_VERSION
+    DDG_VERSION = version
+    _build_urls()
+
+
 CHAMPIONS_CACHE = BASE_DIR / "champions_cache.json"
 CHAMPIONS_DIR = ASSETS_DIR / "champions"
 
 CHAMPION_SPELLS_CACHE = BASE_DIR / "champions_spells_cache.json"
-CHAMPION_SPELLS_URL = f"https://ddragon.leagueoflegends.com/cdn/{DDG_VERSION}/data/en_US/champion/{{id}}.json"
-SPELL_ICON_URL = f"https://ddragon.leagueoflegends.com/cdn/{DDG_VERSION}/img/spell/{{image}}"
 SPELLS_DIR = ASSETS_DIR / "spells"
 
-ITEMS_URL = f"https://ddragon.leagueoflegends.com/cdn/{DDG_VERSION}/data/{{locale}}/item.json"
-ITEM_ICON_URL = f"https://ddragon.leagueoflegends.com/cdn/{DDG_VERSION}/img/item/{{image}}"
 ITEMS_CACHE = BASE_DIR / "items_cache.json"
 ITEMS_CACHE_ES = BASE_DIR / "items_cache_es.json"
 ITEMS_DIR = ASSETS_DIR / "items"
 
-RUNES_URL = f"https://ddragon.leagueoflegends.com/cdn/{DDG_VERSION}/data/{{locale}}/runesReforged.json"
-RUNE_ICON_URL = "https://ddragon.leagueoflegends.com/cdn/img/{icon}"
 RUNES_CACHE = BASE_DIR / "runes_cache.json"
 RUNES_CACHE_ES = BASE_DIR / "runes_cache_es.json"
 RUNES_DIR = ASSETS_DIR / "runes"
-
-SUMMONER_SPELLS_URL = f"https://ddragon.leagueoflegends.com/cdn/{DDG_VERSION}/data/{{locale}}/summoner.json"
 
 
 CACHE_DIR = BASE_DIR / "cache"

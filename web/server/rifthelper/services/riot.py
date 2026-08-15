@@ -253,13 +253,15 @@ class RiotClient:
 
         path = config.ITEMS_CACHE if locale == "en_US" else config.ITEMS_CACHE_ES
         url = config.ITEMS_URL.format(locale=locale)
+        raw = None
         if path.is_file():
             try:
                 raw = json.loads(path.read_text(encoding="utf-8"))
-                self._items[locale] = {int(k): v for k, v in raw.items()}
-                return self._items[locale]
             except (ValueError, OSError):
-                pass
+                raw = None
+        if raw and raw.get("_v") == config.DDG_VERSION:
+            self._items[locale] = {int(k): v for k, v in raw.items() if k.isdigit()}
+            return self._items[locale]
 
         async with aiohttp.ClientSession() as session:
             async with session.get(url) as resp:
@@ -269,15 +271,23 @@ class RiotClient:
                     )
                 data = await resp.json()
 
-        self._items[locale] = {
-            int(k): {"name": v.get("name", f"Item {k}"), "image": v.get("image", {}).get("full", "")}
-            for k, v in data.get("data", {}).items()
-        }
+        self._items[locale] = {}
+        for k, v in data.get("data", {}).items():
+            self._items[locale][int(k)] = {
+                "name": v.get("name", f"Item {k}"),
+                "image": v.get("image", {}).get("full", ""),
+                "gold": v.get("gold", {}),
+                "stats": v.get("stats", {}),
+                "plaintext": v.get("plaintext", ""),
+                "description": v.get("description", ""),
+                "tags": v.get("tags", []),
+            }
+        self._items[locale]["_v"] = config.DDG_VERSION
         try:
             path.write_text(json.dumps(self._items[locale]), encoding="utf-8")
         except OSError:
             pass
-        return self._items[locale]
+        return {int(k): v for k, v in self._items[locale].items() if isinstance(k, int)}
 
     async def get_runes_info(self, locale: str = "en_US") -> dict[int, dict]:
 
@@ -286,13 +296,15 @@ class RiotClient:
 
         path = config.RUNES_CACHE if locale == "en_US" else config.RUNES_CACHE_ES
         url = config.RUNES_URL.format(locale=locale)
+        raw = None
         if path.is_file():
             try:
                 raw = json.loads(path.read_text(encoding="utf-8"))
-                self._runes[locale] = {int(k): v for k, v in raw.items()}
-                return self._runes[locale]
             except (ValueError, OSError):
-                pass
+                raw = None
+        if raw and raw.get("_v") == config.DDG_VERSION:
+            self._runes[locale] = {int(k): v for k, v in raw.items() if k.isdigit()}
+            return self._runes[locale]
 
         async with aiohttp.ClientSession() as session:
             async with session.get(url) as resp:
@@ -309,12 +321,15 @@ class RiotClient:
                     self._runes[locale][int(rune["id"])] = {
                         "name": rune.get("name", ""),
                         "icon": rune.get("icon", ""),
+                        "longDesc": rune.get("longDesc", ""),
+                        "shortDesc": rune.get("shortDesc", ""),
                     }
+        self._runes[locale]["_v"] = config.DDG_VERSION
         try:
             path.write_text(json.dumps(self._runes[locale]), encoding="utf-8")
         except OSError:
             pass
-        return self._runes[locale]
+        return {int(k): v for k, v in self._runes[locale].items() if isinstance(k, int)}
 
     async def get_summoner_spells_info(self) -> dict[int, dict]:
 
@@ -341,6 +356,12 @@ class RiotClient:
                     "es": es.get("data", {}).get(s["id"], {}).get("name", ""),
                 },
                 "image": s.get("image", {}).get("full", ""),
+                "description": {
+                    "en": s.get("description", ""),
+                    "es": es.get("data", {}).get(s["id"], {}).get("description", ""),
+                },
+                "cooldown": s.get("cooldownBurn", ""),
+                "cost": s.get("costBurn", ""),
             }
             for s in en.get("data", {}).values()
         }
