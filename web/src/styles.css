@@ -920,6 +920,7 @@ body {
 
 .ghead-label.ghead-build {
   text-align: left;
+  padding-left: 20px;
 }
 
 .grow {
@@ -1156,6 +1157,7 @@ button.g-pname:hover {
   justify-content: flex-start;
   gap: 4px;
   flex-wrap: wrap;
+  padding-left: 20px;
 }
 
 .g-item {
