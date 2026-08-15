@@ -918,6 +918,10 @@ body {
   text-align: center;
 }
 
+.ghead-label.ghead-build {
+  text-align: left;
+}
+
 .grow {
   padding: 7px 14px;
   border-top: 1px solid rgba(0, 229, 255, 0.06);
@@ -1036,7 +1040,7 @@ button.g-pname:hover {
 .g-rank {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: center;
   gap: 5px;
 }
 
@@ -1148,7 +1152,7 @@ button.g-pname:hover {
 .g-items {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: flex-start;
   gap: 4px;
   flex-wrap: wrap;
 }
@@ -1979,7 +1983,7 @@ button.p-name:hover {
 
 .carry-score {
   flex-shrink: 0;
-  min-width: 34px;
+  width: 34px;
   font-size: 11px;
   font-weight: 800;
   text-align: center;
@@ -2004,12 +2008,14 @@ button.p-name:hover {
 
 .mvp-badge {
   flex-shrink: 0;
+  width: 34px;
   font-size: 9px;
   font-weight: 900;
   letter-spacing: 1px;
+  text-align: center;
   color: #04121a;
   background: linear-gradient(135deg, #ffd54a, #ff9f2e);
-  padding: 3px 7px;
+  padding: 3px 0;
   border-radius: 6px;
 }
 

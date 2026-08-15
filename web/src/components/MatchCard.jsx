@@ -48,7 +48,7 @@ function TeamPanel({ players, teamId, allMaxDamage, lang, onOpenPlayer }) {
         <span className="ghead-label">{t(lang, 'gold')}</span>
         <span className="ghead-label">{t(lang, 'cs')}</span>
         <span className="ghead-label">{t(lang, 'visionShort')}</span>
-        <span className="ghead-label">{t(lang, 'build')}</span>
+        <span className="ghead-label ghead-build">{t(lang, 'build')}</span>
       </div>
       {team.map((p, i) => (
         <PlayerRow key={i} p={p} lang={lang} maxDamage={allMaxDamage} onOpenPlayer={onOpenPlayer} />
