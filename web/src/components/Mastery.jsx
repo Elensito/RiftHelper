@@ -89,7 +89,7 @@ export default function Mastery({ data, lang }) {
           <h2>{t(lang, 'masteryTitle')}</h2>
         </div>
         <div className="mastery-stats">
-          <SummaryStat label={t(lang, 'masteryChampions')} value={s.champion_count || 0} />
+          <SummaryStat label={t(lang, 'masteryTotalPoints')} value={fmtNum(s.total_points)} />
         </div>
       </div>
 
