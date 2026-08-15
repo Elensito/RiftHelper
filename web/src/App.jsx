@@ -207,7 +207,7 @@ export default function App() {
     setChampion(null)
     setProfile(null)
     setLive(null)
-    document.title = 'RiftHelper · Estadísticas y análisis de partidas de League of Legends'
+    document.title = 'RiftHelper · Statistics & analysis'
     window.history.pushState(null, '', '/')
   }
 
