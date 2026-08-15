@@ -142,6 +142,7 @@ export default function App() {
       try {
         const data = await fetchLiveGame(profile.summoner.name, profile.summoner.tag)
         setLive(data)
+        if (!data.in_game) setTab('matches')
       } catch (e) {}
     }
     const id = setInterval(poll, 30000)
@@ -277,18 +278,20 @@ export default function App() {
                 {t(lang, 'tabMatches')}
               </button>
               <button
-                className={`tab live-tab ${tab === 'live' ? 'active' : ''}`}
-                onClick={openLive}
-              >
-                {t(lang, 'tabLive')}
-                {live && live.in_game && <span className="live-dot" />}
-              </button>
-              <button
                 className={`tab ${tab === 'mastery' ? 'active' : ''}`}
                 onClick={openMastery}
               >
                 {t(lang, 'tabMastery')}
               </button>
+              {live && live.in_game && (
+                <button
+                  className={`tab live-tab ${tab === 'live' ? 'active' : ''}`}
+                  onClick={openLive}
+                >
+                  {t(lang, 'tabLive')}
+                  <span className="live-dot" />
+                </button>
+              )}
             </div>
 
             {tab === 'live' ? (
