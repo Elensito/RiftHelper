@@ -1,5 +1,10 @@
+const API_BASE =
+  typeof window !== 'undefined' && window.__TAURI_INTERNALS__
+    ? 'https://rift-helper.com'
+    : ''
+
 export async function fetchSummoner(name, tag, count = 20, start = 0, refresh = false) {
-  const url = `/api/summoner?name=${encodeURIComponent(name)}&tag=${encodeURIComponent(tag)}&count=${count}&start=${start}${refresh ? '&refresh=1' : ''}`
+  const url = `${API_BASE}/api/summoner?name=${encodeURIComponent(name)}&tag=${encodeURIComponent(tag)}&count=${count}&start=${start}${refresh ? '&refresh=1' : ''}`
   const res = await fetch(url)
   const data = await res.json()
   if (!res.ok) throw new Error(data.detail || 'Error al obtener los datos')
@@ -7,7 +12,7 @@ export async function fetchSummoner(name, tag, count = 20, start = 0, refresh = 
 }
 
 export async function fetchLatestMatch(name, tag) {
-  const url = `/api/summoner/check?name=${encodeURIComponent(name)}&tag=${encodeURIComponent(tag)}`
+  const url = `${API_BASE}/api/summoner/check?name=${encodeURIComponent(name)}&tag=${encodeURIComponent(tag)}`
   const res = await fetch(url)
   const data = await res.json()
   if (!res.ok) throw new Error(data.detail || 'Error al comprobar partidas')
@@ -15,7 +20,7 @@ export async function fetchLatestMatch(name, tag) {
 }
 
 export async function fetchMatchMetrics(matchId, puuid) {
-  const url = `/api/match/${encodeURIComponent(matchId)}/metrics?puuid=${encodeURIComponent(puuid || '')}`
+  const url = `${API_BASE}/api/match/${encodeURIComponent(matchId)}/metrics?puuid=${encodeURIComponent(puuid || '')}`
   const res = await fetch(url)
   const data = await res.json()
   if (!res.ok) throw new Error(data.detail || 'Error al obtener las métricas')
@@ -23,7 +28,7 @@ export async function fetchMatchMetrics(matchId, puuid) {
 }
 
 export async function fetchMatchBuild(matchId) {
-  const url = `/api/match/${encodeURIComponent(matchId)}/build`
+  const url = `${API_BASE}/api/match/${encodeURIComponent(matchId)}/build`
   const res = await fetch(url)
   const data = await res.json()
   if (!res.ok) throw new Error(data.detail || 'Error al obtener el build')
@@ -31,7 +36,7 @@ export async function fetchMatchBuild(matchId) {
 }
 
 export async function fetchMatchEvents(matchId, puuid) {
-  const url = `/api/match/${encodeURIComponent(matchId)}/events?puuid=${encodeURIComponent(puuid || '')}`
+  const url = `${API_BASE}/api/match/${encodeURIComponent(matchId)}/events?puuid=${encodeURIComponent(puuid || '')}`
   const res = await fetch(url)
   const data = await res.json()
   if (!res.ok) throw new Error(data.detail || 'Error al obtener los eventos')
@@ -39,15 +44,23 @@ export async function fetchMatchEvents(matchId, puuid) {
 }
 
 export async function fetchLiveGame(name, tag) {
-  const url = `/api/live-game?name=${encodeURIComponent(name)}&tag=${encodeURIComponent(tag)}`
+  const url = `${API_BASE}/api/live-game?name=${encodeURIComponent(name)}&tag=${encodeURIComponent(tag)}`
   const res = await fetch(url)
   const data = await res.json()
   if (!res.ok) throw new Error(data.detail || 'Error al obtener la partida en vivo')
   return data
 }
 
+export async function fetchSummonerByPuuid(puuid, region) {
+  const url = `${API_BASE}/api/summoner/by-puuid?puuid=${encodeURIComponent(puuid)}${region ? `&region=${encodeURIComponent(region)}` : ''}`
+  const res = await fetch(url)
+  const data = await res.json()
+  if (!res.ok) throw new Error(data.detail || 'Error al obtener el invocador')
+  return data
+}
+
 export async function fetchMastery(name, tag) {
-  const url = `/api/mastery?name=${encodeURIComponent(name)}&tag=${encodeURIComponent(tag)}`
+  const url = `${API_BASE}/api/mastery?name=${encodeURIComponent(name)}&tag=${encodeURIComponent(tag)}`
   const res = await fetch(url)
   const data = await res.json()
   if (!res.ok) throw new Error(data.detail || 'Error al obtener la maestría')
@@ -55,21 +68,21 @@ export async function fetchMastery(name, tag) {
 }
 
 export async function fetchChampions() {
-  const res = await fetch('/api/champions')
+  const res = await fetch(`${API_BASE}/api/champions`)
   const data = await res.json()
   if (!res.ok) throw new Error(data.detail || 'Error al obtener los campeones')
   return data.champions || []
 }
 
 export async function fetchChampion(key) {
-  const res = await fetch(`/api/champion/${encodeURIComponent(key)}`)
+  const res = await fetch(`${API_BASE}/api/champion/${encodeURIComponent(key)}`)
   const data = await res.json()
   if (!res.ok) throw new Error(data.detail || 'Error al obtener el campeón')
   return data
 }
 
 export async function fetchTooltip(kind, id, lang, champ) {
-  let url = `/api/tooltip?kind=${encodeURIComponent(kind)}&id=${encodeURIComponent(id)}&lang=${encodeURIComponent(lang || 'es')}`
+  let url = `${API_BASE}/api/tooltip?kind=${encodeURIComponent(kind)}&id=${encodeURIComponent(id)}&lang=${encodeURIComponent(lang || 'es')}`
   if (champ) url += `&champ=${encodeURIComponent(champ)}`
   const res = await fetch(url)
   const data = await res.json()

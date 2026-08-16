@@ -8,11 +8,13 @@ import LangSwitcher from './components/LangSwitcher.jsx'
 import ThemeToggle from './components/ThemeToggle.jsx'
 import DiscordButton from './components/DiscordButton.jsx'
 import DownloadButton from './components/DownloadButton.jsx'
+import RiotClientWidget from './components/RiotClientWidget.jsx'
 import Favorites from './components/Favorites.jsx'
 import ChampionPage from './components/ChampionPage.jsx'
 import Mastery from './components/Mastery.jsx'
 import Tooltip from './components/Tooltip.jsx'
 import { fetchSummoner, fetchLatestMatch, fetchLiveGame, fetchMastery, fetchChampions, fetchChampion } from './api.js'
+import { isTauri, notifyGameEnded } from './tauri.js'
 import { matchGroup, t } from './i18n.js'
 
 const PAGE_SIZE = 20
@@ -151,16 +153,21 @@ export default function App() {
 
   useEffect(() => {
     if (tab !== 'live' || !profile) return
+    let wasInGame = null
     const poll = async () => {
       try {
         const data = await fetchLiveGame(profile.summoner.name, profile.summoner.tag)
         setLive(data)
+        if (wasInGame === true && !data.in_game) {
+          notifyGameEnded(profile.summoner, lang)
+        }
+        wasInGame = !!data.in_game
         if (!data.in_game) setTab('matches')
       } catch (e) {}
     }
     const id = setInterval(poll, 30000)
     return () => clearInterval(id)
-  }, [tab, profile])
+  }, [tab, profile, lang])
 
   useEffect(() => {
     if (!profile) return
@@ -303,7 +310,8 @@ export default function App() {
           )}
           <LangSwitcher lang={lang} onChange={setLang} />
           <DiscordButton lang={lang} />
-          <DownloadButton lang={lang} />
+          {isTauri() && <RiotClientWidget lang={lang} onOpen={openPlayer} />}
+          {!isTauri() && <DownloadButton lang={lang} />}
         </div>
       </header>
 

@@ -11,7 +11,6 @@ from contextlib import asynccontextmanager
 import sys
 from pathlib import Path
 import time
-import json
 
 import aiohttp
 
@@ -40,7 +39,13 @@ app = FastAPI(title="RiftHelper API", version="1.0.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://tauri.localhost",
+        "https://tauri.localhost",
+    ],
+    allow_origin_regex="https?://(tauri\\.localhost|[^/]*tauri[^/]*\\.localhost)(:\\d+)?",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -62,7 +67,7 @@ def health() -> dict:
 
 
 _LATEST_RELEASE_URL = (
-    "https://github.com/Elensito/RiftHelper/releases/latest/download/latest.json"
+    "https://api.github.com/repos/Elensito/RiftHelper/releases/latest"
 )
 _INSTALLER_CACHE_TTL = 300
 _installer_cache: dict = {"url": None, "expires": 0}
@@ -73,13 +78,21 @@ async def _latest_installer_url() -> str:
     if _installer_cache["url"] and _installer_cache["expires"] > now:
         return _installer_cache["url"]
     async with aiohttp.ClientSession() as session:
-        async with session.get(_LATEST_RELEASE_URL, timeout=aiohttp.ClientTimeout(total=10)) as resp:
+        async with session.get(
+            _LATEST_RELEASE_URL,
+            headers={"Accept": "application/vnd.github+json"},
+            timeout=aiohttp.ClientTimeout(total=10),
+        ) as resp:
             resp.raise_for_status()
-            data = json.loads(await resp.text())
-    url = data["platforms"]["windows-x86_64-nsis"]["url"]
-    _installer_cache["url"] = url
-    _installer_cache["expires"] = now + _INSTALLER_CACHE_TTL
-    return url
+            data = await resp.json()
+    for asset in data.get("assets", []) or []:
+        if (asset.get("name") or "").endswith("-setup.exe"):
+            url = asset.get("browser_download_url")
+            if url:
+                _installer_cache["url"] = url
+                _installer_cache["expires"] = now + _INSTALLER_CACHE_TTL
+                return url
+    raise RuntimeError("No se encontró el instalador en el release.")
 
 
 @app.get("/download")
@@ -103,6 +116,19 @@ async def get_summoner(
         return await api_service.fetch_profile(
             name.strip(), tag.strip(), count=count, start=start, refresh=refresh
         )
+    except RiotAPIError as e:
+        raise HTTPException(status_code=e.status or 502, detail=str(e)) from e
+    except RuntimeError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+
+
+@app.get("/api/summoner/by-puuid")
+async def get_summoner_by_puuid(
+    puuid: str = Query(..., min_length=1),
+    region: str | None = Query(default=None),
+):
+    try:
+        return await api_service.fetch_summoner_by_puuid(puuid, region)
     except RiotAPIError as e:
         raise HTTPException(status_code=e.status or 502, detail=str(e)) from e
     except RuntimeError as e:

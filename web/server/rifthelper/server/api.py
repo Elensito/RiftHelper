@@ -15,6 +15,13 @@ from rifthelper.services import stats as stats_service
 from rifthelper.services import tooltips as tooltips_service
 from rifthelper.services.riot import RiotAPIError, RiotClient
 
+SITE_URL = getattr(config, "SITE_URL", "https://rift-helper.com").rstrip("/")
+
+
+def _asset(path: str) -> str:
+    return f"{SITE_URL}{path}"
+
+
 MATCH_COUNT = 30
 MASTERY_CACHE_TTL = 300
 _mastery_cache: dict[str, tuple[float, dict]] = {}
@@ -66,7 +73,7 @@ def _fmt_duration(sec: int) -> str:
 
 def _champ_url(champ: dict) -> str | None:
     image = champ.get("image")
-    return f"/assets/champions/{image}" if image else None
+    return _asset(f"/assets/champions/{image}") if image else None
 
 
 def _runed(rune_id, rune_names: dict) -> dict | None:
@@ -75,7 +82,7 @@ def _runed(rune_id, rune_names: dict) -> dict | None:
     name = rune_names.get(rune_id, {})
     return {
         "id": rune_id,
-        "src": f"/assets/runes/{rune_id}.png",
+        "src": _asset(f"/assets/runes/{rune_id}.png"),
         "en": name.get("en", ""),
         "es": name.get("es", ""),
     }
@@ -87,7 +94,7 @@ def _itemd(item_id, item_names: dict) -> dict | None:
     name = item_names.get(item_id, {})
     return {
         "id": item_id,
-        "src": f"/assets/items/{item_id}.png",
+        "src": _asset(f"/assets/items/{item_id}.png"),
         "en": name.get("en", ""),
         "es": name.get("es", ""),
     }
@@ -101,7 +108,7 @@ def _treed(tree_id, rune_trees: dict) -> dict | None:
         return None
     return {
         "id": tree_id,
-        "src": f"/assets/runetrees/{tree_id}.png",
+        "src": _asset(f"/assets/runetrees/{tree_id}.png"),
         "en": info.get("en", ""),
         "es": info.get("es", ""),
     }
@@ -400,6 +407,60 @@ def _profile_cache_set(name: str, tag: str, start: int, data: dict) -> None:
 _check_puuid_cache: dict[tuple[str, str], tuple[float, str]] = {}
 
 
+def _normalize_platform_region(region: str) -> str:
+    region = (region or "").strip().lower()
+    aliases = {
+        "euw": "euw1",
+        "eune": "eun1",
+        "eune1": "eun1",
+        "na": "na1",
+        "br": "br1",
+        "lan": "la1",
+        "las": "la2",
+        "oce": "oc1",
+        "tr": "tr1",
+        "ru": "ru",
+        "jp": "jp1",
+        "kr": "kr",
+    }
+    return aliases.get(region, region)
+
+
+async def fetch_summoner_by_puuid(puuid: str, region: str | None = None) -> dict:
+    if not puuid:
+        raise RuntimeError("No se recibió un PUUID válido.")
+    region = _normalize_platform_region(region or config.RIOT_REGION) or config.RIOT_REGION
+
+    riot = RiotClient()
+    try:
+        summoner = await riot.get_summoner_by_puuid(region, puuid)
+    except RiotAPIError:
+        if region == config.RIOT_REGION:
+            raise
+        summoner = await riot.get_summoner_by_puuid(config.RIOT_REGION, puuid)
+
+    account: dict = {}
+    for r in (region, config.RIOT_REGION):
+        try:
+            account = await riot.get_account_by_puuid(r, puuid)
+            break
+        except RiotAPIError:
+            continue
+
+    profile_icon_id = summoner.get("profileIconId") or DEFAULT_PROFILE_ICON_ID
+    await ensure_profile_icon(profile_icon_id)
+
+    return {
+        "puuid": puuid,
+        "name": account.get("gameName") or summoner.get("gameName") or "?",
+        "tag": account.get("tagLine") or summoner.get("tagLine") or "?",
+        "region": region.upper().rstrip("0123456789"),
+        "level": summoner.get("summonerLevel", 0),
+        "profile_icon_id": profile_icon_id,
+        "profile_icon": _asset(f"/assets/profileicons/{profile_icon_id}.png"),
+    }
+
+
 async def fetch_latest_match_id(name: str, tag: str) -> str | None:
     region = config.RIOT_REGION
     riot = RiotClient()
@@ -527,8 +588,8 @@ async def fetch_profile(
             "puuid": puuid,
             "region": region.upper().rstrip("0123456789"),
             "level": summoner.get("summonerLevel", 0),
-            "profile_icon": f"/assets/profileicons/{profile_icon_id}.png",
-            "rank_icon": f"/assets/ranks/{tier.lower()}.png",
+            "profile_icon": _asset(f"/assets/profileicons/{profile_icon_id}.png"),
+            "rank_icon": _asset(f"/assets/ranks/{tier.lower()}.png"),
             "tier": tier,
             "division": division,
             "lp": (rank or {}).get("leaguePoints", 0),
@@ -752,7 +813,7 @@ async def fetch_match_build(match_id: str, puuid: str | None = None) -> dict:
                     "key": SKILL_SLOT_KEYS[i],
                     "index": i,
                     "name": s.get("name", ""),
-                    "icon": f"/assets/spells/{image}",
+                    "icon": _asset(f"/assets/spells/{image}"),
                 }
             )
         players.append(
@@ -880,7 +941,7 @@ async def fetch_live_game(name: str, tag: str) -> dict:
                 spell_images.add(simage)
             spells.append(
                 {
-                    "src": f"/assets/spells/{simage}" if simage else None,
+                "src": _asset(f"/assets/spells/{simage}") if simage else None,
                     "name": sp.get("name") or {"en": "", "es": ""},
                     "id": sid,
                 }

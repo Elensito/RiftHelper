@@ -18,13 +18,26 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: npm
-          cache-dependency-path: desktop/package-lock.json
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Install frontend dependencies
+      - name: Install web dependencies
+        working-directory: web
+        run: npm install
+
+      - name: Build web frontend
+        working-directory: web
+        run: npm run build
+
+      - name: Stage frontend into desktop/dist
+        shell: pwsh
+        run: |
+          Remove-Item -Recurse -Force desktop/dist -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Force desktop/dist | Out-Null
+          Copy-Item -Recurse -Force web/dist/* desktop/dist/
+
+      - name: Install desktop dependencies
         working-directory: desktop
         run: npm install
 
@@ -32,8 +45,6 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           projectPath: desktop
           tagName: ${{ github.ref_name }}
@@ -41,3 +52,27 @@ jobs:
           releaseBody: "Nueva version de RiftHelper para Windows."
           releaseDraft: false
           prerelease: false
+          uploadUpdaterJson: false
+
+      - name: Install WinApp CLI
+        shell: pwsh
+        run: winget install microsoft.winappcli --silent --accept-package-agreements --accept-source-agreements
+
+      - name: Generate MSIX dev certificate
+        shell: pwsh
+        working-directory: desktop/msix
+        run: winapp cert generate --if-exists skip
+
+      - name: Pack MSIX
+        shell: pwsh
+        working-directory: desktop/msix
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Copy-Item ../src-tauri/target/release/RiftHelper.exe dist/
+          winapp pack dist --cert devcert.pfx
+
+      - name: Upload MSIX artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: RiftHelper-MSIX
+          path: desktop/msix/*.msix

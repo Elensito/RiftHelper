@@ -12,6 +12,8 @@ RIOT_API_KEY = os.getenv("RIOT_API_KEY", "")
 
 RIOT_REGION = os.getenv("RIOT_REGION", "euw1").strip().lower()
 
+SITE_URL = os.getenv("SITE_URL", "https://rift-helper.com").strip().rstrip("/")
+
 
 PATCH = os.getenv("PATCH", "16.16").strip()
 PATCH_START = int(os.getenv("PATCH_START", "1785888000"))

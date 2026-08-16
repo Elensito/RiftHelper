@@ -91,6 +91,9 @@ class RiotClient:
         tagline = quote(tag.strip().lstrip("#"), safe=" ")
         return await self._regional(region, f"/riot/account/v1/accounts/by-riot-id/{name}/{tagline}")
 
+    async def get_account_by_puuid(self, region: str, puuid: str) -> dict:
+        return await self._regional(region, f"/riot/account/v1/accounts/by-puuid/{puuid}")
+
     async def get_summoner_by_riot_id(self, region: str, game_name: str, tag: str) -> dict:
         account = await self.get_account_by_riot_id(region, game_name, tag)
         puuid = account.get("puuid", "")

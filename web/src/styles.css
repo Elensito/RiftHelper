@@ -318,6 +318,121 @@ body {
   height: 22px;
 }
 
+.riot-widget {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 250px;
+  padding: 5px 10px 5px 6px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: var(--bg-2);
+  color: var(--text);
+  cursor: pointer;
+  overflow: hidden;
+  transition: transform 0.15s, box-shadow 0.2s, border-color 0.2s, opacity 0.2s;
+  animation: pop-in 0.45s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.riot-widget:hover {
+  transform: translateY(-1px);
+  border-color: var(--cyan);
+  box-shadow: var(--glow-cyan);
+}
+
+.riot-widget:active {
+  transform: translateY(0) scale(0.97);
+}
+
+.riot-avatar {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+  box-shadow: 0 0 12px rgba(0, 229, 255, 0.35);
+}
+
+.riot-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--green);
+  box-shadow: 0 0 8px rgba(0, 255, 157, 0.8);
+  flex-shrink: 0;
+}
+
+.riot-name {
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 120px;
+}
+
+.riot-tag {
+  font-size: 12px;
+  color: var(--cyan);
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.riot-lvl {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--muted);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  padding: 2px 7px;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+.riot-logo {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  opacity: 0.85;
+}
+
+.riot-lbl {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.riot-unavailable {
+  opacity: 0.8;
+}
+
+.riot-unavailable:hover {
+  opacity: 1;
+}
+
+.riot-loading {
+  cursor: default;
+  padding: 9px 12px;
+}
+
+.riot-loading:hover {
+  transform: none;
+  box-shadow: none;
+  border-color: var(--border);
+}
+
+.riot-spinner {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px solid var(--border);
+  border-top-color: var(--cyan);
+  animation: spin 0.8s linear infinite;
+}
+
 .lang-current {
   background: var(--bg-2);
   border: 1px solid var(--border);
