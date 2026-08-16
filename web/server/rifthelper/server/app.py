@@ -13,7 +13,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from rifthelper import config
@@ -55,6 +55,14 @@ app.mount("/assets", StaticFiles(directory=str(ASSETS_DIR)), name="assets")
 @app.get("/health")
 def health() -> dict:
     return {"status": "ok", "version": "1.0.0"}
+
+
+@app.get("/download")
+def download() -> RedirectResponse:
+    return RedirectResponse(
+        "https://github.com/Elensito/RiftHelper/releases/latest",
+        status_code=303,
+    )
 
 
 @app.get("/api/summoner")

@@ -7,6 +7,7 @@ import QueueFilter from './components/QueueFilter.jsx'
 import LangSwitcher from './components/LangSwitcher.jsx'
 import ThemeToggle from './components/ThemeToggle.jsx'
 import DiscordButton from './components/DiscordButton.jsx'
+import DownloadButton from './components/DownloadButton.jsx'
 import Favorites from './components/Favorites.jsx'
 import ChampionPage from './components/ChampionPage.jsx'
 import Mastery from './components/Mastery.jsx'
@@ -239,7 +240,14 @@ export default function App() {
     <div className="app">
       <Tooltip />
       <header className="topbar">
-        <div className="logo" onClick={goHome}>RIFT<span>HELPER</span></div>
+        <button
+          className="brand-logo"
+          onClick={goHome}
+          title="RiftHelper"
+          aria-label="RiftHelper"
+        >
+          <img src="/rifthelper-logo.png" alt="RiftHelper" draggable="false" />
+        </button>
         <SearchBar
           onSearch={(n, t) => load(n, t)}
           onOpenChampion={openChampion}
@@ -294,6 +302,7 @@ export default function App() {
         )}
         <LangSwitcher lang={lang} onChange={setLang} />
         <DiscordButton lang={lang} />
+        <DownloadButton lang={lang} />
       </header>
 
       <ThemeToggle theme={theme} onChange={setTheme} />

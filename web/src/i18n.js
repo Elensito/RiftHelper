@@ -133,6 +133,8 @@ const EN = {
   seoFooter:
     'RiftHelper is a free League of Legends statistics tool. Look up any EUW summoner by Name#tag and check their latest matches: runes, builds, gold, damage, KP, CS, vision and KDA for all 10 players, plus live game status. Unofficial Riot Games match analysis, available in English and Spanish.',
   discord: 'Join our Discord server',
+  download: 'Download',
+  downloadTitle: 'Download the RiftHelper desktop app for Windows',
   tabMastery: 'Mastery',
   masteryLoading: 'Loading mastery…',
   masteryEmpty: 'No champions played yet',
@@ -288,6 +290,8 @@ const ES = {
   seoFooter:
     'RiftHelper es una herramienta gratuita de estadísticas de League of Legends. Busca cualquier invocador de EUW por su Nombre#tag y consulta sus últimas partidas: runas, builds, oro, daño, KP, CS, visión y KDA de los 10 jugadores, junto con el estado de la partida en vivo. Análisis de partidas con datos no oficiales de Riot Games, disponible en español e inglés.',
   discord: 'Únete a nuestro servidor de Discord',
+  download: 'Descargar',
+  downloadTitle: 'Descarga la app de escritorio de RiftHelper para Windows',
   tabMastery: 'Maestría',
   masteryLoading: 'Cargando maestría…',
   masteryEmpty: 'Aún no has jugado con ningún campeón',
