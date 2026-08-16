@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import Img from './Img.jsx'
 import { t } from '../i18n.js'
 import { isTauri, getRiotClientSession } from '../tauri.js'
-import { fetchSummonerByPuuid } from '../api.js'
+import { fetchWidgetSummoner } from '../api.js'
 
 function RiotMark() {
   return (
@@ -30,20 +30,25 @@ function RiotMark() {
 export default function RiotClientWidget({ lang, onOpen }) {
   const [status, setStatus] = useState('idle')
   const [summoner, setSummoner] = useState(null)
+  const [error, setError] = useState(null)
 
   const detect = async () => {
     if (!isTauri()) return
     setStatus('loading')
-    const session = await getRiotClientSession()
-    if (!session || !session.puuid) {
+    setError(null)
+    const result = await getRiotClientSession()
+    if (!result || !result.ok || !result.session) {
+      setError(result?.error || t(lang, 'riotNotDetected'))
       setStatus('unavailable')
       return
     }
+    const session = result.session
     try {
-      const data = await fetchSummonerByPuuid(session.puuid, session.region)
+      const data = await fetchWidgetSummoner(session.game_name, session.game_tag || 'EUW')
       setSummoner(data)
       setStatus('connected')
-    } catch {
+    } catch (e) {
+      setError(e?.message || t(lang, 'riotNotDetected'))
       setStatus('unavailable')
     }
   }
@@ -71,7 +76,7 @@ export default function RiotClientWidget({ lang, onOpen }) {
       <button
         className="riot-widget riot-unavailable"
         onClick={detect}
-        title={t(lang, 'riotNotDetected')}
+        title={error || t(lang, 'riotNotDetected')}
         aria-label={t(lang, 'riotNotDetected')}
       >
         <RiotMark />

@@ -8,7 +8,24 @@ struct RiotSession {
     region: String,
 }
 
-fn read_riot_session() -> Option<RiotSession> {
+#[derive(Serialize)]
+struct RiotSessionResult {
+    ok: bool,
+    error: Option<String>,
+    session: Option<RiotSession>,
+}
+
+fn find_riot_client_lockfile() -> Option<std::path::PathBuf> {
+    let local_app_data = std::env::var("LOCALAPPDATA").ok()?;
+    let primary = std::path::Path::new(&local_app_data)
+        .join("Riot Games")
+        .join("Riot Client")
+        .join("Config")
+        .join("lockfile");
+    if primary.is_file() {
+        return Some(primary);
+    }
+
     let program_data =
         std::env::var("PROGRAMDATA").unwrap_or_else(|_| "C:\\ProgramData".to_string());
     let installs_path = std::path::Path::new(&program_data)
@@ -16,41 +33,103 @@ fn read_riot_session() -> Option<RiotSession> {
         .join("RiotClientInstalls.json");
     let installs_text = std::fs::read_to_string(installs_path).ok()?;
     let installs: serde_json::Value = serde_json::from_str(&installs_text).ok()?;
-    let install_dir = installs
-        .get("rc_default")
-        .or_else(|| installs.get("rc_live"))
-        .or_else(|| installs.get("installed_path"))
-        .and_then(|v| v.as_str())
-        .map(str::to_string)?;
-
-    let lockfile_path = std::path::Path::new(&install_dir).join("Lockfile");
-    let lockfile = std::fs::read_to_string(lockfile_path).ok()?;
-    let parts: Vec<&str> = lockfile.split(':').collect();
-    if parts.len() < 5 {
-        return None;
+    for key in ["rc_default", "rc_live", "installed_path"] {
+        let Some(value) = installs.get(key).and_then(|v| v.as_str()) else {
+            continue;
+        };
+        let path = std::path::Path::new(value);
+        let dir = if path.extension().is_some() {
+            path.parent().unwrap_or(path)
+        } else {
+            path
+        };
+        for candidate in [dir.join("Config").join("lockfile"), dir.join("Lockfile")] {
+            if candidate.is_file() {
+                return Some(candidate);
+            }
+        }
     }
-    let port = parts[2].to_string();
-    let password = parts[3].to_string();
+    None
+}
+
+fn read_riot_session() -> RiotSessionResult {
+    let lockfile = match find_riot_client_lockfile() {
+        Some(path) => path,
+        None => {
+            return RiotSessionResult {
+                ok: false,
+                error: Some(
+                    "No se encontró la lockfile del Riot Client. Asegúrate de tenerlo abierto."
+                        .to_string(),
+                ),
+                session: None,
+            }
+        }
+    };
+    let lockfile_text = match std::fs::read_to_string(&lockfile) {
+        Ok(text) => text,
+        Err(err) => {
+            return RiotSessionResult {
+                ok: false,
+                error: Some(format!("No se pudo leer la lockfile: {err}")),
+                session: None,
+            }
+        }
+    };
+    let parts: Vec<&str> = lockfile_text.trim().split(':').collect();
+    if parts.len() < 5 {
+        return RiotSessionResult {
+            ok: false,
+            error: Some("La lockfile tiene un formato inesperado.".to_string()),
+            session: None,
+        };
+    }
+    let port = parts[2];
+    let password = parts[3];
 
     let client = reqwest::blocking::Client::builder()
         .danger_accept_invalid_certs(true)
         .build()
-        .ok()?;
-    let url = format!("https://127.0.0.1:{}/chat/v1/session", port);
-    let resp = client
+        .unwrap_or_else(|_| reqwest::blocking::Client::new());
+    let url = format!("https://127.0.0.1:{port}/chat/v1/session");
+    let resp = match client
         .get(&url)
         .basic_auth("riot", Some(password))
         .timeout(std::time::Duration::from_secs(3))
         .send()
-        .ok()?;
+    {
+        Ok(resp) => resp,
+        Err(err) => {
+            return RiotSessionResult {
+                ok: false,
+                error: Some(format!("El cliente no respondió en el puerto {port}: {err}")),
+                session: None,
+            }
+        }
+    };
     if !resp.status().is_success() {
-        return None;
+        return RiotSessionResult {
+            ok: false,
+            error: Some(format!("El cliente respondió con estado {}.", resp.status())),
+            session: None,
+        };
     }
-    let body: serde_json::Value = resp.json().ok()?;
-    if body.get("sessionState").and_then(|v| v.as_str()).unwrap_or("") != "CONNECTED" {
-        return None;
-    }
-    let text = |k: &str| body.get(k).and_then(|v| v.as_str()).unwrap_or("").to_string();
+    let body: serde_json::Value = match resp.json() {
+        Ok(value) => value,
+        Err(_) => {
+            return RiotSessionResult {
+                ok: false,
+                error: Some("El cliente devolvió una respuesta no válida.".to_string()),
+                session: None,
+            }
+        }
+    };
+    let text = |key: &str| {
+        body.get(key)
+            .and_then(|value| value.as_str())
+            .unwrap_or("")
+            .to_string()
+    };
     let session = RiotSession {
         game_name: text("game_name"),
         game_tag: text("game_tag"),
@@ -58,17 +137,29 @@ fn read_riot_session() -> Option<RiotSession> {
         region: text("region"),
     };
     if session.puuid.is_empty() {
-        return None;
+        return RiotSessionResult {
+            ok: false,
+            error: Some("No hay una sesión iniciada en el Riot Client.".to_string()),
+            session: None,
+        };
     }
-    Some(session)
+    RiotSessionResult {
+        ok: true,
+        error: None,
+        session: Some(session),
+    }
 }
 
 #[tauri::command]
-async fn get_riot_client_session() -> Option<RiotSession> {
-    tauri::async_runtime::spawn_blocking(read_riot_session)
-        .await
-        .ok()
-        .flatten()
+async fn get_riot_client_session() -> RiotSessionResult {
+    match tauri::async_runtime::spawn_blocking(read_riot_session).await {
+        Ok(result) => result,
+        Err(_) => RiotSessionResult {
+            ok: false,
+            error: Some("No se pudo detectar el Riot Client.".to_string()),
+            session: None,
+        },
+    }
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]

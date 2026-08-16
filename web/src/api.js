@@ -59,6 +59,12 @@ export async function fetchSummonerByPuuid(puuid, region) {
   return data
 }
 
+export async function fetchWidgetSummoner(name, tag) {
+  const data = await fetchSummoner(name, tag, 1)
+  if (!data?.summoner) throw new Error('Invocador no encontrado')
+  return data.summoner
+}
+
 export async function fetchMastery(name, tag) {
   const url = `${API_BASE}/api/mastery?name=${encodeURIComponent(name)}&tag=${encodeURIComponent(tag)}`
   const res = await fetch(url)
