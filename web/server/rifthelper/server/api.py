@@ -282,7 +282,7 @@ def _carry_score(p: dict, team_kills: int, maxes: dict) -> int:
     kp = (kills + assists) / max(1, team_kills)
     dmg = p.get("damage", 0) / max(1, maxes["damage"])
     gold = p.get("gold", 0) / max(1, maxes["gold"])
-    is_support = (p.get("role", "") or "").upper() == "SUPPORT"
+    is_support = (p.get("role", "") or "").upper() in ("SUPPORT", "UTILITY")
     farm = p.get("vision", 0) if is_support else p.get("cs", 0)
     farm_share = farm / max(1, maxes["vision"] if is_support else maxes["cs"])
     kda = min(3.0, (kills + assists) / max(1, deaths)) / 3.0
