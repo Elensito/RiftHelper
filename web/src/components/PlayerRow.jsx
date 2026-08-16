@@ -104,7 +104,7 @@ export default function PlayerRow({ p, lang, maxDamage = 0, onOpenPlayer = () =>
       <div className="g-carry">
         {p.carry_score != null && (
           <span
-            className={`carry-score ${p.carry_score >= 70 ? 'high' : p.carry_score >= 40 ? 'mid' : ''}`}
+            className={`carry-score ${p.carry_score >= 90 ? 'legendary' : p.carry_score >= 80 ? 'epic' : p.carry_score >= 40 ? 'mid' : ''}`}
             title={t(lang, 'carryScore')}
           >
             {p.carry_score}
