@@ -282,9 +282,11 @@ def _carry_score(p: dict, team_kills: int, maxes: dict) -> int:
     kp = (kills + assists) / max(1, team_kills)
     dmg = p.get("damage", 0) / max(1, maxes["damage"])
     gold = p.get("gold", 0) / max(1, maxes["gold"])
-    cs = p.get("cs", 0) / max(1, maxes["cs"])
+    is_support = (p.get("role", "") or "").upper() == "SUPPORT"
+    farm = p.get("vision", 0) if is_support else p.get("cs", 0)
+    farm_share = farm / max(1, maxes["vision"] if is_support else maxes["cs"])
     kda = min(3.0, (kills + assists) / max(1, deaths)) / 3.0
-    return min(100, round(100 * (kp + dmg + gold + cs + 2 * kda) / 6))
+    return min(100, round(100 * (kp + dmg + gold + farm_share + 2 * kda) / 6))
 
 
 def _mark_mvps(players: list[dict]) -> None:
@@ -295,6 +297,7 @@ def _mark_mvps(players: list[dict]) -> None:
         "damage": max((p.get("damage", 0) for p in players), default=0),
         "gold": max((p.get("gold", 0) for p in players), default=0),
         "cs": max((p.get("cs", 0) for p in players), default=0),
+        "vision": max((p.get("vision", 0) for p in players), default=0),
     }
     for plist in teams.values():
         if not plist:

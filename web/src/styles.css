@@ -2009,11 +2009,16 @@ button.p-name:hover {
   border-color: transparent;
 }
 
+.carry-score.blue {
+  color: #04121a;
+  background: linear-gradient(135deg, #7cc9ff, #2f8fff);
+  border-color: transparent;
+}
+
 .carry-score.epic {
-  color: #fff;
+  color: #04121a;
   background: linear-gradient(135deg, #d08cff, #a42bff);
   border-color: transparent;
-  text-shadow: 0 0 8px rgba(190, 90, 255, 0.9);
 }
 
 .carry-score.legendary {
