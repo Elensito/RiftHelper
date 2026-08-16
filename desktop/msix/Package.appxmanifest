@@ -9,7 +9,7 @@
     Publisher debe coincidir con la identidad de publicador de tu cuenta de
     Partner Center (p. ej. CN=...). Sustitúyelo antes de subir a la Store.
   -->
-  <Identity Name="RiftHelperDesktop" Publisher="CN=RiftHelper" Version="1.0.1.0" />
+  <Identity Name="RiftHelperDesktop" Publisher="CN=RiftHelper" Version="1.0.2.0" />
 
   <Properties>
     <DisplayName>RiftHelper</DisplayName>
