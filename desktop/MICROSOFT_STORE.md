@@ -24,9 +24,11 @@ Para descargar el MSIX: Actions -> último run -> *RiftHelper-MSIX* -> Download.
 3. Reserva el nombre **RiftHelper**.
 4. Prepara el MSIX antes de subirlo:
    - En `desktop/msix/Package.appxmanifest`, el atributo `Publisher` debe
-     coincidir con la **identidad de publicador** que te asigna Partner Center
-     (formato `CN=...`). Cámbialo cada vez que cambies de cuenta.
-   - Bump de `Version` (p. ej. `1.0.2.0`) en cada release: Windows exige
+     coincidir con la **identidad de publicador** que te asigna Partner Center.
+     Identidad actual (Elensito):
+     `Name=Elensito.RiftHelper`, `Publisher=CN=B151A3BC-C122-43AC-AE4E-AE5A1D7B1019`,
+     `PublisherDisplayName=Elensito`, Store ID `9N0K87MNRKNP`.
+   - Bump de `Version` (p. ej. `1.0.5.0`) en cada release: Windows exige
      versión mayor para actualizar un paquete instalado.
 5. Sube el `.msix` del artefacto. La Store lo **firma por ti** y lo convierte
    en paquete instalable.
