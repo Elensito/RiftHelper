@@ -32,3 +32,10 @@ node_modules/
 assets/profileicons/
 assets/spells/
 assets/runetrees/
+
+# Desktop app (Tauri)
+desktop/node_modules/
+desktop/src-tauri/target/
+desktop/src-tauri/.updater/
+!desktop/dist/
+!desktop/dist/index.html
