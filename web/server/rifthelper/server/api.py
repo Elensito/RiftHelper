@@ -223,7 +223,7 @@ def _participant_summary(
     is_adc = (p.get("teamPosition") or "").upper() == "BOTTOM"
     role_boots = p.get("roleBoundItem", 0) or 0
     runes = _runes_of(p)
-    cs = p.get("totalMinionsKilled", 0) + p.get("totalEnemiesSlain", 0)
+    cs = p.get("totalMinionsKilled", 0) + p.get("neutralMinionsKilled", 0)
 
     styles = (p.get("perks", {}) or {}).get("styles", []) or []
     primary_tree_id = styles[0].get("style") if len(styles) > 0 else None
