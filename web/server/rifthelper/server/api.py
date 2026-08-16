@@ -144,20 +144,26 @@ async def _ensure_tree_icons(rune_trees: dict) -> None:
     import aiohttp
 
     async with aiohttp.ClientSession() as session:
-        for tid, info in rune_trees.items():
+        sem = asyncio.Semaphore(16)
+
+        async def one(tid: int, icon: str) -> None:
             path = out_dir / f"{tid}.png"
             if path.is_file():
-                continue
-            icon = info.get("icon") if isinstance(info, dict) else None
-            if not icon:
-                continue
-            url = config.RUNE_ICON_URL.format(icon=icon)
-            try:
-                async with session.get(url) as resp:
-                    if resp.status == 200:
-                        path.write_bytes(await resp.read())
-            except OSError:
-                pass
+                return
+            async with sem:
+                try:
+                    async with session.get(config.RUNE_ICON_URL.format(icon=icon)) as resp:
+                        if resp.status == 200:
+                            path.write_bytes(await resp.read())
+                except OSError:
+                    pass
+
+        jobs = [
+            (tid, info.get("icon"))
+            for tid, info in rune_trees.items()
+            if isinstance(info, dict) and info.get("icon")
+        ]
+        await asyncio.gather(*(one(tid, icon) for tid, icon in jobs))
 
 
 async def _fetch_player_ranks(region: str, puuids: set[str]) -> dict:
@@ -167,7 +173,7 @@ async def _fetch_player_ranks(region: str, puuids: set[str]) -> dict:
     todo = [p for p in puuids if p and (p not in _rank_cache or now - _rank_cache[p][0] > RANK_CACHE_TTL)]
     if todo:
         riot = RiotClient()
-        sem = asyncio.Semaphore(3)
+        sem = asyncio.Semaphore(8)
 
         async def one(puuid: str) -> None:
             async with sem:
@@ -196,20 +202,22 @@ async def _ensure_rune_icons(rune_ids: set[int], runes_info: dict) -> None:
     import aiohttp
 
     async with aiohttp.ClientSession() as session:
-        for rid in rune_ids:
+        sem = asyncio.Semaphore(16)
+
+        async def one(rid: int, icon: str) -> None:
             path = out_dir / f"{rid}.png"
             if path.is_file():
-                continue
-            icon = STAT_MODS.get(rid) or (runes_info.get(rid, {}) or {}).get("icon")
-            if not icon:
-                continue
-            url = config.RUNE_ICON_URL.format(icon=icon)
-            try:
-                async with session.get(url) as resp:
-                    if resp.status == 200:
-                        path.write_bytes(await resp.read())
-            except OSError:
-                pass
+                return
+            async with sem:
+                try:
+                    async with session.get(config.RUNE_ICON_URL.format(icon=icon)) as resp:
+                        if resp.status == 200:
+                            path.write_bytes(await resp.read())
+                except OSError:
+                    pass
+
+        jobs = [(rid, STAT_MODS.get(rid) or (runes_info.get(rid, {}) or {}).get("icon")) for rid in rune_ids]
+        await asyncio.gather(*(one(rid, icon) for rid, icon in jobs if icon))
 
 
 def _runes_of(p: dict) -> list[int]:
@@ -510,18 +518,24 @@ async def fetch_profile(
     item_ids: set[int] = set()
     spell_images: set[str] = set()
     player_puuids: set[str] = set()
-    for match_id in match_ids:
-        try:
-            match = await riot.get_match(region, match_id)
-            timeline = await riot.get_match_timeline(region, match_id)
-        except RiotAPIError:
-            continue
+
+    fetch_sem = asyncio.Semaphore(8)
+
+    async def collect(match_id: str) -> None:
+        async with fetch_sem:
+            try:
+                match = await riot.get_match(region, match_id)
+                timeline = await riot.get_match_timeline(region, match_id)
+            except RiotAPIError:
+                return
         for p in (match.get("info", {}) or {}).get("participants", []) or []:
             if p.get("puuid"):
                 player_puuids.add(p["puuid"])
             rune_ids.update(_runes_of(p))
             item_ids.update(p.get(f"item{i}", 0) or 0 for i in range(7))
             item_ids.add(p.get("roleBoundItem", 0) or 0)
+
+    await asyncio.gather(*(collect(mid) for mid in match_ids))
 
     rank_map = await _fetch_player_ranks(region, player_puuids)
     rank_map[puuid] = {
@@ -530,15 +544,18 @@ async def fetch_profile(
         "lp": (rank or {}).get("leaguePoints", 0),
     }
 
-    for match_id in match_ids:
-        try:
-            match = await riot.get_match(region, match_id)
-            timeline = await riot.get_match_timeline(region, match_id)
-        except RiotAPIError:
-            continue
-        payload = build_match(match, timeline, puuid, champ_info, rune_names, item_names, spells_info, spell_images, rune_trees, rank_map)
-        if payload:
-            matches.append(payload)
+    fetch_sem = asyncio.Semaphore(8)
+
+    async def build_one(match_id: str):
+        async with fetch_sem:
+            try:
+                match = await riot.get_match(region, match_id)
+                timeline = await riot.get_match_timeline(region, match_id)
+            except RiotAPIError:
+                return None
+        return build_match(match, timeline, puuid, champ_info, rune_names, item_names, spells_info, spell_images, rune_trees, rank_map)
+
+    matches = [b for b in await asyncio.gather(*(build_one(mid) for mid in match_ids)) if b]
 
     await _ensure_rune_icons(rune_ids, runes_en)
     await _ensure_tree_icons(rune_trees)
@@ -638,16 +655,21 @@ async def _ensure_spell_icons(images: set[str]) -> None:
     import aiohttp
 
     async with aiohttp.ClientSession() as session:
-        for image in sorted(images):
+        sem = asyncio.Semaphore(16)
+
+        async def one(image: str) -> None:
             path = out_dir / image
             if path.is_file():
-                continue
-            async with session.get(config.SPELL_ICON_URL.format(image=image)) as resp:
-                if resp.status == 200:
-                    try:
-                        path.write_bytes(await resp.read())
-                    except OSError:
-                        pass
+                return
+            async with sem:
+                try:
+                    async with session.get(config.SPELL_ICON_URL.format(image=image)) as resp:
+                        if resp.status == 200:
+                            path.write_bytes(await resp.read())
+                except OSError:
+                    pass
+
+        await asyncio.gather(*(one(image) for image in sorted(images)))
 
 
 async def _ensure_champion_icons(images: set[str]) -> None:
@@ -659,16 +681,21 @@ async def _ensure_champion_icons(images: set[str]) -> None:
     import aiohttp
 
     async with aiohttp.ClientSession() as session:
-        for image in sorted(images):
+        sem = asyncio.Semaphore(16)
+
+        async def one(image: str) -> None:
             path = out_dir / image
             if path.is_file():
-                continue
-            async with session.get(config.CHAMPION_ICON_URL.format(image=image)) as resp:
-                if resp.status == 200:
-                    try:
-                        path.write_bytes(await resp.read())
-                    except OSError:
-                        pass
+                return
+            async with sem:
+                try:
+                    async with session.get(config.CHAMPION_ICON_URL.format(image=image)) as resp:
+                        if resp.status == 200:
+                            path.write_bytes(await resp.read())
+                except OSError:
+                    pass
+
+        await asyncio.gather(*(one(image) for image in sorted(images)))
 
 
 async def _ensure_item_icons(item_ids: set[int]) -> None:
@@ -680,16 +707,21 @@ async def _ensure_item_icons(item_ids: set[int]) -> None:
     import aiohttp
 
     async with aiohttp.ClientSession() as session:
-        for iid in sorted(item_ids):
+        sem = asyncio.Semaphore(16)
+
+        async def one(iid: int) -> None:
             path = out_dir / f"{iid}.png"
             if path.is_file():
-                continue
-            async with session.get(config.ITEM_ICON_URL.format(image=f"{iid}.png")) as resp:
-                if resp.status == 200:
-                    try:
-                        path.write_bytes(await resp.read())
-                    except OSError:
-                        pass
+                return
+            async with sem:
+                try:
+                    async with session.get(config.ITEM_ICON_URL.format(image=f"{iid}.png")) as resp:
+                        if resp.status == 200:
+                            path.write_bytes(await resp.read())
+                except OSError:
+                    pass
+
+        await asyncio.gather(*(one(iid) for iid in sorted(item_ids)))
 
 
 async def fetch_tooltip(kind: str, target_id: int, lang: str = "es", champ: str | None = None) -> dict:
