@@ -10,6 +10,10 @@ import asyncio
 from contextlib import asynccontextmanager
 import sys
 from pathlib import Path
+import time
+import json
+
+import aiohttp
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -57,12 +61,34 @@ def health() -> dict:
     return {"status": "ok", "version": "1.0.0"}
 
 
+_LATEST_RELEASE_URL = (
+    "https://github.com/Elensito/RiftHelper/releases/latest/download/latest.json"
+)
+_INSTALLER_CACHE_TTL = 300
+_installer_cache: dict = {"url": None, "expires": 0}
+
+
+async def _latest_installer_url() -> str:
+    now = time.monotonic()
+    if _installer_cache["url"] and _installer_cache["expires"] > now:
+        return _installer_cache["url"]
+    async with aiohttp.ClientSession() as session:
+        async with session.get(_LATEST_RELEASE_URL, timeout=aiohttp.ClientTimeout(total=10)) as resp:
+            resp.raise_for_status()
+            data = json.loads(await resp.text())
+    url = data["platforms"]["windows-x86_64-nsis"]["url"]
+    _installer_cache["url"] = url
+    _installer_cache["expires"] = now + _INSTALLER_CACHE_TTL
+    return url
+
+
 @app.get("/download")
-def download() -> RedirectResponse:
-    return RedirectResponse(
-        "https://github.com/Elensito/RiftHelper/releases/latest",
-        status_code=303,
-    )
+async def download() -> RedirectResponse:
+    try:
+        url = await _latest_installer_url()
+    except Exception:
+        url = "https://github.com/Elensito/RiftHelper/releases/latest"
+    return RedirectResponse(url, status_code=303)
 
 
 @app.get("/api/summoner")
