@@ -332,6 +332,7 @@ export const QUEUES = {
   420: { en: 'Ranked Solo', es: 'Clasificatoria Solo' },
   430: { en: 'Normal', es: 'Normal' },
   440: { en: 'Ranked Flex', es: 'Clasificatoria Flexible' },
+  710: { en: 'Ranked 5v5 Team', es: 'Clasificatoria 5v5' },
   450: { en: 'ARAM', es: 'ARAM' },
   2400: { en: 'ARAM: Mayhem', es: 'ARAM: Mayhem' },
   480: { en: 'Swiftplay', es: 'Swiftplay' },
@@ -342,21 +343,25 @@ export const QUEUES = {
   830: { en: 'Co-op vs AI', es: 'Contra IA' },
   840: { en: 'Co-op vs AI', es: 'Contra IA' },
   850: { en: 'Co-op vs AI', es: 'Contra IA' },
+  870: { en: 'Co-op vs AI', es: 'Contra IA' },
+  880: { en: 'Co-op vs AI', es: 'Contra IA' },
+  890: { en: 'Co-op vs AI', es: 'Contra IA' },
   900: { en: 'Clash', es: 'Clash' },
   1700: { en: 'Arena', es: 'Arena' },
+  1710: { en: 'Arena', es: 'Arena' },
   1740: { en: 'Arena', es: 'Arena' },
   1750: { en: 'Arena', es: 'Arena' },
 }
 
 export const QUEUE_FILTERS = [
   { id: 'solo', queues: [420], en: 'Solo/Duo', es: 'Solo/Dúo' },
-  { id: 'flex', queues: [440], en: 'Flex', es: 'Flexible' },
+  { id: 'flex', queues: [440, 710], en: 'Flex', es: 'Flexible' },
   { id: 'draft', queues: [400], en: 'Draft', es: 'Draft' },
   { id: 'normal', queues: [430, 480, 490], en: 'Normals', es: 'Normales' },
   { id: 'aram', queues: [450, 2400], en: 'ARAM', es: 'ARAM' },
-  { id: 'arena', queues: [1700, 1740, 1750], en: 'Arena', es: 'Arena' },
+  { id: 'arena', queues: [1700, 1710, 1740, 1750], en: 'Arena', es: 'Arena' },
   { id: 'clash', queues: [700, 720, 900, 902, 904, 910], en: 'Clash', es: 'Clash' },
-  { id: 'coop', queues: [820, 830, 840, 850], en: 'Co-op vs AI', es: 'Contra IA' },
+  { id: 'coop', queues: [820, 830, 840, 850, 870, 880, 890], en: 'Co-op vs AI', es: 'Contra IA' },
   { id: 'custom', queues: [0], en: 'Custom', es: 'Personalizada' },
 ]
 
