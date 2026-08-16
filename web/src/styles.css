@@ -79,7 +79,8 @@ body {
   display: flex;
   align-items: center;
   gap: 18px;
-  padding: 16px 0;
+  margin: 0 calc(50% - 50vw);
+  padding: 16px 22px;
   background: linear-gradient(180deg, var(--bg) 70%, transparent);
   backdrop-filter: blur(6px);
 }
@@ -97,11 +98,11 @@ body {
 
 .brand-logo img {
   display: block;
-  width: 60px;
-  height: 60px;
+  width: 96px;
+  height: 96px;
   object-fit: cover;
-  border-radius: 12px;
-  box-shadow: 0 0 22px rgba(0, 229, 255, 0.28);
+  border-radius: 16px;
+  box-shadow: 0 0 26px rgba(0, 229, 255, 0.3);
 }
 
 .brand-logo:hover {
@@ -270,6 +271,7 @@ body {
 .lang-switcher {
   position: relative;
   flex-shrink: 0;
+  margin-left: auto;
 }
 
 .discord-btn {
@@ -3632,7 +3634,8 @@ button.p-name:hover {
   .topbar {
     flex-wrap: wrap;
     gap: 10px 14px;
-    padding: 12px 0;
+    margin: 0;
+    padding: 12px 14px;
   }
 
   .topbar .brand-logo {
@@ -3640,8 +3643,8 @@ button.p-name:hover {
   }
 
   .topbar .brand-logo img {
-    width: 46px;
-    height: 46px;
+    width: 64px;
+    height: 64px;
   }
 
   .topbar .lang-switcher {
