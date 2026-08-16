@@ -306,28 +306,34 @@ def _participant_summary(
     }
 
 
-def _carry_score(p: dict, team_kills: int, team_damage: int) -> int:
+def _carry_score(p: dict, team_kills: int, maxes: dict) -> int:
     kills = p.get("kills", 0)
     deaths = p.get("deaths", 0)
     assists = p.get("assists", 0)
     kp = (kills + assists) / max(1, team_kills)
-    dmg = p.get("damage", 0) / max(1, team_damage)
-    kda = min(1.5, (kills + assists) / max(1, deaths)) / 1.5
-    return min(100, round(100 * (kp + dmg + kda) / 3))
+    dmg = p.get("damage", 0) / max(1, maxes["damage"])
+    gold = p.get("gold", 0) / max(1, maxes["gold"])
+    cs = p.get("cs", 0) / max(1, maxes["cs"])
+    kda = min(3.0, (kills + assists) / max(1, deaths)) / 3.0
+    return min(100, round(100 * (kp + dmg + gold + cs + 2 * kda) / 6))
 
 
 def _mark_mvps(players: list[dict]) -> None:
     teams: dict[int, list[dict]] = {100: [], 200: []}
     for p in players:
         teams.setdefault(p.get("team", 0), []).append(p)
+    maxes = {
+        "damage": max((p.get("damage", 0) for p in players), default=0),
+        "gold": max((p.get("gold", 0) for p in players), default=0),
+        "cs": max((p.get("cs", 0) for p in players), default=0),
+    }
     for plist in teams.values():
         if not plist:
             continue
         team_kills = sum(p.get("kills", 0) for p in plist)
-        team_damage = sum(p.get("damage", 0) for p in plist)
         best = plist[0]
         for p in plist:
-            score = _carry_score(p, team_kills, team_damage)
+            score = _carry_score(p, team_kills, maxes)
             p["carry_score"] = score
             if score > best.get("carry_score", 0):
                 best = p
