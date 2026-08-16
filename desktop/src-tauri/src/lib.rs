@@ -8,9 +8,6 @@ struct RiotSession {
     region: String,
 }
 
-/// Reads the Riot Client local session by locating the install path from
-/// RiotClientInstalls.json, reading the Lockfile for the local API port/credentials
-/// and querying the Riot Client chat session endpoint (self-signed cert on 127.0.0.1).
 fn read_riot_session() -> Option<RiotSession> {
     let program_data =
         std::env::var("PROGRAMDATA").unwrap_or_else(|_| "C:\\ProgramData".to_string());

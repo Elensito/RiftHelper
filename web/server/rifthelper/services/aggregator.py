@@ -1,7 +1,3 @@
-"""Agregador del parche: convierte las filas compactas (rows/) y los datos extraídos de
-timeline en estadísticas por campeón-rol que sirve la API (/api/champion/{key}).
-"""
-
 import gzip
 import json
 import time

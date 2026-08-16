@@ -50,7 +50,6 @@ export default function RiotClientWidget({ lang, onOpen }) {
 
   useEffect(() => {
     detect()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   if (!isTauri()) return null

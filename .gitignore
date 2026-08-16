@@ -8,11 +8,9 @@ build/
 *.egg-info/
 .pytest_cache/
 
-# Bot de Discord
 bot/data.json
 bot/champions_cache.json
 
-# Backend web (FastAPI)
 web/server/champions_cache.json
 web/server/champions_spells_cache.json
 web/server/items_cache.json
@@ -24,16 +22,13 @@ web/server/runes_trees_cache_es.json
 web/server/ddragon_version.json
 web/server/cache/
 
-# Frontend (React)
 node_modules/
 !web/dist/
 
-# Iconos de perfil descargados al vuelo por la web
 assets/profileicons/
 assets/spells/
 assets/runetrees/
 
-# Desktop app (Tauri)
 desktop/node_modules/
 desktop/src-tauri/target/
 desktop/src-tauri/.updater/

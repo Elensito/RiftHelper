@@ -3733,8 +3733,6 @@ button.p-name:hover {
   color: #ffd9a0;
 }
 
-/* ===== Responsive ===== */
-
 @media (max-width: 900px) {
   .app {
     padding: 0 14px 48px;

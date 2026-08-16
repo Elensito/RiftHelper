@@ -1,13 +1,3 @@
-"""Crawler del parche: descubre y descarga todas las partidas de EUW del parche actual.
-
-Estrategia: snowball BFS. Se siembran puuids desde leaderboards (challenger/grandmaster/
-master), partidas en vivo (featured games) y los participantes de cada partida descargada.
-Para cada puuid se listan los match ids posteriores a PATCH_START y se descargan las
-partidas nuevas. Los timelines de una muestra (CRAWL_TIMELINE_BUDGET) se descargan,
-se extraen los datos compactos (orden de compra, skills, starting items) y el raw se
-borra inmediatamente para no acumular cientos de GB.
-"""
-
 import asyncio
 import contextlib
 import gzip
