@@ -1066,27 +1066,6 @@ button.g-pname:hover {
   text-shadow: 0 0 12px rgba(0, 229, 255, 0.6);
 }
 
-.g-rank {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 5px;
-}
-
-.g-rank-icon {
-  width: 20px;
-  height: 20px;
-  border-radius: 4px;
-  object-fit: contain;
-}
-
-.g-rank-div {
-  font-size: 10px;
-  font-weight: 800;
-  color: var(--muted);
-  letter-spacing: 0.5px;
-}
-
 .g-carry {
   display: flex;
   flex-direction: column;

@@ -17,9 +17,7 @@ from rifthelper.services.riot import RiotAPIError, RiotClient
 
 MATCH_COUNT = 30
 MASTERY_CACHE_TTL = 300
-RANK_CACHE_TTL = 600
 _mastery_cache: dict[str, tuple[float, dict]] = {}
-_rank_cache: dict[str, tuple[float, dict | None]] = {}
 _VALIDATED_TOOLTIP: set[tuple[str, str, str]] = set()
 _SUMMONER_SPELLS_INFO: dict = {}
 
@@ -166,34 +164,6 @@ async def _ensure_tree_icons(rune_trees: dict) -> None:
         await asyncio.gather(*(one(tid, icon) for tid, icon in jobs))
 
 
-async def _fetch_player_ranks(region: str, puuids: set[str]) -> dict:
-    if not puuids:
-        return {}
-    now = time.time()
-    todo = [p for p in puuids if p and (p not in _rank_cache or now - _rank_cache[p][0] > RANK_CACHE_TTL)]
-    if todo:
-        riot = RiotClient()
-        sem = asyncio.Semaphore(8)
-
-        async def one(puuid: str) -> None:
-            async with sem:
-                try:
-                    entry = await riot.get_solo_rank(region, puuid)
-                except RiotAPIError:
-                    entry = None
-            if entry:
-                _rank_cache[puuid] = (now, {
-                    "tier": entry.get("tier") or "UNRANKED",
-                    "division": entry.get("rank") or "",
-                    "lp": entry.get("leaguePoints") or 0,
-                })
-            else:
-                _rank_cache[puuid] = (now, {"tier": "UNRANKED", "division": "", "lp": 0})
-
-        await asyncio.gather(*(one(p) for p in todo))
-    return {p: _rank_cache[p][1] for p in puuids if p in _rank_cache}
-
-
 async def _ensure_rune_icons(rune_ids: set[int], runes_info: dict) -> None:
     if not rune_ids:
         return
@@ -247,7 +217,6 @@ def _participant_summary(
     summoner_spells: dict[int, dict],
     spell_images: set[str],
     rune_trees: dict,
-    rank_map: dict,
 ) -> dict:
     champ = champ_info.get(p.get("championId"), {})
     items = [p.get(f"item{i}", 0) or 0 for i in range(7)]
@@ -259,10 +228,6 @@ def _participant_summary(
     styles = (p.get("perks", {}) or {}).get("styles", []) or []
     primary_tree_id = styles[0].get("style") if len(styles) > 0 else None
     secondary_tree_id = styles[1].get("style") if len(styles) > 1 else None
-
-    rank = (rank_map or {}).get(p.get("puuid")) or {}
-    tier = rank.get("tier") or "UNRANKED"
-    division = rank.get("division") or ""
 
     spell_sids = [p.get("summoner1Id"), p.get("summoner2Id")]
     spells = []
@@ -302,10 +267,6 @@ def _participant_summary(
         "runes": [_runed(r, rune_names) for r in runes],
         "primary_tree": _treed(primary_tree_id, rune_trees),
         "secondary_tree": _treed(secondary_tree_id, rune_trees),
-        "tier": tier,
-        "division": division,
-        "rank_icon": f"/assets/ranks/{tier.lower()}.png",
-        "lp": rank.get("lp") or 0,
         "spells": spells,
         "items": [_itemd(i, item_names) for i in items[:6]],
         "role_item": _itemd(role_boots, item_names) if role_boots else None,
@@ -358,7 +319,6 @@ def build_match(
     summoner_spells: dict[int, dict],
     spell_images: set[str],
     rune_trees: dict,
-    rank_map: dict,
 ) -> dict | None:
     player = stats_service.compute_match_stats(match, timeline, puuid, champ_info)
     if player is None:
@@ -370,7 +330,7 @@ def build_match(
     participants = info.get("participants", [])
     players = [
         _participant_summary(
-            p, champ_info, duration_min, puuid, rune_names, item_names, summoner_spells, spell_images, rune_trees, rank_map
+            p, champ_info, duration_min, puuid, rune_names, item_names, summoner_spells, spell_images, rune_trees
         )
         for p in participants
     ]
@@ -517,7 +477,6 @@ async def fetch_profile(
     rune_ids: set[int] = set()
     item_ids: set[int] = set()
     spell_images: set[str] = set()
-    player_puuids: set[str] = set()
 
     fetch_sem = asyncio.Semaphore(8)
 
@@ -529,20 +488,11 @@ async def fetch_profile(
             except RiotAPIError:
                 return
         for p in (match.get("info", {}) or {}).get("participants", []) or []:
-            if p.get("puuid"):
-                player_puuids.add(p["puuid"])
             rune_ids.update(_runes_of(p))
             item_ids.update(p.get(f"item{i}", 0) or 0 for i in range(7))
             item_ids.add(p.get("roleBoundItem", 0) or 0)
 
     await asyncio.gather(*(collect(mid) for mid in match_ids))
-
-    rank_map = await _fetch_player_ranks(region, player_puuids)
-    rank_map[puuid] = {
-        "tier": (rank or {}).get("tier", "UNRANKED"),
-        "division": (rank or {}).get("rank", ""),
-        "lp": (rank or {}).get("leaguePoints", 0),
-    }
 
     fetch_sem = asyncio.Semaphore(8)
 
@@ -553,7 +503,7 @@ async def fetch_profile(
                 timeline = await riot.get_match_timeline(region, match_id)
             except RiotAPIError:
                 return None
-        return build_match(match, timeline, puuid, champ_info, rune_names, item_names, spells_info, spell_images, rune_trees, rank_map)
+        return build_match(match, timeline, puuid, champ_info, rune_names, item_names, spells_info, spell_images, rune_trees)
 
     matches = [b for b in await asyncio.gather(*(build_one(mid) for mid in match_ids)) if b]
 

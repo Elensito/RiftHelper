@@ -79,27 +79,19 @@ export default function PlayerRow({ p, lang, maxDamage = 0, onOpenPlayer = () =>
         ) : null}
       </div>
 
-      <div className="g-name">
-        {p.player_name ? (
-          <button
-            className="g-pname"
-            title={`${p.player_name}#${p.player_tag}`}
-            onClick={() => onOpenPlayer(p.player_name, p.player_tag)}
-          >
-            {p.player_name}
-          </button>
-        ) : (
-          <span className="g-pname">{p.champion}</span>
-        )}
-        <div className="g-rank">
-          <Img
-            src={p.rank_icon}
-            className="g-rank-icon"
-            title={`${p.tier}${p.division ? ` ${p.division}` : ''}`}
-          />
-          {p.division ? <span className="g-rank-div">{p.division}</span> : null}
+        <div className="g-name">
+          {p.player_name ? (
+            <button
+              className="g-pname"
+              title={`${p.player_name}#${p.player_tag}`}
+              onClick={() => onOpenPlayer(p.player_name, p.player_tag)}
+            >
+              {p.player_name}
+            </button>
+          ) : (
+            <span className="g-pname">{p.champion}</span>
+          )}
         </div>
-      </div>
 
       <div className="g-carry">
         {p.carry_score != null && (
