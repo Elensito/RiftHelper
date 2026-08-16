@@ -329,8 +329,6 @@ export default function App() {
 
         {!champion && !champLoading && !profile && !loading && !error && (
           <div className="hero">
-            <h1>{t(lang, 'heroTitle')}</h1>
-            <p className="hero-sub">{t(lang, 'heroSub')}</p>
             <Favorites onOpen={openPlayer} lang={lang} />
           </div>
         )}
@@ -437,7 +435,6 @@ export default function App() {
 
       <footer className="footer">
         RiftHelper · {t(lang, 'footerRiot')} · {new Date().getFullYear()}
-        <p className="footer-seo">{t(lang, 'seoFooter')}</p>
       </footer>
     </div>
   )

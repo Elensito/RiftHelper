@@ -486,21 +486,7 @@ body {
 
 .hero {
   text-align: center;
-  padding: 110px 20px 60px;
-}
-
-.hero h1 {
-  font-size: 34px;
-  margin: 0 0 12px;
-  background: linear-gradient(90deg, var(--cyan), var(--violet), var(--pink));
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-}
-
-.hero-sub {
-  color: var(--muted);
-  font-size: 15px;
+  padding: 60px 20px 40px;
 }
 
 
@@ -2352,19 +2338,10 @@ button.p-name:hover {
 }
 
 .footer {
-  margin-top: 46px;
+  margin-top: 96px;
   text-align: center;
   color: var(--muted);
   font-size: 12px;
-}
-
-.footer-seo {
-  max-width: 720px;
-  margin: 10px auto 0;
-  font-size: 12px;
-  line-height: 1.6;
-  color: var(--muted);
-  opacity: 0.85;
 }
 
 ::-webkit-scrollbar {
@@ -3697,15 +3674,7 @@ button.p-name:hover {
 
 @media (max-width: 640px) {
   .hero {
-    padding: 60px 12px 36px;
-  }
-
-  .hero h1 {
-    font-size: 24px;
-  }
-
-  .hero-sub {
-    font-size: 13.5px;
+    padding: 40px 12px 28px;
   }
 
   .profile {

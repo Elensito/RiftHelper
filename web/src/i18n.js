@@ -11,9 +11,6 @@ const EN = {
   loading: 'Loading matches…',
   loadingMore: 'Loading more matches…',
   noMoreMatches: 'No more matches',
-  heroTitle: 'Analyze any summoner matches',
-  heroSub:
-    'Search by Name#tag and discover runes, builds, gold and damage of all 10 players of each match.',
   favorites: 'Favorites',
   addFavorite: 'Add to favorites',
   removeFavorite: 'Remove from favorites',
@@ -130,8 +127,6 @@ const EN = {
   metricHint: 'Click a champion to track its curve',
   minShort: 'min',
   footerRiot: 'unofficial data provided by Riot Games',
-  seoFooter:
-    'RiftHelper is a free League of Legends statistics tool. Look up any EUW summoner by Name#tag and check their latest matches: runes, builds, gold, damage, KP, CS, vision and KDA for all 10 players, plus live game status. Unofficial Riot Games match analysis, available in English and Spanish.',
   discord: 'Join our Discord server',
   download: 'Download',
   downloadTitle: 'Download the RiftHelper desktop app for Windows',
@@ -168,9 +163,6 @@ const ES = {
   loading: 'Cargando partidas…',
   loadingMore: 'Cargando más partidas…',
   noMoreMatches: 'No hay más partidas',
-  heroTitle: 'Analiza las partidas de cualquier invocador',
-  heroSub:
-    'Busca por Nombre#tag y descubre runas, builds, oro y daño de los 10 jugadores de cada partida.',
   favorites: 'Favoritos',
   addFavorite: 'Añadir a favoritos',
   removeFavorite: 'Quitar de favoritos',
@@ -287,8 +279,6 @@ const ES = {
   metricHint: 'Pulsa un campeón para activar su curva',
   minShort: 'min',
   footerRiot: 'datos no oficiales de Riot Games',
-  seoFooter:
-    'RiftHelper es una herramienta gratuita de estadísticas de League of Legends. Busca cualquier invocador de EUW por su Nombre#tag y consulta sus últimas partidas: runas, builds, oro, daño, KP, CS, visión y KDA de los 10 jugadores, junto con el estado de la partida en vivo. Análisis de partidas con datos no oficiales de Riot Games, disponible en español e inglés.',
   discord: 'Únete a nuestro servidor de Discord',
   download: 'Descargar',
   downloadTitle: 'Descarga la app de escritorio de RiftHelper para Windows',
