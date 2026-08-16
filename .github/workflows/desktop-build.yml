@@ -52,7 +52,8 @@ jobs:
           releaseBody: "Nueva version de RiftHelper para Windows."
           releaseDraft: false
           prerelease: false
-          uploadUpdaterJson: false
+          uploadPlainBinary: false
+          includeUpdaterJson: false
 
       - name: Install WinApp CLI
         shell: pwsh
@@ -68,7 +69,7 @@ jobs:
         working-directory: desktop/msix
         run: |
           New-Item -ItemType Directory -Force dist | Out-Null
-          Copy-Item ../src-tauri/target/release/RiftHelper.exe dist/
+          Copy-Item ../src-tauri/target/release/rifthelper-desktop.exe dist/RiftHelper.exe
           winapp pack dist --cert devcert.pfx
 
       - name: Upload MSIX artifact
