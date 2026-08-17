@@ -76,7 +76,7 @@ export default function MatchCard({ match, lang, puuid, onOpenPlayer }) {
         <div className="m-meta">
           <span className="m-mode">{queueLabel(lang, match.queue)}</span>
           <span className="m-dur">{match.duration}</span>
-          <span className="m-date">{match.date}{match.created ? ` · ${timeAgo(match.created, lang)}` : ''}</span>
+          <span className="m-date">{match.date}{timeAgo(match.created, lang, match.date) ? ` · ${timeAgo(match.created, lang, match.date)}` : ''}</span>
         </div>
 
         <div className="m-champ">
