@@ -23,7 +23,9 @@ export default function LangSwitcher({ lang, onChange }) {
         aria-haspopup="listbox"
         aria-expanded={open}
       >
-        <span className="lang-flag">{current.flag}</span>
+        <img className="lang-flag-img" src={current.flagImg} alt="" draggable={false}
+          onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'inline' }} />
+        <span className="lang-flag-fb" style={{ display: 'none' }}>{current.flag}</span>
         <span className="lang-code">{current.code.toUpperCase()}</span>
         <span className={`lang-caret ${open ? 'open' : ''}`}>▾</span>
       </button>
@@ -39,7 +41,9 @@ export default function LangSwitcher({ lang, onChange }) {
                   setOpen(false)
                 }}
               >
-                <span className="lang-flag">{l.flag}</span>
+                <img className="lang-flag-img" src={l.flagImg} alt="" draggable={false}
+                  onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'inline' }} />
+                <span className="lang-flag-fb" style={{ display: 'none' }}>{l.flag}</span>
                 <span className="lang-name">{l.label}</span>
                 {l.code === lang && <span className="lang-check">✓</span>}
               </button>

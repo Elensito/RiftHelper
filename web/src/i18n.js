@@ -320,9 +320,15 @@ const ES = {
 export const STR = { en: EN, es: ES }
 
 
+const TWEMOJI_CDN = 'https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/svg'
+function twemojiUrl(emoji) {
+  const cp = [...emoji].map(c => c.codePointAt(0).toString(16)).filter(h => h !== 'fe0f').join('-')
+  return `${TWEMOJI_CDN}/${cp}.svg`
+}
+
 export const LANGS = [
-  { code: 'en', flag: '🇬🇧', label: 'English' },
-  { code: 'es', flag: '🇪🇸', label: 'Español' },
+  { code: 'en', flag: '🇬🇧', flagImg: twemojiUrl('🇬🇧'), label: 'English' },
+  { code: 'es', flag: '🇪🇸', flagImg: twemojiUrl('🇪🇸'), label: 'Español' },
 ]
 
 
