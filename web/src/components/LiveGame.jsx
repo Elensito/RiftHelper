@@ -92,6 +92,7 @@ export default function LiveGame({ data, lang }) {
           <div className="team-header">
             <span className="team-dot" />
             {t(lang, 'blueTeam')}
+            <span className="team-sep">|</span>
             <span className="team-kda">{t(lang, 'liveBans')}: {blueBans.length}</span>
           </div>
           <div className="live-bans">
@@ -109,6 +110,7 @@ export default function LiveGame({ data, lang }) {
           <div className="team-header">
             <span className="team-dot" />
             {t(lang, 'redTeam')}
+            <span className="team-sep">|</span>
             <span className="team-kda">{t(lang, 'liveBans')}: {redBans.length}</span>
           </div>
           <div className="live-bans">

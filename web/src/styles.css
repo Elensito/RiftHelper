@@ -1072,6 +1072,13 @@ body {
   flex-shrink: 0;
 }
 
+.team-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
 .team-panel.blue .team-dot {
   background: var(--cyan);
   box-shadow: var(--glow-cyan);
@@ -1111,6 +1118,12 @@ body {
   letter-spacing: 0.4px;
   color: var(--text);
   font-weight: 700;
+}
+
+.team-sep {
+  margin: 0 10px;
+  color: var(--muted);
+  font-weight: 300;
 }
 
 .team-kda i {
