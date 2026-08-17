@@ -62,6 +62,8 @@ export default function MatchCard({ match, lang, puuid, onOpenPlayer }) {
   const [tab, setTab] = useState('general')
   const pl = match.player
   const win = match.win
+  const endedAt = match.created && match.duration_sec ? match.created + match.duration_sec * 1000 : match.created
+  const ago = timeAgo(endedAt, lang)
 
   return (
     <article className={`match ${open ? 'open' : ''}`}>
@@ -76,7 +78,7 @@ export default function MatchCard({ match, lang, puuid, onOpenPlayer }) {
         <div className="m-meta">
           <span className="m-mode">{queueLabel(lang, match.queue)}</span>
           <span className="m-dur">{match.duration}</span>
-          <span className="m-date">{match.date}{timeAgo(match.created, lang) ? ` · ${timeAgo(match.created, lang)}` : ''}</span>
+          <span className="m-date">{match.date}{ago ? ` · ${ago}` : ''}</span>
         </div>
 
         <div className="m-champ">

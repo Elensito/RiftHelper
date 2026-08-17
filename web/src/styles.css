@@ -502,6 +502,7 @@ body {
 .lang-flag {
   font-size: 16px;
   line-height: 1;
+  font-family: 'Segoe UI Emoji', 'Apple Color Emoji', 'Noto Color Emoji', sans-serif;
 }
 
 .lang-code {
