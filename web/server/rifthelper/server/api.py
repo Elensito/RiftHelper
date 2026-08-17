@@ -350,6 +350,7 @@ def build_match(
     return {
         "match_id": (match.get("metadata", {}) or {}).get("matchId", ""),
         "queue": info.get("queueId"),
+        "created": player.get("created"),
         "date": player["date"],
         "duration": _fmt_duration(duration_sec),
         "duration_sec": duration_sec,
