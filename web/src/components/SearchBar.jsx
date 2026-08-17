@@ -12,29 +12,36 @@ function parseQuery(raw) {
   return { name, tag }
 }
 
-export default function SearchBar({ onSearch, onOpenChampion, loading, lang, champions = [] }) {
+export default function SearchBar({ onSearch, onOpenChampion, loading, lang, champions = [], searchText, onSearchTextChange }) {
   const [query, setQuery] = useState('')
   const [open, setOpen] = useState(false)
   const boxRef = useRef(null)
 
+  const value = searchText != null ? searchText : query
+
   const recents = getRecent()
+
+  const update = (v) => {
+    if (onSearchTextChange) onSearchTextChange(v)
+    else setQuery(v)
+  }
 
   const submit = (e) => {
     e.preventDefault()
-    const p = parseQuery(query)
+    const p = parseQuery(value)
     if (!p) return
     onSearch(p.name, p.tag)
     addRecent(p.name, p.tag)
   }
 
   const pickRecent = (r) => {
-    setQuery(`${r.name}#${r.tag}`)
+    update(`${r.name}#${r.tag}`)
     setOpen(false)
     onSearch(r.name, r.tag)
   }
 
   const champHits = (() => {
-    const q = query.split('#')[0].trim().toLowerCase()
+    const q = value.split('#')[0].trim().toLowerCase()
     if (!q) return []
     return champions
       .filter((c) => c.name.toLowerCase().includes(q))
@@ -57,8 +64,8 @@ export default function SearchBar({ onSearch, onOpenChampion, loading, lang, cha
     <form className="search" onSubmit={submit}>
       <div className="search-field suggest-field" ref={boxRef}>
         <input
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
+          value={value}
+          onChange={(e) => update(e.target.value)}
           onFocus={() => setOpen(true)}
           onKeyDown={(e) => {
             if (e.key === 'Escape') setOpen(false)

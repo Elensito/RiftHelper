@@ -34,6 +34,7 @@ export default function App() {
   const [hasMore, setHasMore] = useState(false)
   const [moreLoading, setMoreLoading] = useState(false)
   const [champions, setChampions] = useState([])
+  const [searchText, setSearchText] = useState('')
   const [champion, setChampion] = useState(null)
   const [champLoading, setChampLoading] = useState(false)
   const [mastery, setMastery] = useState(null)
@@ -192,6 +193,7 @@ export default function App() {
 
   const openPlayer = (name, tag) => {
     if (!name) return
+    setSearchText(`${name}#${tag}`)
     window.history.pushState(null, '', `/?name=${encodeURIComponent(name)}&tag=${encodeURIComponent(tag)}`)
     load(name, tag)
   }
@@ -239,7 +241,10 @@ export default function App() {
     const params = new URLSearchParams(window.location.search)
     const name = params.get('name')
     const tag = params.get('tag')
-    if (name && tag) load(name, tag)
+    if (name && tag) {
+      setSearchText(`${name}#${tag}`)
+      load(name, tag)
+    }
 
   }, [])
 
@@ -261,6 +266,8 @@ export default function App() {
           loading={loading}
           lang={lang}
           champions={champions}
+          searchText={searchText}
+          onSearchTextChange={setSearchText}
         />
         <div className="topbar-right">
           {profile && (
