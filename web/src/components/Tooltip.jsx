@@ -3,6 +3,17 @@ import { showTooltip, hideTooltip, subscribe } from '../tooltipStore.js'
 import { fetchTooltip } from '../api.js'
 import { t } from '../i18n.js'
 
+const _API_BASE =
+  typeof window !== 'undefined' && window.__TAURI_INTERNALS__
+    ? 'https://rift-helper.com'
+    : ''
+
+function resolveImg(src) {
+  if (!src) return src
+  if (src.startsWith('/') && _API_BASE) return _API_BASE + src
+  return src
+}
+
 const _cache = new Map()
 
 export default function Tooltip() {
@@ -65,7 +76,7 @@ export default function Tooltip() {
 
   const d = data
   const name = (d && d.name) || state.name || ''
-  const src = (d && d.image) || state.src
+  const src = resolveImg((d && d.image) || state.src)
   const gold = d && d.gold
   const sell = d && d.sell
   const showGold = gold != null && (gold > 0 || (sell != null && sell > 0))
