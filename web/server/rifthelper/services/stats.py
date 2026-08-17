@@ -105,6 +105,7 @@ def compute_match_stats(
             keystone = selections[0].get("perk")
 
     return {
+        "created": created,
         "date": date,
         "duration_sec": duration_sec,
         "win": bool(target.get("win")),
