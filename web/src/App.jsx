@@ -71,7 +71,7 @@ export default function App() {
     setHasMore(true)
     setMoreLoading(false)
     try {
-      const data = await fetchSummoner(name, tag, PAGE_SIZE, 0, silent)
+      const data = await fetchSummoner(name, tag, PAGE_SIZE, 0, true)
       setProfile(data)
       latestMatchRef.current = (data.matches[0] && data.matches[0].match_id) || null
       setFetched(PAGE_SIZE)
