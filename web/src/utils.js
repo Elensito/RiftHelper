@@ -22,27 +22,6 @@ export function kdaRatio(k, d, a) {
   return ((k + a) / d).toFixed(2)
 }
 
-export function timeAgo(createdMs, lang, dateStr) {
-  let ts = createdMs
-  if (!ts && dateStr) {
-    const parts = dateStr.split('/')
-    if (parts.length === 3) ts = new Date(parts[2], parts[1] - 1, parts[0]).getTime()
-  }
-  if (!ts) return ''
-  const diff = Date.now() - ts
-  if (diff < 0) return ''
-  const s = Math.floor(diff / 1000)
-  if (s < 60) return lang === 'es' ? 'ahora' : 'now'
-  const m = Math.floor(s / 60)
-  if (m < 60) return lang === 'es' ? `hace ${m} min` : `${m}m ago`
-  const h = Math.floor(m / 60)
-  if (h < 24) return lang === 'es' ? `hace ${h}h` : `${h}h ago`
-  const d = Math.floor(h / 24)
-  if (d === 0) return lang === 'es' ? 'hoy' : 'today'
-  if (d === 1) return lang === 'es' ? 'ayer' : 'yesterday'
-  return lang === 'es' ? `hace ${d} días` : `${d}d ago`
-}
-
 export function sortPlayers(players) {
   const order = { TOP: 0, JUNGLE: 1, MIDDLE: 2, BOTTOM: 3, UTILITY: 4 }
   return [...players].sort(

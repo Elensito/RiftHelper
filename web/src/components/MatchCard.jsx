@@ -1,6 +1,6 @@
 import { lazy, Suspense, useState } from 'react'
 import Img from './Img.jsx'
-import { fmtNum, kdaRatio, sortPlayers, timeAgo } from '../utils.js'
+import { fmtNum, kdaRatio, sortPlayers } from '../utils.js'
 import { queueLabel, t } from '../i18n.js'
 import PlayerRow from './PlayerRow.jsx'
 
@@ -76,7 +76,7 @@ export default function MatchCard({ match, lang, puuid, onOpenPlayer }) {
         <div className="m-meta">
           <span className="m-mode">{queueLabel(lang, match.queue)}</span>
           <span className="m-dur">{match.duration}</span>
-          <span className="m-date">{match.date}{timeAgo(match.created, lang, match.date) ? ` · ${timeAgo(match.created, lang, match.date)}` : ''}</span>
+          <span className="m-date">{match.date}</span>
         </div>
 
         <div className="m-champ">
