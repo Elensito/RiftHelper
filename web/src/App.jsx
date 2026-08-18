@@ -14,7 +14,7 @@ import ChampionPage from './components/ChampionPage.jsx'
 import Mastery from './components/Mastery.jsx'
 import Tooltip from './components/Tooltip.jsx'
 import { fetchSummoner, fetchLatestMatch, fetchLiveGame, fetchMastery, fetchChampions, fetchChampion } from './api.js'
-import { isTauri, notifyGameEnded } from './tauri.js'
+import { isTauri, getRiotClientSession, notifyGameEnded } from './tauri.js'
 import { matchGroup, t } from './i18n.js'
 
 const PAGE_SIZE = 20
@@ -244,8 +244,20 @@ export default function App() {
     if (name && tag) {
       setSearchText(`${name}#${tag}`)
       load(name, tag)
+      return
     }
 
+    if (isTauri()) {
+      getRiotClientSession().then((result) => {
+        if (result && result.ok && result.session) {
+          const s = result.session
+          const sName = s.game_name
+          const sTag = s.game_tag || 'EUW'
+          setSearchText(`${sName}#${sTag}`)
+          load(sName, sTag)
+        }
+      }).catch(() => {})
+    }
   }, [])
 
   return (
