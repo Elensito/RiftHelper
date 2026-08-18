@@ -8,21 +8,21 @@ export default function StreakChart({ matches }) {
   const w = 400
   const h = 36
   const pad = 4
-  const step = (w - pad * 2) / (matches.length - 1)
+  const jump = 6
+  const step = (w - pad * 2) / matches.length
 
   let y = h / 2
-  const points = [`${pad},${y}`]
+  let pathD = `M${pad},${y}`
 
   for (let i = 0; i < matches.length; i++) {
-    y += matches[i].win ? -6 : 6
+    y += matches[i].win ? -jump : jump
     y = Math.max(pad + 4, Math.min(h - pad - 4, y))
-    const x = pad + i * step
-    points.push(`${x.toFixed(1)},${y.toFixed(1)}`)
+    const x = pad + (i + 1) * step
+    pathD += ` L${x.toFixed(1)},${y.toFixed(1)}`
   }
 
-  const pathD = 'M' + points.join(' L')
-  const lastPoint = points[points.length - 1].split(',')
-  const lastY = parseFloat(lastPoint[1])
+  const lastX = (pad + matches.length * step).toFixed(1)
+  const lastY = y.toFixed(1)
   const midY = h / 2
 
   const gradId = 'sg-' + (positive ? 'pos' : 'neg')
@@ -66,8 +66,8 @@ export default function StreakChart({ matches }) {
           filter="url(#glow)"
         />
         <circle
-          cx={lastPoint[0]}
-          cy={lastPoint[1]}
+          cx={lastX}
+          cy={lastY}
           r="3.5"
           fill={positive ? '#00e5ff' : '#ff1744'}
           filter="url(#glow)"
