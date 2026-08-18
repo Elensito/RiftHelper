@@ -68,12 +68,6 @@ jobs:
         shell: pwsh
         working-directory: desktop/msix
         run: |
-          $tauri = Get-Content ../src-tauri/tauri.conf.json | ConvertFrom-Json
-          $ver = $tauri.version + '.0'
-          $manifest = Get-Content Package.appxmanifest -Raw
-          $manifest = $manifest -replace 'Version="[^"]*"', "Version=""$ver"""
-          [System.IO.File]::WriteAllText("Package.appxmanifest", $manifest, [System.Text.UTF8Encoding]::new($false))
-          Write-Host "MSIX version set to $ver"
           New-Item -ItemType Directory -Force dist | Out-Null
           Copy-Item ../src-tauri/target/release/rifthelper-desktop.exe dist/RiftHelper.exe
           winapp pack dist --cert devcert.pfx
