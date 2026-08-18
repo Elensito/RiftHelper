@@ -6,7 +6,7 @@ export default function StreakChart({ matches }) {
   const positive = wins >= losses
 
   const w = 400
-  const h = 36
+  const h = 52
   const pad = 4
   const jump = 6
   const step = (w - pad * 2) / matches.length
