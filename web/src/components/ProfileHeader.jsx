@@ -2,6 +2,7 @@ import { useState } from 'react'
 import Img from './Img.jsx'
 import { t } from '../i18n.js'
 import { isFavorite, addFavorite, removeFavorite } from '../storage.js'
+import StreakChart from './StreakChart.jsx'
 
 export default function ProfileHeader({ summoner, matches, lang, inGame = false }) {
   const wins = summoner.wins || 0
@@ -91,6 +92,7 @@ export default function ProfileHeader({ summoner, matches, lang, inGame = false 
           <span className="chip lp">{summoner.lp} {t(lang, 'lp')}</span>
           <span className="chip level">{t(lang, 'level')} {summoner.level}</span>
         </div>
+        <StreakChart matches={recent} />
         <div className="record">
           <span className="rec-win">{wins}{t(lang, 'wins')}</span>
           <span className="rec-sep">/</span>

@@ -760,6 +760,30 @@ body {
   text-shadow: none;
 }
 
+.streak-wrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 8px 0 6px;
+}
+
+.streak-svg {
+  flex: 1;
+  height: 40px;
+  min-width: 0;
+  overflow: visible;
+}
+
+.streak-label {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+}
+
+.streak-label.positive { color: #00e5ff; }
+.streak-label.negative { color: #ff1744; }
+
 .record {
   display: flex;
   align-items: center;
