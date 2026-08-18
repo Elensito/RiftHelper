@@ -72,7 +72,7 @@ jobs:
           $ver = $tauri.version + '.0'
           $manifest = Get-Content Package.appxmanifest -Raw
           $manifest = $manifest -replace 'Version="[^"]*"', "Version=""$ver"""
-          Set-Content Package.appxmanifest $manifest -NoNewline
+          [System.IO.File]::WriteAllText("Package.appxmanifest", $manifest, [System.Text.UTF8Encoding]::new($false))
           Write-Host "MSIX version set to $ver"
           New-Item -ItemType Directory -Force dist | Out-Null
           Copy-Item ../src-tauri/target/release/rifthelper-desktop.exe dist/RiftHelper.exe
