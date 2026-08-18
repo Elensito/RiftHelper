@@ -5,8 +5,8 @@ export default function StreakChart({ matches }) {
   const losses = matches.length - wins
   const positive = wins >= losses
 
-  const w = 360
-  const h = 48
+  const w = 400
+  const h = 36
   const pad = 4
   const step = (w - pad * 2) / (matches.length - 1)
 
@@ -14,8 +14,8 @@ export default function StreakChart({ matches }) {
   const points = [`${pad},${y}`]
 
   for (let i = 0; i < matches.length; i++) {
-    y += matches[i].win ? -8 : 8
-    y = Math.max(pad + 6, Math.min(h - pad - 6, y))
+    y += matches[i].win ? -6 : 6
+    y = Math.max(pad + 4, Math.min(h - pad - 4, y))
     const x = pad + i * step
     points.push(`${x.toFixed(1)},${y.toFixed(1)}`)
   }
@@ -61,8 +61,8 @@ export default function StreakChart({ matches }) {
           fill="none"
           stroke={`url(#${gradId})`}
           strokeWidth="2.5"
-          strokeLinecap="round"
-          strokeLinejoin="round"
+          strokeLinecap="square"
+          strokeLinejoin="miter"
           filter="url(#glow)"
         />
         <circle
