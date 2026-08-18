@@ -106,11 +106,11 @@ export default function ProfileHeader({ summoner, matches, lang, inGame = false 
       </div>
 
       <div className="profile-side">
-        <StreakChart matches={recent} />
         <div className="picon-wrap">
           <Img className="profile-icon" src={summoner.profile_icon} alt="icon" />
           <div className="picon-ring" />
         </div>
+        <StreakChart matches={recent} />
       </div>
     </section>
   )

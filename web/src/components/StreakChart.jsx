@@ -11,11 +11,13 @@ export default function StreakChart({ matches }) {
   const jump = 6
   const step = (w - pad * 2) / matches.length
 
+  const ordered = [...matches].reverse()
+
   let y = h / 2
   let pathD = `M${pad},${y}`
 
-  for (let i = 0; i < matches.length; i++) {
-    y += matches[i].win ? -jump : jump
+  for (let i = 0; i < ordered.length; i++) {
+    y += ordered[i].win ? -jump : jump
     y = Math.max(pad + 4, Math.min(h - pad - 4, y))
     const x = pad + (i + 1) * step
     pathD += ` L${x.toFixed(1)},${y.toFixed(1)}`
@@ -26,6 +28,9 @@ export default function StreakChart({ matches }) {
   const midY = h / 2
 
   const gradId = 'sg-' + (positive ? 'pos' : 'neg')
+
+  const startX = pad
+  const startY = h / 2
 
   return (
     <div className="streak-wrap">
@@ -55,6 +60,12 @@ export default function StreakChart({ matches }) {
           stroke={positive ? 'rgba(0,229,255,0.1)' : 'rgba(255,23,68,0.1)'}
           strokeWidth="1"
           strokeDasharray="4 4"
+        />
+        <circle
+          cx={startX}
+          cy={startY}
+          r="2.5"
+          fill={positive ? 'rgba(0,229,255,0.5)' : 'rgba(255,23,68,0.5)'}
         />
         <path
           d={pathD}

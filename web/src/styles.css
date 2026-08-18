@@ -765,7 +765,8 @@ body {
   flex-direction: column;
   align-items: center;
   gap: 4px;
-  width: 140px;
+  width: 200px;
+  margin-top: 4px;
 }
 
 .streak-svg {
@@ -834,8 +835,9 @@ body {
 .profile-side {
   position: relative;
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
 }
 
 .picon-wrap {
