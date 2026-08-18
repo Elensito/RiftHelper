@@ -6,7 +6,7 @@
 const EN = {
   search: 'Search',
   placeholder: 'Summoner name#tag',
-  searchHint: 'Format: Name#Tag (e.g. Faker#KR1)',
+  searchHint: 'Format: Name#Tag (e.g. Elensito#01234)',
   tag: 'tag',
   update: 'Update',
   loading: 'Loading matches…',
@@ -164,7 +164,7 @@ const EN = {
 const ES = {
   search: 'Buscar',
   placeholder: 'Nombre de invocador#tag',
-  searchHint: 'Formato: Nombre#Tag (ej. Faker#KR1)',
+  searchHint: 'Formato: Nombre#Tag (ej. Elensito#01234)',
   tag: 'tag',
   update: 'Actualizar',
   loading: 'Cargando partidas…',
