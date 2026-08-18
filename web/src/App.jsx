@@ -262,10 +262,8 @@ export default function App() {
         </button>
         <SearchBar
           onSearch={(n, t) => load(n, t)}
-          onOpenChampion={openChampion}
           loading={loading}
           lang={lang}
-          champions={champions}
           searchText={searchText}
           onSearchTextChange={setSearchText}
         />

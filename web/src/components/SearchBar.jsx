@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { t } from '../i18n.js'
 import { getRecent, addRecent, clearRecent } from '../storage.js'
-import Img from './Img.jsx'
 
 function parseQuery(raw) {
   const idx = raw.indexOf('#')
@@ -12,7 +11,7 @@ function parseQuery(raw) {
   return { name, tag }
 }
 
-export default function SearchBar({ onSearch, onOpenChampion, loading, lang, champions = [], searchText, onSearchTextChange }) {
+export default function SearchBar({ onSearch, loading, lang, searchText, onSearchTextChange }) {
   const [query, setQuery] = useState('')
   const [open, setOpen] = useState(false)
   const boxRef = useRef(null)
@@ -40,14 +39,6 @@ export default function SearchBar({ onSearch, onOpenChampion, loading, lang, cha
     onSearch(r.name, r.tag)
   }
 
-  const champHits = (() => {
-    const q = value.split('#')[0].trim().toLowerCase()
-    if (!q) return []
-    return champions
-      .filter((c) => c.name.toLowerCase().includes(q))
-      .slice(0, 5)
-  })()
-
   useEffect(() => {
     const onClick = (e) => {
       if (boxRef.current && !boxRef.current.contains(e.target)) setOpen(false)
@@ -56,9 +47,10 @@ export default function SearchBar({ onSearch, onOpenChampion, loading, lang, cha
     return () => document.removeEventListener('mousedown', onClick)
   }, [])
 
+  const hasHash = value.includes('#')
+  const showHint = open && value.length > 0 && !hasHash
   const showRecent = open && !loading && recents.length > 0
-  const showChamps = open && champHits.length > 0
-  const showDrop = showRecent || showChamps
+  const showDrop = showRecent || showHint
 
   return (
     <form className="search" onSubmit={submit}>
@@ -77,27 +69,10 @@ export default function SearchBar({ onSearch, onOpenChampion, loading, lang, cha
         />
         {showDrop && (
           <div className="suggest">
-            {showChamps && (
-              <>
-                <div className="suggest-head">
-                  <span>{t(lang, 'champions')}</span>
-                </div>
-                {champHits.map((c) => (
-                  <button
-                    type="button"
-                    key={c.key}
-                    className="suggest-item"
-                    onMouseDown={(e) => e.preventDefault()}
-                    onClick={() => {
-                      setOpen(false)
-                      onOpenChampion(c)
-                    }}
-                  >
-                    <Img className="suggest-champ" src={c.image} alt={c.name} />
-                    <span className="suggest-name">{c.name}</span>
-                  </button>
-                ))}
-              </>
+            {showHint && (
+              <div className="suggest-hint">
+                {t(lang, 'searchHint')}
+              </div>
             )}
             {showRecent && (
               <>

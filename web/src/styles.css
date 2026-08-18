@@ -2802,6 +2802,14 @@ button.p-name:hover {
   border-bottom: 1px solid var(--border);
 }
 
+.suggest-hint {
+  padding: 10px 14px;
+  font-size: 12px;
+  color: var(--cyan);
+  border-bottom: 1px solid var(--border);
+  opacity: 0.85;
+}
+
 .suggest-clear {
   background: none;
   border: 0;
