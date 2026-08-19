@@ -879,6 +879,13 @@ body {
   gap: 16px;
   z-index: 10;
   padding: 0 12px;
+  overflow-y: auto;
+  scrollbar-width: none;
+  max-height: calc(100vh - 150px);
+}
+
+.profile-sidebar::-webkit-scrollbar {
+  display: none;
 }
 
 .profile-main {
@@ -1136,7 +1143,7 @@ body {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  max-width: 92%;
+  max-width: 100%;
   margin: 0 auto;
 }
 
@@ -4154,6 +4161,8 @@ button.p-name:hover {
     flex-wrap: wrap;
     gap: 12px;
     padding: 0;
+    max-height: none;
+    overflow: visible;
   }
 
   .profile-sidebar > * {
