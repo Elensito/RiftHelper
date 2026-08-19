@@ -419,3 +419,89 @@ export function extractDetailedAnalysis(match) {
     durationMin: Math.round(durationMin),
   }
 }
+
+export function buildRichCoachingPrompt(matches, lang = 'en') {
+  if (!matches || matches.length === 0) return ''
+
+  const es = lang === 'es'
+
+  const lines = []
+  lines.push(es
+    ? '=== ANÁLISIS DETALLADO DE PARTIDAS ==='
+    : '=== DETAILED MATCH ANALYSIS ===')
+  lines.push('')
+
+  for (let i = 0; i < matches.length; i++) {
+    const m = matches[i]
+    const pl = m.player || {}
+    const ctx = m.ai_context || {}
+    const dur = m.duration || `${m.duration_sec ? Math.round(m.duration_sec / 60) : '?'}min`
+
+    lines.push(es ? `--- Partida ${i + 1} ---` : `--- Match ${i + 1} ---`)
+    lines.push(`${m.win ? (es ? 'Victoria' : 'WIN') : (es ? 'Derrota' : 'LOSS')} | ${pl.champion} ${pl.role || ''} | ${pl.kills}/${pl.deaths}/${pl.assists} | ${dur}`)
+    lines.push(es ? `CS: ${pl.cs} (${pl.cs_per_min}/min) | Gold: ${pl.gold} | Damage: ${pl.damage} | KP: ${pl.kp}% | Vision: ${pl.vision}` : `CS: ${pl.cs} (${pl.cs_per_min}/min) | Gold: ${pl.gold} | Damage: ${pl.damage} | KP: ${pl.kp}% | Vision: ${pl.vision}`)
+
+    if (ctx.my_build && ctx.my_build.length > 0) {
+      lines.push(es ? `Build: ${ctx.my_build.filter(Boolean).join(', ')}` : `Build: ${ctx.my_build.filter(Boolean).join(', ')}`)
+    }
+    if (ctx.my_runes && ctx.my_runes.length > 0) {
+      lines.push(es ? `Runas: ${ctx.my_runes.filter(Boolean).join(' > ')}` : `Runes: ${ctx.my_runes.filter(Boolean).join(' > ')}`)
+    }
+    if (ctx.my_spells && ctx.my_spells.length > 0) {
+      lines.push(es ? `Hechizos: ${ctx.my_spells.filter(Boolean).join(', ')}` : `Spells: ${ctx.my_spells.filter(Boolean).join(', ')}`)
+    }
+
+    if (ctx.enemy_matchup_build && ctx.enemy_matchup_build.length > 0) {
+      const enemy = m.players ? m.players.find(p => p.team !== pl.team && (p.role || '').toUpperCase() === (pl.role || '').toUpperCase()) : null
+      const enemyName = enemy ? `${enemy.champion}` : (es ? 'enemigo' : 'enemy')
+      lines.push(es ? `Matchup vs ${enemyName}: ${ctx.enemy_matchup_build.filter(Boolean).join(', ')}` : `Matchup vs ${enemyName}: ${ctx.enemy_matchup_build.filter(Boolean).join(', ')}`)
+      if (ctx.enemy_matchup_runes && ctx.enemy_matchup_runes.length > 0) {
+        lines.push(es ? `Runas enemigas: ${ctx.enemy_matchup_runes.filter(Boolean).join(' > ')}` : `Enemy runes: ${ctx.enemy_matchup_runes.filter(Boolean).join(' > ')}`)
+      }
+    }
+
+    if (ctx.gold_snapshots && Object.keys(ctx.gold_snapshots).length > 0) {
+      const snaps = Object.entries(ctx.gold_snapshots).sort((a, b) => Number(a[0]) - Number(b[0]))
+      const snapStr = snaps.map(([min, s]) => `${min}min:${s.gold}g/${s.cs}cs`).join(' | ')
+      lines.push(es ? `Curva de oro: ${snapStr}` : `Gold curve: ${snapStr}`)
+    }
+
+    if (ctx.diff10 != null) {
+      lines.push(es ? `Gold diff @10: ${ctx.diff10 > 0 ? '+' : ''}${ctx.diff10}` : `Gold diff @10: ${ctx.diff10 > 0 ? '+' : ''}${ctx.diff10}`)
+    }
+    if (ctx.diff30 != null) {
+      lines.push(es ? `Gold diff @30: ${ctx.diff30 > 0 ? '+' : ''}${ctx.diff30}` : `Gold diff @30: ${ctx.diff30 > 0 ? '+' : ''}${ctx.diff30}`)
+    }
+
+    if (ctx.kills && ctx.kills.length > 0) {
+      const killStr = ctx.kills.map(k => `${k.minute}' ${es ? 'vs' : 'vs'} ${k.vs} ${k.lane}${k.shutdown ? ' (shutdown)' : ''}`).join('; ')
+      lines.push(es ? `Kills: ${killStr}` : `Kills: ${killStr}`)
+    }
+
+    if (ctx.deaths && ctx.deaths.length > 0) {
+      const deathStr = ctx.deaths.map(d => `${d.minute}' ${es ? 'por' : 'by'} ${d.by} ${d.lane}${d.assists_count ? ` (+${d.assists_count})` : ''}`).join('; ')
+      lines.push(es ? `Muertes: ${deathStr}` : `Deaths: ${deathStr}`)
+    }
+
+    if (ctx.objectives && ctx.objectives.length > 0) {
+      const objStr = ctx.objectives.map(o => `${o.minute}' ${o.objective}`).join('; ')
+      lines.push(es ? `Objetivos: ${objStr}` : `Objectives: ${objStr}`)
+    }
+
+    if (ctx.towers && ctx.towers.length > 0) {
+      const towerStr = ctx.towers.map(t => `${t.minute}' ${t.lane}`).join('; ')
+      lines.push(es ? `Torres destruidas: ${towerStr}` : `Towers taken: ${towerStr}`)
+    }
+
+    if (ctx.team_comp) {
+      const allyComp = (ctx.team_comp.allies || []).map(p => `${p.champion}(${p.role})`).join(', ')
+      const enemyComp = (ctx.team_comp.enemies || []).map(p => `${p.champion}(${p.role})`).join(', ')
+      lines.push(es ? `Tu equipo: ${allyComp}` : `Your team: ${allyComp}`)
+      lines.push(es ? `Equipo enemigo: ${enemyComp}` : `Enemy team: ${enemyComp}`)
+    }
+
+    lines.push('')
+  }
+
+  return lines.join('\n')
+}

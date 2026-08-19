@@ -319,6 +319,158 @@ def _mark_mvps(players: list[dict]) -> None:
         best["mvp"] = True
 
 
+def _build_ai_context(
+    match: dict,
+    timeline: dict,
+    me: dict,
+    players: list[dict],
+    puuid: str,
+    champ_info: dict[int, dict],
+    duration_sec: float,
+) -> dict:
+    info = match.get("info", {})
+    participants = info.get("participants", [])
+    frames = timeline.get("info", {}).get("frames", []) or []
+    duration_min = duration_sec / 60 if duration_sec else 1
+
+    my_team = me.get("team", 0)
+    my_role = (me.get("role") or "").upper()
+    my_pid = me.get("participant_id")
+
+    allies = [p for p in players if p.get("team") == my_team and not p.get("is_player")]
+    enemies = [p for p in players if p.get("team") != my_team]
+    lane_enemy = next((p for p in enemies if (p.get("role") or "").upper() == my_role), None)
+
+    gold_snapshots = {}
+    for frame in frames:
+        ts = frame.get("timestamp", 0)
+        minute = int(ts // 60000)
+        if minute % 5 != 0 and minute != int(duration_min):
+            continue
+        pf = frame.get("participantFrames", {})
+        my_frame = None
+        for _, v in pf.items():
+            if v.get("participantId") == my_pid:
+                my_frame = v
+                break
+        if my_frame:
+            gold_snapshots[minute] = {
+                "gold": my_frame.get("totalGold", 0),
+                "cs": (my_frame.get("minionsKilled", 0) or 0) + (my_frame.get("jungleMinionsKilled", 0) or 0),
+                "xp": my_frame.get("xp", 0),
+                "level": my_frame.get("level", 0),
+            }
+
+    kill_events = []
+    death_events = []
+    assist_events = []
+    for frame in frames:
+        for ev in frame.get("events", []):
+            if ev.get("type") != "CHAMPION_KILL":
+                continue
+            ts = ev.get("timestamp", 0)
+            minute = int(ts // 60000)
+            killer_id = ev.get("killerId")
+            victim_id = ev.get("victimId")
+            assisters = ev.get("assistingParticipantIds", [])
+            killer = next((p for p in participants if p.get("participantId") == killer_id), {})
+            victim = next((p for p in participants if p.get("participantId") == victim_id), {})
+            killer_champ = champ_info.get(killer.get("championId"), {}).get("name", "?")
+            victim_champ = champ_info.get(victim.get("championId"), {}).get("name", "?")
+            pos = ev.get("position", {})
+            lane = "unknown"
+            x, y = pos.get("x", 0), pos.get("y", 0)
+            if x < 5000:
+                lane = "top"
+            elif x > 10000:
+                lane = "bot"
+            else:
+                lane = "mid"
+
+            entry = {"minute": minute, "lane": lane, "shutdown": bool(ev.get("shutdown"))}
+            if killer_id == my_pid:
+                entry["vs"] = victim_champ
+                kill_events.append(entry)
+            elif victim_id == my_pid:
+                entry["by"] = killer_champ
+                entry["assists_count"] = len(assisters)
+                death_events.append(entry)
+            elif my_pid in assisters:
+                entry["kill"] = f"{killer_champ} -> {victim_champ}"
+                assist_events.append(entry)
+
+    objective_events = []
+    for frame in frames:
+        for ev in frame.get("events", []):
+            if ev.get("type") != "ELITE_MONSTER_KILL":
+                continue
+            killer_id = ev.get("killerId")
+            assisters = ev.get("assistingParticipantIds", [])
+            if killer_id != my_pid and my_pid not in assisters:
+                continue
+            ts = ev.get("timestamp", 0)
+            monster = ev.get("monsterType", "")
+            dragon_type = ev.get("dragonType")
+            label = monster.lower().replace("_", " ")
+            if dragon_type:
+                label = f"{dragon_type.lower()} dragon"
+            objective_events.append({
+                "minute": int(ts // 60000),
+                "objective": label,
+                "participated": True,
+            })
+
+    tower_events = []
+    for frame in frames:
+        for ev in frame.get("events", []):
+            if ev.get("type") != "BUILDING_KILL":
+                continue
+            if ev.get("buildingType") != "TOWER_BUILDING":
+                continue
+            killer_id = ev.get("killerId")
+            assisters = ev.get("assistingParticipantIds", [])
+            if killer_id != my_pid and my_pid not in assisters:
+                continue
+            ts = ev.get("timestamp", 0)
+            lane = (ev.get("lane") or "").replace("_LANE", "")
+            tower_events.append({
+                "minute": int(ts // 60000),
+                "lane": lane,
+            })
+
+    my_build_items = [i.get("en", "") for i in (me.get("items") or []) if i]
+    my_runes = [r.get("en", "") for r in (me.get("runes") or []) if r]
+    my_spells = [s.get("name", {}).get("en", "") for s in (me.get("spells") or []) if s.get("name")]
+
+    enemy_build_items = []
+    enemy_runes = []
+    if lane_enemy:
+        enemy_build_items = [i.get("en", "") for i in (lane_enemy.get("items") or []) if i]
+        enemy_runes = [r.get("en", "") for r in (lane_enemy.get("runes") or []) if r]
+
+    team_comp = {
+        "allies": [{"champion": p.get("champion"), "role": p.get("role"), "kda": f"{p.get('kills', 0)}/{p.get('deaths', 0)}/{p.get('assists', 0)}"} for p in allies],
+        "enemies": [{"champion": p.get("champion"), "role": p.get("role"), "kda": f"{p.get('kills', 0)}/{p.get('deaths', 0)}/{p.get('assists', 0)}"} for p in enemies],
+    }
+
+    return {
+        "gold_snapshots": gold_snapshots,
+        "kills": kill_events[:15],
+        "deaths": death_events[:10],
+        "assists": assist_events[:15],
+        "objectives": objective_events[:10],
+        "towers": tower_events[:10],
+        "my_build": my_build_items,
+        "my_runes": my_runes,
+        "my_spells": my_spells,
+        "enemy_matchup_build": enemy_build_items,
+        "enemy_matchup_runes": enemy_runes,
+        "team_comp": team_comp,
+        "diff10": me.get("diff10"),
+        "diff30": me.get("diff30"),
+    }
+
+
 def build_match(
     match: dict,
     timeline: dict,
@@ -347,6 +499,8 @@ def build_match(
     _mark_mvps(players)
     me = next((p for p in players if p["is_player"]), {})
 
+    ai_context = _build_ai_context(match, timeline, me, players, puuid, champ_info, duration_sec)
+
     return {
         "match_id": (match.get("metadata", {}) or {}).get("matchId", ""),
         "queue": info.get("queueId"),
@@ -372,6 +526,7 @@ def build_match(
             "role": me.get("role", "?"),
         },
         "players": players,
+        "ai_context": ai_context,
     }
 
 

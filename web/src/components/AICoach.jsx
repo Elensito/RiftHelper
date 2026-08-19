@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useCallback } from 'react'
 import Img from './Img.jsx'
 import { t, LANGS, queueLabel } from '../i18n.js'
 import { kdaRatio, fmtNum } from '../utils.js'
-import { buildBatchSummary, formatAnalysisPrompt, extractDetailedAnalysis } from '../matchAnalysis.js'
+import { buildRichCoachingPrompt } from '../matchAnalysis.js'
 import { fetchAICoach } from '../api.js'
 
 const MAX_SELECTED = 3
@@ -266,8 +266,6 @@ export default function AICoach({ matches, lang, puuid, onLangChange }) {
     setShowPicker(false)
 
     const selected = matches.filter(m => selectedMatches.has(m.match_id))
-    const summary = buildBatchSummary(selected, lang)
-    const details = selected.map(m => extractDetailedAnalysis(m))
 
     const userText = lang === 'es'
       ? `Analiza mis ${selected.length} partidas seleccionadas`
@@ -277,14 +275,10 @@ export default function AICoach({ matches, lang, puuid, onLangChange }) {
     setSelectedMatches(new Set())
 
     try {
-      const context = formatAnalysisPrompt(summary, lang)
-      let detailText = '\n\nDetailed stats:\n'
-      for (const d of details) {
-        detailText += `• ${d.champion} (${d.role}): ${d.goldShare}% gold, ${d.damageShare}% dmg, CS ${d.csPerMin}/min (target ${d.csTarget}), vision/min ${d.visionPerMin}, KDA ${d.kda}, KP ${d.killParticipation}%\n`
-      }
+      const richContext = buildRichCoachingPrompt(selected, lang)
 
       const systemPrompt = buildSystemPrompt(lang)
-      const response = await callMistral(systemPrompt, context + detailText)
+      const response = await callMistral(systemPrompt, richContext)
 
       setMessages(prev => [...prev, { id: Date.now() + 1, role: 'coach', text: response }])
     } catch (err) {
@@ -311,13 +305,12 @@ export default function AICoach({ matches, lang, puuid, onLangChange }) {
       let context = ''
       if (matches && matches.length > 0) {
         const recent = matches.slice(0, 5)
-        const summary = buildBatchSummary(recent, lang)
-        context = formatAnalysisPrompt(summary, lang)
+        context = buildRichCoachingPrompt(recent, lang)
       }
 
       const systemPrompt = buildSystemPrompt(lang)
       const fullUserMsg = context
-        ? `${context}\n\nMy question: ${userMsg}`
+        ? `${context}\n\n${lang === 'es' ? 'Mi pregunta' : 'My question'}: ${userMsg}`
         : userMsg
 
       const response = await callMistral(systemPrompt, fullUserMsg)
