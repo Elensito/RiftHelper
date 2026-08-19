@@ -639,6 +639,8 @@ body {
   backdrop-filter: blur(8px);
   box-shadow: 0 0 40px rgba(0, 229, 255, 0.08);
   max-width: 70%;
+  margin-left: auto;
+  margin-right: auto;
 }
 
 .picon-wrap {
@@ -810,7 +812,7 @@ body {
   flex-direction: column;
   align-items: center;
   gap: 4px;
-  width: 160px;
+  width: 130px;
 }
 
 .streak-svg {
@@ -843,21 +845,19 @@ body {
 /* ── Profile Layout ── */
 .profile-layout {
   margin: 16px 0 0;
-  display: flex;
-  gap: 16px;
-  align-items: flex-start;
+  position: relative;
 }
 
 .profile-sidebar {
-  position: sticky;
-  top: 80px;
+  position: fixed;
+  left: 12px;
+  top: 100px;
   width: 260px;
-  flex-shrink: 0;
   display: flex;
   flex-direction: column;
   gap: 16px;
   z-index: 10;
-  max-height: calc(100vh - 100px);
+  max-height: calc(100vh - 120px);
   overflow-y: auto;
   scrollbar-width: none;
 }
@@ -867,8 +867,10 @@ body {
 }
 
 .profile-main {
-  flex: 1;
+  width: 100%;
   min-width: 0;
+  margin-left: 280px;
+  width: calc(100% - 280px);
 }
 
 /* ── Rank Cards ── */
@@ -4088,14 +4090,11 @@ button.p-name:hover {
   }
 }
 
-@media (max-width: 1080px) {
-  .profile-layout {
-    flex-direction: column;
-  }
-
+@media (max-width: 900px) {
   .profile-sidebar {
     position: static;
-    width: 100%;
+    width: auto;
+    margin-left: 0;
     max-height: none;
     flex-direction: row;
     flex-wrap: wrap;
@@ -4105,6 +4104,11 @@ button.p-name:hover {
   .profile-sidebar > * {
     flex: 1 1 240px;
     min-width: 0;
+  }
+
+  .profile-main {
+    margin-left: 0;
+    width: 100%;
   }
 
   .profile-header {
@@ -4157,11 +4161,15 @@ button.p-name:hover {
 
   .profile-layout {
     margin: 14px 0 0;
-    flex-direction: column;
   }
 
   .profile-sidebar {
     display: none;
+  }
+
+  .profile-main {
+    margin-left: 0;
+    width: 100%;
   }
 
   .match-head {
