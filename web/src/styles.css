@@ -628,8 +628,11 @@ body {
 
 /* ── Profile Header ── */
 .profile-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
   margin: 20px 0 0;
-  padding: 20px 26px;
+  padding: 16px 22px;
   border-radius: 18px;
   background: var(--card);
   border: 1px solid var(--border);
@@ -637,56 +640,47 @@ body {
   box-shadow: 0 0 40px rgba(0, 229, 255, 0.08);
 }
 
-.profile-header-inner {
-  display: flex;
-  align-items: center;
-  gap: 24px;
-}
-
-.profile-header-left {
-  flex: 1;
-  display: flex;
-  justify-content: flex-end;
-}
-
-.profile-header-center {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 10px;
+.picon-wrap {
+  position: relative;
   flex-shrink: 0;
 }
 
-.profile-header-right {
-  flex: 1;
+.profile-icon {
+  width: 56px;
+  height: 56px;
+  border-radius: 12px;
+  border: 2px solid var(--cyan);
+  box-shadow: var(--glow-cyan);
+}
+
+.picon-ring {
+  position: absolute;
+  inset: -3px;
+  border-radius: 15px;
+  border: 2px solid rgba(0, 229, 255, 0.2);
+  pointer-events: none;
 }
 
 .profile-identity {
   display: flex;
-  flex-direction: column;
-  align-items: center;
+  align-items: baseline;
   gap: 6px;
-}
-
-.profile-name-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-  justify-content: center;
+  min-width: 0;
 }
 
 .summoner-name {
   margin: 0;
-  font-size: 28px;
+  font-size: 26px;
   font-weight: 800;
   letter-spacing: 0.5px;
+  white-space: nowrap;
 }
 
 .summoner-tag {
   color: var(--cyan);
   font-weight: 600;
-  font-size: 20px;
+  font-size: 18px;
+  white-space: nowrap;
 }
 
 .chip {
@@ -698,6 +692,7 @@ body {
   border: 1px solid var(--border);
   color: var(--muted);
   background: rgba(0, 229, 255, 0.05);
+  white-space: nowrap;
 }
 
 .chip.region {
@@ -711,30 +706,10 @@ body {
   background: rgba(0, 255, 157, 0.06);
 }
 
-.profile-actions-row {
+.profile-actions {
   display: flex;
   align-items: center;
   gap: 8px;
-}
-
-.picon-wrap {
-  position: relative;
-}
-
-.profile-icon {
-  width: 72px;
-  height: 72px;
-  border-radius: 14px;
-  border: 2px solid var(--cyan);
-  box-shadow: var(--glow-cyan);
-}
-
-.picon-ring {
-  position: absolute;
-  inset: -4px;
-  border-radius: 18px;
-  border: 2px solid rgba(0, 229, 255, 0.2);
-  pointer-events: none;
 }
 
 .fav-btn,
@@ -774,18 +749,45 @@ body {
   border-color: var(--border);
 }
 
+.in-game-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--green);
+  background: rgba(0, 255, 157, 0.1);
+  border: 1px solid rgba(0, 255, 157, 0.3);
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+
+.live-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--green);
+  box-shadow: 0 0 8px var(--green);
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+.profile-streak {
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
 .streak-wrap {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 4px;
-  width: 100%;
-  max-width: 200px;
+  width: 160px;
 }
 
 .streak-svg {
   width: 100%;
-  height: 40px;
+  height: 32px;
   min-width: 0;
   overflow: visible;
 }
@@ -799,6 +801,16 @@ body {
 
 .streak-label.positive { color: #00e5ff; }
 .streak-label.negative { color: #ff1744; }
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(0.85); }
+}
+
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 8px rgba(0, 255, 157, 0.15); }
+  50% { box-shadow: 0 0 16px rgba(0, 255, 157, 0.3); }
+}
 
 /* ── Profile Layout ── */
 .profile-layout {
@@ -1099,19 +1111,19 @@ body {
 .match-head {
   display: flex;
   align-items: center;
-  gap: 18px;
-  padding: 14px 18px;
+  gap: 14px;
+  padding: 12px 16px;
   cursor: pointer;
   user-select: none;
 }
 
 .badge {
-  width: 42px;
-  height: 42px;
-  border-radius: 11px;
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
   display: grid;
   place-items: center;
-  font-size: 20px;
+  font-size: 18px;
   font-weight: 800;
   color: #04120a;
 }
@@ -2842,20 +2854,6 @@ button.p-name:hover {
   }
 }
 
-.in-game-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 3px 11px;
-  border-radius: 999px;
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 1px;
-  color: #22c55e;
-  background: rgba(34, 197, 94, 0.1);
-  border: 1px solid rgba(34, 197, 94, 0.45);
-}
-
 .live-empty {
   padding: 40px 20px;
   text-align: center;
@@ -4086,31 +4084,27 @@ button.p-name:hover {
   }
 
   .profile-header {
-    padding: 16px;
+    padding: 12px 14px;
     margin: 14px 0 0;
-  }
-
-  .profile-header-inner {
-    flex-direction: column;
-    gap: 16px;
-  }
-
-  .profile-header-left,
-  .profile-header-right {
-    display: none;
+    gap: 10px;
+    flex-wrap: wrap;
   }
 
   .summoner-name {
-    font-size: 22px;
+    font-size: 20px;
   }
 
   .summoner-tag {
-    font-size: 17px;
+    font-size: 15px;
   }
 
   .profile-icon {
-    width: 62px;
-    height: 62px;
+    width: 44px;
+    height: 44px;
+  }
+
+  .profile-streak {
+    display: none;
   }
 
   .profile-layout {
