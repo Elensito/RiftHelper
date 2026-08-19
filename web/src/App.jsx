@@ -372,7 +372,6 @@ export default function App() {
           <div className="profile-layout">
             <aside className="profile-sidebar">
               <RankCards summoner={profile.summoner} lang={lang} />
-              <ChampionStats matches={profile.matches} lang={lang} />
             </aside>
 
             <div className="profile-main">
@@ -382,6 +381,7 @@ export default function App() {
                 lang={lang}
                 inGame={!!(live && live.in_game)}
               />
+              <ChampionStats matches={profile.matches} lang={lang} />
                 <div className="profile-tabs">
                   <button
                     className={`tab ${tab === 'matches' ? 'active' : ''}`}

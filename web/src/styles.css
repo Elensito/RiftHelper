@@ -867,33 +867,24 @@ body {
   display: flex;
   gap: 16px;
   margin: 16px 0 0;
-  margin-left: calc(50% - 50vw);
-  margin-right: calc(50% - 50vw);
-  padding-left: 284px;
 }
 
 .profile-sidebar {
   position: fixed;
   left: 0;
-  top: 60px;
+  top: 140px;
   width: 260px;
   display: flex;
   flex-direction: column;
   gap: 16px;
   z-index: 10;
-  padding: 16px 12px;
-  overflow-y: auto;
-  scrollbar-width: none;
-  max-height: calc(100vh - 70px);
-}
-
-.profile-sidebar::-webkit-scrollbar {
-  display: none;
+  padding: 0 12px;
 }
 
 .profile-main {
-  flex: 1;
+  width: 100%;
   min-width: 0;
+  margin-left: 276px;
 }
 
 /* ── Rank Cards ── */
@@ -4152,9 +4143,7 @@ button.p-name:hover {
 
 @media (max-width: 900px) {
   .profile-layout {
-    margin-left: 0;
-    margin-right: 0;
-    padding-left: 0;
+    flex-direction: column;
   }
 
   .profile-sidebar {
@@ -4165,13 +4154,15 @@ button.p-name:hover {
     flex-wrap: wrap;
     gap: 12px;
     padding: 0;
-    max-height: none;
-    overflow: visible;
   }
 
   .profile-sidebar > * {
     flex: 1 1 240px;
     min-width: 0;
+  }
+
+  .profile-main {
+    margin-left: 0;
   }
 
   .profile-header {
@@ -4222,7 +4213,6 @@ button.p-name:hover {
 
   .profile-layout {
     margin: 14px 0 0;
-    padding-left: 0;
   }
 
   .profile-sidebar {
