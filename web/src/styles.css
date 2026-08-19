@@ -860,7 +860,7 @@ body {
 .profile-sidebar {
   position: fixed;
   left: 0;
-  top: 80px;
+  top: 110px;
   width: 260px;
   display: flex;
   flex-direction: column;
@@ -879,7 +879,6 @@ body {
 .profile-main {
   width: 100%;
   min-width: 0;
-  padding-left: 280px;
 }
 
 /* ── Rank Cards ── */
@@ -1039,6 +1038,7 @@ body {
 .champion-stats-count {
   font-size: 11px;
   color: var(--muted);
+  white-space: nowrap;
 }
 
 .champion-stats-list {
@@ -4114,10 +4114,6 @@ button.p-name:hover {
     min-width: 0;
   }
 
-  .profile-main {
-    padding-left: 0;
-  }
-
   .profile-header {
     max-width: 100%;
     gap: 12px;
@@ -4170,11 +4166,6 @@ button.p-name:hover {
 
   .profile-sidebar {
     display: none;
-  }
-
-  .profile-main {
-    padding-left: 0;
-    width: 100%;
   }
 
   .match-head {
