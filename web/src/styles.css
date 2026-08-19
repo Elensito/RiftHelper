@@ -867,21 +867,24 @@ body {
   display: flex;
   gap: 16px;
   margin: 16px 0 0;
+  margin-left: calc(50% - 50vw);
+  margin-right: calc(50% - 50vw);
+  padding-left: 284px;
 }
 
 .profile-sidebar {
-  position: sticky;
-  top: 110px;
+  position: fixed;
+  left: 0;
+  top: 60px;
   width: 260px;
-  align-self: flex-start;
   display: flex;
   flex-direction: column;
   gap: 16px;
   z-index: 10;
-  padding: 0 12px;
-  max-height: calc(100vh - 120px);
+  padding: 16px 12px;
   overflow-y: auto;
   scrollbar-width: none;
+  max-height: calc(100vh - 70px);
 }
 
 .profile-sidebar::-webkit-scrollbar {
@@ -889,7 +892,7 @@ body {
 }
 
 .profile-main {
-  width: 100%;
+  flex: 1;
   min-width: 0;
 }
 
@@ -4148,6 +4151,12 @@ button.p-name:hover {
 }
 
 @media (max-width: 900px) {
+  .profile-layout {
+    margin-left: 0;
+    margin-right: 0;
+    padding-left: 0;
+  }
+
   .profile-sidebar {
     position: static;
     width: 100%;
@@ -4155,6 +4164,9 @@ button.p-name:hover {
     flex-direction: row;
     flex-wrap: wrap;
     gap: 12px;
+    padding: 0;
+    max-height: none;
+    overflow: visible;
   }
 
   .profile-sidebar > * {
@@ -4210,6 +4222,7 @@ button.p-name:hover {
 
   .profile-layout {
     margin: 14px 0 0;
+    padding-left: 0;
   }
 
   .profile-sidebar {
