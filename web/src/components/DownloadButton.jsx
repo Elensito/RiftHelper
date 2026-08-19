@@ -4,9 +4,7 @@ export default function DownloadButton({ lang }) {
   return (
     <a
       className="download-btn"
-      href="https://apps.microsoft.com/store/detail/elensito-rifthelper/9N0K87MNRKNP"
-      target="_blank"
-      rel="noopener noreferrer"
+      href="ms-windows-store://pdp/?productid=9N0K87MNRKNP"
       title={t(lang, 'downloadTitle')}
       aria-label={t(lang, 'downloadTitle')}
     >
