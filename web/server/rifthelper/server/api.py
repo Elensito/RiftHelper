@@ -468,6 +468,7 @@ def _build_ai_context(
         "team_comp": team_comp,
         "diff10": me.get("diff10"),
         "diff30": me.get("diff30"),
+        "vision_score": me.get("vision", 0),
     }
 
 
@@ -524,6 +525,7 @@ def build_match(
             "damage": me.get("damage", 0),
             "kp": player["kp"],
             "role": me.get("role", "?"),
+            "vision": me.get("vision", 0),
         },
         "players": players,
         "ai_context": ai_context,
