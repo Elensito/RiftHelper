@@ -4567,6 +4567,28 @@ button.p-name:hover {
   box-shadow: 0 0 12px rgba(255, 61, 94, 0.2);
 }
 
+.ai-coach-clear {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+
+.ai-coach-clear:hover {
+  background: rgba(122, 162, 247, 0.1);
+  border-color: rgba(122, 162, 247, 0.3);
+  color: var(--blue);
+  box-shadow: 0 0 12px rgba(122, 162, 247, 0.2);
+}
+
 /* ── Language selector (inline) ───────────────────── */
 
 .ai-coach-lang {

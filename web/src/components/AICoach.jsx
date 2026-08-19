@@ -6,7 +6,7 @@ import { kdaRatio, fmtNum } from '../utils.js'
 import { buildRichCoachingPrompt } from '../matchAnalysis.js'
 import { fetchAICoach } from '../api.js'
 
-const MAX_SELECTED = 3
+const MAX_SELECTED = 1
 
 function playDing() {
   try {
@@ -112,7 +112,7 @@ function MatchPicker({ matches, selected, onToggle, onConfirm, lang, onCancel })
       <div className="ai-coach-picker" onClick={e => e.stopPropagation()}>
         <div className="ai-coach-picker-header">
           <span className="ai-coach-picker-title">
-            {lang === 'es' ? 'Elige hasta 3 partidas' : 'Choose up to 3 matches'}
+            {lang === 'es' ? 'Elige 1 partida para analizar' : 'Choose 1 match to analyze'}
           </span>
           <span className="ai-coach-picker-count">
             {selected.size}/{MAX_SELECTED}
@@ -235,14 +235,16 @@ export default function AICoach({ matches, lang, puuid, summonerName, onLangChan
       setSelectedMatches(new Set())
       setShowPicker(false)
       setTypingDone({})
-      setMessages([{
-        id: Date.now(),
-        role: 'coach',
-        text: lang === 'es'
-          ? '¡Hola! Soy tu Coach IA 🧠\n\nPuedo analizar tus partidas con datos reales: farm, rotaciones, visión, KDA, builds, decisiones de juego y más.\n\nPulsa "Seleccionar partidas" abajo para elegir qué analizar, o escríbeme tu pregunta directamente.'
-          : "Hello! I'm your AI Coach 🧠\n\nI can analyze your matches with real data: farm, rotations, vision, KDA, builds, game decisions and more.\n\nClick \"Select matches\" below to choose what to analyze, or write me your question directly.",
-      }])
-      prevMsgCount.current = 1
+      if (messages.length === 0) {
+        setMessages([{
+          id: Date.now(),
+          role: 'coach',
+          text: lang === 'es'
+            ? '¡Hola! Soy tu Coach IA 🧠\n\nPuedo analizar tus partidas con datos reales: farm, rotaciones, visión, KDA, builds, decisiones de juego y más.\n\nPulsa "Seleccionar partidas" abajo para elegir qué analizar, o escríbeme tu pregunta directamente.'
+            : "Hello! I'm your AI Coach 🧠\n\nI can analyze your matches with real data: farm, rotations, vision, KDA, builds, game decisions and more.\n\nClick \"Select matches\" below to choose what to analyze, or write me your question directly.",
+        }])
+        prevMsgCount.current = 1
+      }
     }
     if (!open) openedRef.current = false
   }, [open, lang])
@@ -416,6 +418,17 @@ export default function AICoach({ matches, lang, puuid, summonerName, onLangChan
             <div className="ai-coach-header">
               <span className="ai-coach-title">{t(lang, 'aiCoach')}</span>
               <LangInline lang={lang} onChange={onLangChange} />
+              <button className="ai-coach-clear" onClick={() => {
+                setMessages([])
+                setSelectedMatches(new Set())
+                setShowPicker(false)
+                setTypingDone({})
+                prevMsgCount.current = 0
+              }} aria-label="Clear chat" title={lang === 'es' ? 'Limpiar chat' : 'Clear chat'}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                  <path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6h14z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              </button>
               <button className="ai-coach-close" onClick={() => setOpen(false)} aria-label="Close">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
                   <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
