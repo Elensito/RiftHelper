@@ -18,6 +18,7 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
 
 from rifthelper import config
 from rifthelper.services.riot import RiotAPIError
@@ -221,6 +222,50 @@ def get_champion(champ_key: int):
     if detail is None:
         raise HTTPException(status_code=404, detail="Campeón no encontrado.")
     return detail
+
+
+class AICoachRequest(BaseModel):
+    messages: list[dict]
+    model: str = "mistral-small-latest"
+    max_tokens: int = 1500
+    temperature: float = 0.7
+
+
+MISTRAL_URL = "https://api.mistral.ai/v1/chat/completions"
+
+
+@app.post("/api/ai-coach")
+async def ai_coach(req: AICoachRequest):
+    api_key = config.MISTRAL_API_KEY
+    if not api_key:
+        raise HTTPException(status_code=500, detail="Mistral API key not configured.")
+
+    async with aiohttp.ClientSession() as session:
+        async with session.post(
+            MISTRAL_URL,
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {api_key}",
+            },
+            json={
+                "model": req.model,
+                "messages": req.messages,
+                "max_tokens": req.max_tokens,
+                "temperature": req.temperature,
+            },
+            timeout=aiohttp.ClientTimeout(total=30),
+        ) as resp:
+            if resp.status != 200:
+                try:
+                    err = await resp.json()
+                except Exception:
+                    err = {}
+                detail = err.get("detail", f"Mistral API error {resp.status}")
+                raise HTTPException(status_code=502, detail=detail)
+            data = await resp.json()
+
+    content = data.get("choices", [{}])[0].get("message", {}).get("content", "No response from AI.")
+    return {"content": content}
 
 
 if WEB_DIST.is_dir() and (WEB_DIST / "index.html").is_file():

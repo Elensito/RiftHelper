@@ -95,3 +95,20 @@ export async function fetchTooltip(kind, id, lang, champ) {
   if (!res.ok) throw new Error(data.detail || 'Error al obtener la información')
   return data
 }
+
+export async function fetchAICoach(messages, { model, maxTokens, temperature } = {}) {
+  const url = `${API_BASE}/api/ai-coach`
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      messages,
+      model,
+      max_tokens: maxTokens,
+      temperature,
+    }),
+  })
+  const data = await res.json()
+  if (!res.ok) throw new Error(data.detail || 'AI Coach error')
+  return data.content
+}

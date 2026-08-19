@@ -8,6 +8,7 @@ load_dotenv(ROOT_DIR / ".env")
 
 
 RIOT_API_KEY = os.getenv("RIOT_API_KEY", "")
+MISTRAL_API_KEY = os.getenv("MISTRAL_API_KEY", "")
 
 
 RIOT_REGION = os.getenv("RIOT_REGION", "euw1").strip().lower()

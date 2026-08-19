@@ -3,10 +3,8 @@ import Img from './Img.jsx'
 import { t, LANGS, queueLabel } from '../i18n.js'
 import { kdaRatio, fmtNum } from '../utils.js'
 import { buildBatchSummary, formatAnalysisPrompt, extractDetailedAnalysis } from '../matchAnalysis.js'
+import { fetchAICoach } from '../api.js'
 
-const MISTRAL_KEY = import.meta.env.VITE_MISTRAL_KEY
-const MISTRAL_URL = 'https://api.mistral.ai/v1/chat/completions'
-const MISTRAL_MODEL = 'mistral-small-latest'
 const MAX_SELECTED = 3
 
 function playDing() {
@@ -175,28 +173,10 @@ function MatchPicker({ matches, selected, onToggle, onConfirm, lang, onCancel })
 }
 
 async function callMistral(systemPrompt, userMessage) {
-  const res = await fetch(MISTRAL_URL, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${MISTRAL_KEY}`,
-    },
-    body: JSON.stringify({
-      model: MISTRAL_MODEL,
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userMessage },
-      ],
-      max_tokens: 1500,
-      temperature: 0.7,
-    }),
-  })
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}))
-    throw new Error(err.detail || `Mistral API error ${res.status}`)
-  }
-  const data = await res.json()
-  return data.choices?.[0]?.message?.content || 'No response from AI.'
+  return await fetchAICoach([
+    { role: 'system', content: systemPrompt },
+    { role: 'user', content: userMessage },
+  ])
 }
 
 function buildSystemPrompt(lang) {
@@ -219,11 +199,13 @@ export default function AICoach({ matches, lang, puuid, onLangChange }) {
   const startX = useRef(0)
   const startWidth = useRef(0)
   const openedRef = useRef(false)
+  const prevLangRef = useRef(lang)
   const prevMsgCount = useRef(0)
 
   useEffect(() => {
     if (open && !openedRef.current) {
       openedRef.current = true
+      prevLangRef.current = lang
       setSelectedMatches(new Set())
       setShowPicker(false)
       setTypingDone({})
@@ -238,6 +220,24 @@ export default function AICoach({ matches, lang, puuid, onLangChange }) {
     }
     if (!open) openedRef.current = false
   }, [open, lang])
+
+  useEffect(() => {
+    if (open && prevLangRef.current !== lang) {
+      prevLangRef.current = lang
+      setSelectedMatches(new Set())
+      setShowPicker(false)
+      setTypingDone({})
+      setInput('')
+      setMessages([{
+        id: Date.now(),
+        role: 'coach',
+        text: lang === 'es'
+          ? '¡Hola! Soy tu Coach IA 🧠\n\nPuedo analizar tus partidas con datos reales: farm, rotaciones, visión, KDA, builds, decisiones de juego y más.\n\nPulsa "Seleccionar partidas" abajo para elegir qué analizar, o escríbeme tu pregunta directamente.'
+          : "Hello! I'm your AI Coach 🧠\n\nI can analyze your matches with real data: farm, rotations, vision, KDA, builds, game decisions and more.\n\nClick \"Select matches\" below to choose what to analyze, or write me your question directly.",
+      }])
+      prevMsgCount.current = 1
+    }
+  }, [lang, open])
 
   useEffect(() => {
     if (chatRef.current) chatRef.current.scrollTo({ top: chatRef.current.scrollHeight, behavior: 'smooth' })
