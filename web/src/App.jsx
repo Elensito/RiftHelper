@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import SearchBar from './components/SearchBar.jsx'
 import ProfileHeader from './components/ProfileHeader.jsx'
+import RankCards from './components/RankCards.jsx'
+import ChampionStats from './components/ChampionStats.jsx'
 import MatchCard from './components/MatchCard.jsx'
 import LiveGame from './components/LiveGame.jsx'
 import QueueFilter from './components/QueueFilter.jsx'
@@ -374,86 +376,95 @@ export default function App() {
               inGame={!!(live && live.in_game)}
             />
 
-            <div className="profile-tabs">
-              <button
-                className={`tab ${tab === 'matches' ? 'active' : ''}`}
-                onClick={() => setTab('matches')}
-              >
-                {t(lang, 'tabMatches')}
-              </button>
-              <button
-                className={`tab ${tab === 'mastery' ? 'active' : ''}`}
-                onClick={openMastery}
-              >
-                {t(lang, 'tabMastery')}
-              </button>
-              {live && live.in_game && (
-                <button
-                  className={`tab live-tab ${tab === 'live' ? 'active' : ''}`}
-                  onClick={openLive}
-                >
-                  {t(lang, 'tabLive')}
-                  <span className="live-dot" />
-                </button>
-              )}
-            </div>
+            <div className="profile-layout">
+              <aside className="profile-sidebar">
+                <RankCards summoner={profile.summoner} lang={lang} />
+                <ChampionStats matches={profile.matches} lang={lang} />
+              </aside>
 
-            {tab === 'live' ? (
-              liveLoading ? (
-                <div className="loader">
-                  <div className="spinner" />
-                  {t(lang, 'liveLoading')}
+              <div className="profile-main">
+                <div className="profile-tabs">
+                  <button
+                    className={`tab ${tab === 'matches' ? 'active' : ''}`}
+                    onClick={() => setTab('matches')}
+                  >
+                    {t(lang, 'tabMatches')}
+                  </button>
+                  <button
+                    className={`tab ${tab === 'mastery' ? 'active' : ''}`}
+                    onClick={openMastery}
+                  >
+                    {t(lang, 'tabMastery')}
+                  </button>
+                  {live && live.in_game && (
+                    <button
+                      className={`tab live-tab ${tab === 'live' ? 'active' : ''}`}
+                      onClick={openLive}
+                    >
+                      {t(lang, 'tabLive')}
+                      <span className="live-dot" />
+                    </button>
+                  )}
                 </div>
-              ) : live && live.in_game ? (
-                <LiveGame data={live} lang={lang} />
-              ) : (
-                <div className="live-empty">{t(lang, 'liveNotInGame')}</div>
-              )
-            ) : tab === 'mastery' ? (
-              masteryLoading ? (
-                <div className="loader">
-                  <div className="spinner" />
-                  {t(lang, 'masteryLoading')}
-                </div>
-              ) : mastery && mastery.mastery.length ? (
-                <Mastery data={mastery} lang={lang} />
-              ) : (
-                <div className="live-empty">{t(lang, 'masteryEmpty')}</div>
-              )
-            ) : (
-              <div className="match-list">
-                <QueueFilter
-                  matches={profile.matches}
-                  filter={queueFilter}
-                  onChange={setQueueFilter}
-                  lang={lang}
-                />
-                {profile.matches
-                  .filter(
-                    (m) => queueFilter === 'all' || matchGroup(m.queue) === queueFilter
-                  )
-                  .map((m) => (
-                    <MatchCard
-                      key={m.match_id}
-                      match={m}
-                      lang={lang}
-                      puuid={profile.summoner.puuid}
-                      onOpenPlayer={openPlayer}
-                    />
-                  ))}
-                <div className="load-more" ref={sentinelRef}>
-                  {moreLoading && (
-                    <div className="loader-inline">
-                      <div className="spinner spinner-sm" />
-                      {t(lang, 'loadingMore')}
+
+                {tab === 'live' ? (
+                  liveLoading ? (
+                    <div className="loader">
+                      <div className="spinner" />
+                      {t(lang, 'liveLoading')}
                     </div>
-                  )}
-                  {!hasMore && !moreLoading && fetched > PAGE_SIZE && (
-                    <span className="no-more">{t(lang, 'noMoreMatches')}</span>
-                  )}
-                </div>
+                  ) : live && live.in_game ? (
+                    <LiveGame data={live} lang={lang} />
+                  ) : (
+                    <div className="live-empty">{t(lang, 'liveNotInGame')}</div>
+                  )
+                ) : tab === 'mastery' ? (
+                  masteryLoading ? (
+                    <div className="loader">
+                      <div className="spinner" />
+                      {t(lang, 'masteryLoading')}
+                    </div>
+                  ) : mastery && mastery.mastery.length ? (
+                    <Mastery data={mastery} lang={lang} />
+                  ) : (
+                    <div className="live-empty">{t(lang, 'masteryEmpty')}</div>
+                  )
+                ) : (
+                  <div className="match-list">
+                    <QueueFilter
+                      matches={profile.matches}
+                      filter={queueFilter}
+                      onChange={setQueueFilter}
+                      lang={lang}
+                    />
+                    {profile.matches
+                      .filter(
+                        (m) => queueFilter === 'all' || matchGroup(m.queue) === queueFilter
+                      )
+                      .map((m) => (
+                        <MatchCard
+                          key={m.match_id}
+                          match={m}
+                          lang={lang}
+                          puuid={profile.summoner.puuid}
+                          onOpenPlayer={openPlayer}
+                        />
+                      ))}
+                    <div className="load-more" ref={sentinelRef}>
+                      {moreLoading && (
+                        <div className="loader-inline">
+                          <div className="spinner spinner-sm" />
+                          {t(lang, 'loadingMore')}
+                        </div>
+                      )}
+                      {!hasMore && !moreLoading && fetched > PAGE_SIZE && (
+                        <span className="no-more">{t(lang, 'noMoreMatches')}</span>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
-            )}
+            </div>
           </>
         )}
       </main>

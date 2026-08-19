@@ -117,6 +117,15 @@ class RiotClient:
                 return entry
         return None
 
+    async def get_flex_rank(self, region: str, puuid: str) -> dict | None:
+        data = await self._platform(region, f"/lol/league/v4/entries/by-puuid/{puuid}")
+        if not isinstance(data, list):
+            return None
+        for entry in data:
+            if entry.get("queueType") == "RANKED_FLEX_5x5":
+                return entry
+        return None
+
     async def get_active_game(self, region: str, puuid: str) -> dict | None:
         try:
             return await self._platform(

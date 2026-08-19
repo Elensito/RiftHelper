@@ -530,6 +530,7 @@ async def fetch_profile(
 
     summoner = await riot.get_summoner_by_puuid(region, puuid)
     rank = await riot.get_solo_rank(region, puuid)
+    flex = await riot.get_flex_rank(region, puuid)
 
 
     profile_icon_id = summoner.get("profileIconId") or DEFAULT_PROFILE_ICON_ID
@@ -582,6 +583,11 @@ async def fetch_profile(
     tier = (rank or {}).get("tier", "UNRANKED")
     division = (rank or {}).get("rank", "")
 
+    flex_wins = (flex or {}).get("wins", 0)
+    flex_losses = (flex or {}).get("losses", 0)
+    flex_tier = (flex or {}).get("tier", "UNRANKED")
+    flex_division = (flex or {}).get("rank", "")
+
     result = {
         "summoner": {
             "name": game_name,
@@ -597,6 +603,12 @@ async def fetch_profile(
             "wins": wins,
             "losses": losses,
             "winrate": round(wins / (wins + losses) * 100) if (wins + losses) else 0,
+            "flex_tier": flex_tier,
+            "flex_division": flex_division,
+            "flex_lp": (flex or {}).get("leaguePoints", 0),
+            "flex_wins": flex_wins,
+            "flex_losses": flex_losses,
+            "flex_winrate": round(flex_wins / (flex_wins + flex_losses) * 100) if (flex_wins + flex_losses) else 0,
         },
         "matches": matches,
         "has_more": len(match_ids) == count,
