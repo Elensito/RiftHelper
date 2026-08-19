@@ -1130,6 +1130,8 @@ body {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  max-width: 95%;
+  margin: 0 auto;
 }
 
 .match {
