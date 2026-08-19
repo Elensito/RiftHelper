@@ -529,8 +529,7 @@ async def fetch_profile(
     }
 
     summoner = await riot.get_summoner_by_puuid(region, puuid)
-    rank = await riot.get_solo_rank(region, puuid)
-    flex = await riot.get_flex_rank(region, puuid)
+    rank, flex = await riot.get_all_ranks(region, puuid)
 
 
     profile_icon_id = summoner.get("profileIconId") or DEFAULT_PROFILE_ICON_ID
@@ -597,6 +596,7 @@ async def fetch_profile(
             "level": summoner.get("summonerLevel", 0),
             "profile_icon": _asset(f"/assets/profileicons/{profile_icon_id}.png"),
             "rank_icon": _asset(f"/assets/ranks/{tier.lower()}.png"),
+            "flex_rank_icon": _asset(f"/assets/ranks/{flex_tier.lower()}.png") if flex_tier and flex_tier != "UNRANKED" else None,
             "tier": tier,
             "division": division,
             "lp": (rank or {}).get("leaguePoints", 0),

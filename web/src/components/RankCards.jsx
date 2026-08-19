@@ -70,6 +70,7 @@ export default function RankCards({ summoner, lang }) {
         lp={summoner.flex_lp}
         wins={summoner.flex_wins}
         losses={summoner.flex_losses}
+        rankIcon={summoner.flex_rank_icon}
         lang={lang}
       />
     </div>

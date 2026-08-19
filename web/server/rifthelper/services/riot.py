@@ -126,6 +126,20 @@ class RiotClient:
                 return entry
         return None
 
+    async def get_all_ranks(self, region: str, puuid: str) -> tuple[dict | None, dict | None]:
+        data = await self._platform(region, f"/lol/league/v4/entries/by-puuid/{puuid}")
+        if not isinstance(data, list):
+            return None, None
+        solo = None
+        flex = None
+        for entry in data:
+            qt = entry.get("queueType")
+            if qt == "RANKED_SOLO_5x5":
+                solo = entry
+            elif qt == "RANKED_FLEX_5x5":
+                flex = entry
+        return solo, flex
+
     async def get_active_game(self, region: str, puuid: str) -> dict | None:
         try:
             return await self._platform(

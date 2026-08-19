@@ -376,12 +376,12 @@ export default function App() {
               inGame={!!(live && live.in_game)}
             />
 
-            <div className="profile-layout">
-              <aside className="profile-sidebar">
-                <RankCards summoner={profile.summoner} lang={lang} />
-                <ChampionStats matches={profile.matches} lang={lang} />
-              </aside>
+            <aside className="profile-sidebar">
+              <RankCards summoner={profile.summoner} lang={lang} />
+              <ChampionStats matches={profile.matches} lang={lang} />
+            </aside>
 
+            <div className="profile-layout">
               <div className="profile-main">
                 <div className="profile-tabs">
                   <button
