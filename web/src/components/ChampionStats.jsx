@@ -3,22 +3,30 @@ import Img from './Img.jsx'
 import { t } from '../i18n.js'
 
 function MiniStreak({ matches }) {
-  if (!matches || matches.length < 2) return null
+  if (!matches || !matches.length) return null
 
   const w = 100
   const h = 20
   const pad = 2
   const jump = 4
-  const step = (w - pad * 2) / matches.length
+  const step = (w - pad * 2) / Math.max(matches.length, 1)
 
-  let y = h / 2
-  let pathD = `M${pad},${y}`
+  const midY = h / 2
+  let pathD = `M${pad},${midY}`
+  let y = midY
 
-  for (let i = 0; i < matches.length; i++) {
-    y += matches[i].win ? -jump : jump
+  if (matches.length === 1) {
+    y += matches[0].win ? -jump : jump
     y = Math.max(pad + 2, Math.min(h - pad - 2, y))
-    const x = pad + (i + 1) * step
-    pathD += ` L${x.toFixed(1)},${y.toFixed(1)}`
+    pathD += ` L${(w / 2).toFixed(1)},${y.toFixed(1)}`
+    pathD += ` L${(w - pad).toFixed(1)},${y.toFixed(1)}`
+  } else {
+    for (let i = 0; i < matches.length; i++) {
+      y += matches[i].win ? -jump : jump
+      y = Math.max(pad + 2, Math.min(h - pad - 2, y))
+      const x = pad + (i + 1) * step
+      pathD += ` L${x.toFixed(1)},${y.toFixed(1)}`
+    }
   }
 
   const wins = matches.filter((m) => m.win).length
