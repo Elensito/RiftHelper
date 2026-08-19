@@ -180,35 +180,38 @@ async function callMistral(systemPrompt, userMessage) {
   ])
 }
 
-function buildSystemPrompt(lang) {
+function buildSystemPrompt(lang, name) {
+  const称呼 = name || (lang === 'es' ? 'bro' : 'bro')
   return lang === 'es'
-    ? `Eres un coach personal de League of Legends, estilo OP.GG o U.GG. Hablas como un amigo que sabe mucho del juego — directo, claro, sin ser grosero. Respondes en español.
+    ? `Eres un coach personal de League of Legends, estilo OP.GG o U.GG. Hablas como un amigo que sabe mucho del juego — directo, claro, sin ser grosero. Respondes en español. Te diriges al jugador como "${称呼}".
 
 Reglas:
-- Usa lenguaje natural y conversacional. NO uses markdown (sin ###, sin **, sin ---, sin tablas).
+- Usa lenguaje natural y conversacional. NO uses markdown (sin ###, sin **, sin ---, sin tablas, sin emojis de列表).
 - Escribe en párrafos claros con saltos de línea simples.
-- Menciona al jugador por su nombre si lo sabes.
+- Menciona al jugador por su nombre "${称呼}" al menos una vez.
 - Analiza por qué perdiste o ganaste, no solo los números.
-- Dale contexto del campeón: ¿es early/mid/late? ¿Qué debería priorizar en early game? ¿Cómo escala? ¿Cuál es su power spike?
-- Sé específico con builds: qué items comprar, qué runas usar, qué summoner spells.
+- Dale contexto del campeón: ¿es early/mid/late game? ¿Qué debería priorizar en early? ¿Cómo escala? ¿Cuál es su power spike?
 - Habla de posicionamiento en teamfights: dónde estar, a quién focusear, cuándo entrar.
+- Habla de rotaciones, macro, visión, y decisiones de juego.
 - Si el jugador tiene muertes evitables, explica exactamente qué hacer diferente.
+- NO des consejos de builds, items, runas o summoner spells. Solo enfócate en gameplay, posicionamiento, rotaciones y decisiones.
 - Responde en máximo 3-4 párrafos. Sé conciso pero con impacto.`
-    : `You are a personal League of Legends coach, like OP.GG or U.GG style. You talk like a knowledgeable friend who knows the game — direct, clear, not toxic. Respond in English.
+    : `You are a personal League of Legends coach, like OP.GG or U.GG style. You talk like a knowledgeable friend who knows the game — direct, clear, not toxic. Respond in English. Address the player as "${称呼}".
 
 Rules:
-- Use natural, conversational language. NO markdown (no ###, no **, no ---, no tables).
+- Use natural, conversational language. NO markdown (no ###, no **, no ---, no tables, no emoji lists).
 - Write in clear paragraphs with simple line breaks.
-- Mention the player by name if you know it.
+- Mention the player by name "${称呼}" at least once.
 - Analyze WHY they lost or won, not just the numbers.
 - Give champion context: is it early/mid/late game? What should they prioritize early? How does it scale? What are their power spikes?
-- Be specific about builds: what items to buy, what runes, what summoner spells.
 - Talk about teamfight positioning: where to stand, who to focus, when to go in.
+- Talk about rotations, macro, vision, and game decisions.
 - If the player had avoidable deaths, explain exactly what to do differently.
+- Do NOT give advice on builds, items, runes, or summoner spells. Only focus on gameplay, positioning, rotations, and decisions.
 - Respond in 3-4 paragraphs max. Be concise but impactful.`
 }
 
-export default function AICoach({ matches, lang, puuid, onLangChange }) {
+export default function AICoach({ matches, lang, puuid, summonerName, onLangChange }) {
   const [open, setOpen] = useState(false)
   const [width, setWidth] = useState(420)
   const [messages, setMessages] = useState([])
@@ -300,7 +303,7 @@ export default function AICoach({ matches, lang, puuid, onLangChange }) {
     try {
       const richContext = buildRichCoachingPrompt(selected, lang)
 
-      const systemPrompt = buildSystemPrompt(lang)
+      const systemPrompt = buildSystemPrompt(lang, summonerName)
       const response = await callMistral(systemPrompt, richContext)
 
       setMessages(prev => [...prev, { id: Date.now() + 1, role: 'coach', text: response }])
@@ -315,7 +318,7 @@ export default function AICoach({ matches, lang, puuid, onLangChange }) {
     } finally {
       setAnalyzing(false)
     }
-  }, [selectedMatches, matches, lang])
+  }, [selectedMatches, matches, lang, summonerName])
 
   const sendMessage = useCallback(async () => {
     if (!input.trim()) return
@@ -331,7 +334,7 @@ export default function AICoach({ matches, lang, puuid, onLangChange }) {
         context = buildRichCoachingPrompt(recent, lang)
       }
 
-      const systemPrompt = buildSystemPrompt(lang)
+      const systemPrompt = buildSystemPrompt(lang, summonerName)
       const fullUserMsg = context
         ? `${context}\n\n${lang === 'es' ? 'Mi pregunta' : 'My question'}: ${userMsg}`
         : userMsg
@@ -349,7 +352,7 @@ export default function AICoach({ matches, lang, puuid, onLangChange }) {
     } finally {
       setAnalyzing(false)
     }
-  }, [input, matches, lang])
+  }, [input, matches, lang, summonerName])
 
   const handleKeyDown = useCallback((e) => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage() }
