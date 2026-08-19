@@ -4751,6 +4751,94 @@ button.p-name:hover {
   box-shadow: 0 2px 12px rgba(120, 90, 255, 0.25);
 }
 
+/* ── Markdown in coach bubbles ────────────────────── */
+
+.ai-coach-markdown {
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+.ai-coach-markdown p {
+  margin: 0 0 8px 0;
+}
+
+.ai-coach-markdown p:last-child {
+  margin-bottom: 0;
+}
+
+.ai-coach-markdown strong {
+  color: var(--cyan);
+  font-weight: 700;
+}
+
+.ai-coach-markdown em {
+  color: var(--text-secondary);
+  font-style: italic;
+}
+
+.ai-coach-markdown h1,
+.ai-coach-markdown h2,
+.ai-coach-markdown h3,
+.ai-coach-markdown h4 {
+  color: var(--cyan);
+  font-size: 14px;
+  font-weight: 700;
+  margin: 10px 0 4px 0;
+}
+
+.ai-coach-markdown ul,
+.ai-coach-markdown ol {
+  margin: 4px 0 8px 16px;
+  padding: 0;
+}
+
+.ai-coach-markdown li {
+  margin-bottom: 3px;
+}
+
+.ai-coach-markdown code {
+  background: rgba(120, 90, 255, 0.12);
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-family: 'JetBrains Mono', monospace;
+  color: var(--violet-light, #b8a9ff);
+}
+
+.ai-coach-markdown blockquote {
+  border-left: 3px solid var(--violet);
+  padding-left: 10px;
+  margin: 6px 0;
+  color: var(--text-secondary);
+  font-style: italic;
+}
+
+.ai-coach-markdown hr {
+  border: none;
+  border-top: 1px solid rgba(120, 90, 255, 0.15);
+  margin: 8px 0;
+}
+
+.ai-coach-markdown table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 6px 0;
+  font-size: 12px;
+}
+
+.ai-coach-markdown th,
+.ai-coach-markdown td {
+  padding: 4px 8px;
+  border: 1px solid rgba(120, 90, 255, 0.15);
+  text-align: left;
+}
+
+.ai-coach-markdown th {
+  background: rgba(120, 90, 255, 0.08);
+  color: var(--cyan);
+  font-weight: 700;
+}
+
 /* ── Typewriter ───────────────────────────────────── */
 
 .ai-coach-typed-text {
