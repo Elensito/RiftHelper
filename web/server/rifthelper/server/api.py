@@ -378,7 +378,7 @@ def build_match(
 def _profile_cache_path(name: str, tag: str, start: int) -> Path:
     n = " ".join(name.strip().lower().split())
     tg = " ".join(tag.strip().lower().split())
-    key = f"v2#{config.RIOT_REGION}#{n}#{tg}__{start}"
+    key = f"v3#{config.RIOT_REGION}#{n}#{tg}__{start}"
     safe = "".join(c if c.isalnum() else "_" for c in key)
     return config.PROFILE_CACHE_DIR / f"{safe}.json"
 

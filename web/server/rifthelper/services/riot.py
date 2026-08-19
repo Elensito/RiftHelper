@@ -122,7 +122,7 @@ class RiotClient:
         if not isinstance(data, list):
             return None
         for entry in data:
-            if entry.get("queueType") == "RANKED_FLEX_5x5":
+            if entry.get("queueType") in ("RANKED_FLEX_5x5", "RANKED_FLEX_SR"):
                 return entry
         return None
 
@@ -136,7 +136,7 @@ class RiotClient:
             qt = entry.get("queueType")
             if qt == "RANKED_SOLO_5x5":
                 solo = entry
-            elif qt == "RANKED_FLEX_5x5":
+            elif qt in ("RANKED_FLEX_5x5", "RANKED_FLEX_SR"):
                 flex = entry
         return solo, flex
 
