@@ -368,21 +368,19 @@ export default function App() {
         )}
 
         {profile && !loading && !champion && (
-          <>
-            <ProfileHeader
-              summoner={profile.summoner}
-              matches={profile.matches}
-              lang={lang}
-              inGame={!!(live && live.in_game)}
-            />
-
+          <div className="profile-layout">
             <aside className="profile-sidebar">
               <RankCards summoner={profile.summoner} lang={lang} />
               <ChampionStats matches={profile.matches} lang={lang} />
             </aside>
 
-            <div className="profile-layout">
-              <div className="profile-main">
+            <div className="profile-main">
+              <ProfileHeader
+                summoner={profile.summoner}
+                matches={profile.matches}
+                lang={lang}
+                inGame={!!(live && live.in_game)}
+              />
                 <div className="profile-tabs">
                   <button
                     className={`tab ${tab === 'matches' ? 'active' : ''}`}
@@ -465,7 +463,6 @@ export default function App() {
                 )}
               </div>
             </div>
-          </>
         )}
       </main>
 

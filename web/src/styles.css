@@ -631,16 +631,13 @@ body {
   display: flex;
   align-items: center;
   gap: 14px;
-  margin: 20px 0 0;
+  margin: 0 0 12px;
   padding: 14px 18px;
   border-radius: 16px;
   background: var(--card);
   border: 1px solid var(--border);
   backdrop-filter: blur(8px);
   box-shadow: 0 0 40px rgba(0, 229, 255, 0.08);
-  max-width: 70%;
-  margin-left: auto;
-  margin-right: auto;
 }
 
 .picon-wrap {
@@ -697,6 +694,18 @@ body {
 
 .profile-id-top .fav-btn.active {
   text-shadow: none;
+}
+
+.profile-id-top .share-btn {
+  width: 24px;
+  height: 24px;
+  font-size: 12px;
+  border-radius: 6px;
+  padding: 0;
+}
+
+.profile-id-top .share-btn:hover {
+  transform: none;
 }
 
 .profile-id-top .chip.level {
@@ -845,32 +854,24 @@ body {
 /* ── Profile Layout ── */
 .profile-layout {
   margin: 16px 0 0;
-  position: relative;
+  display: flex;
+  gap: 20px;
+  align-items: flex-start;
 }
 
 .profile-sidebar {
-  position: fixed;
-  left: 12px;
-  top: 100px;
   width: 260px;
+  flex-shrink: 0;
   display: flex;
   flex-direction: column;
   gap: 16px;
-  z-index: 10;
-  max-height: calc(100vh - 120px);
-  overflow-y: auto;
-  scrollbar-width: none;
-}
-
-.profile-sidebar::-webkit-scrollbar {
-  display: none;
+  margin-top: 50px;
+  align-self: flex-start;
 }
 
 .profile-main {
-  width: 100%;
+  flex: 1;
   min-width: 0;
-  margin-left: 280px;
-  width: calc(100% - 280px);
 }
 
 /* ── Rank Cards ── */
@@ -4091,11 +4092,13 @@ button.p-name:hover {
 }
 
 @media (max-width: 900px) {
+  .profile-layout {
+    flex-direction: column;
+  }
+
   .profile-sidebar {
-    position: static;
-    width: auto;
-    margin-left: 0;
-    max-height: none;
+    width: 100%;
+    margin-top: 0;
     flex-direction: row;
     flex-wrap: wrap;
     gap: 12px;
@@ -4106,15 +4109,9 @@ button.p-name:hover {
     min-width: 0;
   }
 
-  .profile-main {
-    margin-left: 0;
-    width: 100%;
-  }
-
   .profile-header {
     gap: 12px;
     padding: 14px 18px;
-    max-width: 100%;
   }
 }
 
@@ -4125,10 +4122,8 @@ button.p-name:hover {
 
   .profile-header {
     padding: 10px 12px;
-    margin: 14px 0 0;
     gap: 8px;
     flex-wrap: wrap;
-    max-width: 100%;
   }
 
   .profile-icon {

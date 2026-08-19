@@ -56,6 +56,22 @@ export default function ProfileHeader({ summoner, matches, lang, inGame = false 
           >
             {fav ? '★' : '☆'}
           </button>
+          <button
+            className={`share-btn ${copied ? 'active' : ''}`}
+            onClick={share}
+            title={copied ? t(lang, 'shareCopied') : t(lang, 'share')}
+          >
+            {copied ? (
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M20 6 9 17l-5-5" />
+              </svg>
+            ) : (
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+                <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+              </svg>
+            )}
+          </button>
           <span className="chip level">{t(lang, 'level')} {summoner.level}</span>
         </div>
         <div className="profile-name-row">
@@ -72,23 +88,6 @@ export default function ProfileHeader({ summoner, matches, lang, inGame = false 
           {t(lang, 'liveNow')}
         </span>
       )}
-
-      <button
-        className={`share-btn ${copied ? 'active' : ''}`}
-        onClick={share}
-        title={copied ? t(lang, 'shareCopied') : t(lang, 'share')}
-      >
-        {copied ? (
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M20 6 9 17l-5-5" />
-          </svg>
-        ) : (
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
-            <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
-          </svg>
-        )}
-      </button>
 
       <div className="profile-streak">
         <StreakChart matches={recent} />

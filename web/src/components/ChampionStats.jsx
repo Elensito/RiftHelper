@@ -92,7 +92,7 @@ export default function ChampionStats({ matches, lang }) {
         total: c.wins + c.losses,
         winrate: Math.round((c.wins / (c.wins + c.losses)) * 100),
       }))
-      .sort((a, b) => b.total - a.total)
+      .sort((a, b) => b.winrate - a.winrate || b.total - a.total)
   }, [matches])
 
   if (!championData.length) return null
