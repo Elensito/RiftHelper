@@ -14,6 +14,7 @@ import RiotClientWidget from './components/RiotClientWidget.jsx'
 import Favorites from './components/Favorites.jsx'
 import ChampionPage from './components/ChampionPage.jsx'
 import Mastery from './components/Mastery.jsx'
+import AICoach from './components/AICoach.jsx'
 import Tooltip from './components/Tooltip.jsx'
 import { fetchSummoner, fetchLatestMatch, fetchLiveGame, fetchMastery, fetchChampions, fetchChampion } from './api.js'
 import { isTauri, getRiotClientSession, notifyGameEnded } from './tauri.js'
@@ -469,6 +470,8 @@ export default function App() {
       <footer className="footer">
         RiftHelper · {t(lang, 'footerRiot')} · {new Date().getFullYear()}
       </footer>
+
+      <AICoach matches={profile ? profile.matches : []} lang={lang} puuid={profile ? profile.summoner.puuid : null} />
     </div>
   )
 }

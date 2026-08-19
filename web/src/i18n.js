@@ -166,6 +166,17 @@ const EN = {
   ttRange: 'Range',
   ttMaxRank: 'Max rank',
   ttLore: 'Lore',
+  aiCoach: 'AI Coach',
+  aiCoachSelectAll: 'Select all',
+  aiCoachClear: 'Clear',
+  aiCoachAnalyze: 'Analyze',
+  aiCoachAnalyzing: 'Analyzing...',
+  aiCoachCopyPrompt: 'Copy prompt',
+  aiCoachCopyPromptTitle: 'Copy prompt for LLM',
+  aiCoachSelectMatches: 'Select matches',
+  aiCoachCancelSelection: 'Cancel selection',
+  aiCoachTypeQuestion: 'Type your question...',
+  aiCoachError: 'An error occurred while analyzing the matches. Please try again.',
 }
 
 const ES = {
@@ -331,6 +342,17 @@ const ES = {
   ttRange: 'Alcance',
   ttMaxRank: 'Nivel máx.',
   ttLore: 'Lore',
+  aiCoach: 'Coach IA',
+  aiCoachSelectAll: 'Seleccionar todo',
+  aiCoachClear: 'Limpiar',
+  aiCoachAnalyze: 'Analizar',
+  aiCoachAnalyzing: 'Analizando...',
+  aiCoachCopyPrompt: 'Copiar prompt',
+  aiCoachCopyPromptTitle: 'Copiar prompt para LLM',
+  aiCoachSelectMatches: 'Seleccionar partidas',
+  aiCoachCancelSelection: 'Cancelar selección',
+  aiCoachTypeQuestion: 'Escribe tu pregunta...',
+  aiCoachError: 'Ha ocurrido un error al analizar las partidas. Inténtalo de nuevo.',
 }
 
 export const STR = { en: EN, es: ES }
