@@ -1057,6 +1057,27 @@ body {
 .champion-stats-list {
   display: flex;
   flex-direction: column;
+  max-height: 480px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 229, 255, 0.25) transparent;
+}
+
+.champion-stats-list::-webkit-scrollbar {
+  width: 5px;
+}
+
+.champion-stats-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.champion-stats-list::-webkit-scrollbar-thumb {
+  background: rgba(0, 229, 255, 0.3);
+  border-radius: 4px;
+}
+
+.champion-stats-list::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 229, 255, 0.5);
 }
 
 .champion-stat-row {
