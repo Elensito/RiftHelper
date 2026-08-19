@@ -630,14 +630,15 @@ body {
 .profile-header {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 14px;
   margin: 20px 0 0;
-  padding: 16px 22px;
-  border-radius: 18px;
+  padding: 14px 18px;
+  border-radius: 16px;
   background: var(--card);
   border: 1px solid var(--border);
   backdrop-filter: blur(8px);
   box-shadow: 0 0 40px rgba(0, 229, 255, 0.08);
+  max-width: 70%;
 }
 
 .picon-wrap {
@@ -646,9 +647,9 @@ body {
 }
 
 .profile-icon {
-  width: 56px;
-  height: 56px;
-  border-radius: 12px;
+  width: 48px;
+  height: 48px;
+  border-radius: 11px;
   border: 2px solid var(--cyan);
   box-shadow: var(--glow-cyan);
 }
@@ -656,21 +657,60 @@ body {
 .picon-ring {
   position: absolute;
   inset: -3px;
-  border-radius: 15px;
+  border-radius: 14px;
   border: 2px solid rgba(0, 229, 255, 0.2);
   pointer-events: none;
 }
 
 .profile-identity {
   display: flex;
-  align-items: baseline;
-  gap: 6px;
+  flex-direction: column;
+  gap: 4px;
   min-width: 0;
+}
+
+.profile-id-top {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.profile-id-top .fav-btn {
+  width: 24px;
+  height: 24px;
+  font-size: 13px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: rgba(0, 229, 255, 0.04);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.profile-id-top .fav-btn:hover {
+  transform: none;
+  color: var(--cyan);
+  border-color: rgba(0, 229, 255, 0.4);
+}
+
+.profile-id-top .fav-btn.active {
+  text-shadow: none;
+}
+
+.profile-id-top .chip.level {
+  font-size: 11px;
+  padding: 2px 8px;
+}
+
+.profile-name-row {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
 }
 
 .summoner-name {
   margin: 0;
-  font-size: 26px;
+  font-size: 22px;
   font-weight: 800;
   letter-spacing: 0.5px;
   white-space: nowrap;
@@ -679,7 +719,7 @@ body {
 .summoner-tag {
   color: var(--cyan);
   font-weight: 600;
-  font-size: 18px;
+  font-size: 15px;
   white-space: nowrap;
 }
 
@@ -706,19 +746,12 @@ body {
   background: rgba(0, 255, 157, 0.06);
 }
 
-.profile-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.fav-btn,
 .share-btn {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
+  width: 30px;
+  height: 30px;
   border: 1px solid var(--border);
   border-radius: 8px;
   background: rgba(0, 229, 255, 0.04);
@@ -728,15 +761,10 @@ body {
   font-size: 16px;
 }
 
-.fav-btn:hover,
 .share-btn:hover {
   color: var(--cyan);
   border-color: rgba(0, 229, 255, 0.4);
-}
-
-.fav-btn.active {
-  color: #ffd54f;
-  border-color: rgba(255, 213, 79, 0.4);
+  transform: none;
 }
 
 .share-btn.active {
@@ -815,18 +843,21 @@ body {
 /* ── Profile Layout ── */
 .profile-layout {
   margin: 16px 0 0;
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
 }
 
 .profile-sidebar {
-  position: fixed;
-  left: 12px;
-  top: 100px;
+  position: sticky;
+  top: 80px;
   width: 260px;
+  flex-shrink: 0;
   display: flex;
   flex-direction: column;
   gap: 16px;
   z-index: 10;
-  max-height: calc(100vh - 120px);
+  max-height: calc(100vh - 100px);
   overflow-y: auto;
   scrollbar-width: none;
 }
@@ -836,7 +867,7 @@ body {
 }
 
 .profile-main {
-  width: 100%;
+  flex: 1;
   min-width: 0;
 }
 
@@ -3124,27 +3155,6 @@ button.p-name:hover {
   text-shadow: 0 0 14px rgba(255, 45, 120, 0.6);
 }
 
-.share-btn {
-  display: inline-flex;
-  align-items: center;
-  background: none;
-  border: 0;
-  line-height: 1;
-  cursor: pointer;
-  color: var(--muted);
-  padding: 0 2px;
-  transition: color 0.15s, transform 0.15s;
-}
-
-.share-btn:hover {
-  transform: scale(1.15);
-}
-
-.share-btn.active {
-  color: var(--cyan);
-  text-shadow: 0 0 14px rgba(0, 229, 255, 0.6);
-}
-
 .favorites {
   margin-top: 34px;
   max-width: 560px;
@@ -4078,29 +4088,67 @@ button.p-name:hover {
   }
 }
 
+@media (max-width: 1080px) {
+  .profile-layout {
+    flex-direction: column;
+  }
+
+  .profile-sidebar {
+    position: static;
+    width: 100%;
+    max-height: none;
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+
+  .profile-sidebar > * {
+    flex: 1 1 240px;
+    min-width: 0;
+  }
+
+  .profile-header {
+    gap: 12px;
+    padding: 14px 18px;
+    max-width: 100%;
+  }
+}
+
 @media (max-width: 640px) {
   .hero {
     padding: 40px 12px 28px;
   }
 
   .profile-header {
-    padding: 12px 14px;
+    padding: 10px 12px;
     margin: 14px 0 0;
-    gap: 10px;
+    gap: 8px;
     flex-wrap: wrap;
-  }
-
-  .summoner-name {
-    font-size: 20px;
-  }
-
-  .summoner-tag {
-    font-size: 15px;
+    max-width: 100%;
   }
 
   .profile-icon {
-    width: 44px;
-    height: 44px;
+    width: 38px;
+    height: 38px;
+  }
+
+  .summoner-name {
+    font-size: 17px;
+  }
+
+  .summoner-tag {
+    font-size: 13px;
+  }
+
+  .profile-id-top .fav-btn {
+    width: 20px;
+    height: 20px;
+    font-size: 11px;
+  }
+
+  .profile-id-top .chip.level {
+    font-size: 10px;
+    padding: 1px 6px;
   }
 
   .profile-streak {
@@ -4109,6 +4157,7 @@ button.p-name:hover {
 
   .profile-layout {
     margin: 14px 0 0;
+    flex-direction: column;
   }
 
   .profile-sidebar {

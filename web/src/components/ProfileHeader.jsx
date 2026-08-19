@@ -48,8 +48,20 @@ export default function ProfileHeader({ summoner, matches, lang, inGame = false 
       </div>
 
       <div className="profile-identity">
-        <h1 className="summoner-name">{summoner.name}</h1>
-        <span className="summoner-tag">#{summoner.tag}</span>
+        <div className="profile-id-top">
+          <button
+            className={`fav-btn ${fav ? 'active' : ''}`}
+            onClick={toggleFav}
+            title={fav ? t(lang, 'removeFavorite') : t(lang, 'addFavorite')}
+          >
+            {fav ? '★' : '☆'}
+          </button>
+          <span className="chip level">{t(lang, 'level')} {summoner.level}</span>
+        </div>
+        <div className="profile-name-row">
+          <h1 className="summoner-name">{summoner.name}</h1>
+          <span className="summoner-tag">#{summoner.tag}</span>
+        </div>
       </div>
 
       <span className="chip region">{summoner.region}</span>
@@ -61,32 +73,22 @@ export default function ProfileHeader({ summoner, matches, lang, inGame = false 
         </span>
       )}
 
-      <div className="profile-actions">
-        <button
-          className={`fav-btn ${fav ? 'active' : ''}`}
-          onClick={toggleFav}
-          title={fav ? t(lang, 'removeFavorite') : t(lang, 'addFavorite')}
-        >
-          {fav ? '★' : '☆'}
-        </button>
-        <button
-          className={`share-btn ${copied ? 'active' : ''}`}
-          onClick={share}
-          title={copied ? t(lang, 'shareCopied') : t(lang, 'share')}
-        >
-          {copied ? (
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M20 6 9 17l-5-5" />
-            </svg>
-          ) : (
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
-              <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
-            </svg>
-          )}
-        </button>
-        <span className="chip level">{t(lang, 'level')} {summoner.level}</span>
-      </div>
+      <button
+        className={`share-btn ${copied ? 'active' : ''}`}
+        onClick={share}
+        title={copied ? t(lang, 'shareCopied') : t(lang, 'share')}
+      >
+        {copied ? (
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M20 6 9 17l-5-5" />
+          </svg>
+        ) : (
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+            <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+          </svg>
+        )}
+      </button>
 
       <div className="profile-streak">
         <StreakChart matches={recent} />
