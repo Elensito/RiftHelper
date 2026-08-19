@@ -65,6 +65,18 @@ export default function MatchCard({ match, lang, puuid, onOpenPlayer }) {
   const endedAt = match.created && match.duration_sec ? match.created + match.duration_sec * 1000 : match.created
   const ago = timeAgo(endedAt, lang)
 
+  const teamId = pl.team
+  const teamPlayers = match.players.filter((p) => p.team === teamId)
+  const teamKDA = teamPlayers.reduce(
+    (acc, p) => {
+      acc.k += p.kills || 0
+      acc.d += p.deaths || 0
+      acc.a += p.assists || 0
+      return acc
+    },
+    { k: 0, d: 0, a: 0 }
+  )
+
   return (
     <article className={`match ${open ? 'open' : ''}`}>
       <div className="match-head" onClick={() => setOpen(!open)}>
@@ -73,6 +85,11 @@ export default function MatchCard({ match, lang, puuid, onOpenPlayer }) {
           title={match.remake ? t(lang, 'remake') : ''}
         >
           {match.remake ? 'R' : win ? t(lang, 'win') : t(lang, 'loss')}
+        </div>
+
+        <div className="m-team-kda">
+          <span className="mtk-label">{t(lang, 'teamKda')}</span>
+          <span className="mtk-value">{teamKDA.k} / {teamKDA.d} / {teamKDA.a}</span>
         </div>
 
         <div className="m-meta">
