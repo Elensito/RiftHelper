@@ -3025,6 +3025,16 @@ button.p-name:hover {
   max-width: 150px;
 }
 
+.live-summoner-name {
+  cursor: pointer;
+  transition: color 0.2s;
+}
+
+.live-summoner-name:hover {
+  color: var(--blue);
+  text-decoration: underline;
+}
+
 .queue-filter {
   display: flex;
   flex-wrap: wrap;

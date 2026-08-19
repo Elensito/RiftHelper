@@ -413,7 +413,7 @@ export default function App() {
                       {t(lang, 'liveLoading')}
                     </div>
                   ) : live && live.in_game ? (
-                    <LiveGame data={live} lang={lang} />
+                    <LiveGame data={live} lang={lang} openPlayer={openPlayer} />
                   ) : (
                     <div className="live-empty">{t(lang, 'liveNotInGame')}</div>
                   )

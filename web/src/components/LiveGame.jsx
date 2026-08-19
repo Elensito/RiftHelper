@@ -15,7 +15,11 @@ function nameOf(rune, lang) {
   return rune[lang] || rune.en || ''
 }
 
-function LiveRow({ p, lang }) {
+function LiveRow({ p, lang, openPlayer }) {
+  const handleClick = () => {
+    if (p.summoner_name && openPlayer) openPlayer(p.summoner_name, p.summoner_tag || '')
+  }
+
   return (
     <div className={`prow live-row ${p.is_player ? 'me' : ''}`}>
       <div className="prow-main">
@@ -27,7 +31,7 @@ function LiveRow({ p, lang }) {
             <span className="p-name" title={p.champion}>
               {p.champion}
             </span>
-            <span className="p-role">
+            <span className="p-role live-summoner-name" onClick={handleClick} title={`${p.summoner_name}#${p.summoner_tag}`}>
               {p.summoner_name}
               {p.summoner_tag ? <span className="p-tag">#{p.summoner_tag}</span> : null}
             </span>
@@ -68,7 +72,7 @@ function LiveRow({ p, lang }) {
   )
 }
 
-export default function LiveGame({ data, lang }) {
+export default function LiveGame({ data, lang, openPlayer }) {
   const game = data.game
   const [blue, red] = data.teams
   const blueBans = data.bans[100] || []
@@ -102,7 +106,7 @@ export default function LiveGame({ data, lang }) {
             {blueBans.length === 0 && <span className="live-ban-empty">—</span>}
           </div>
           {blue.players.map((p, i) => (
-            <LiveRow key={i} p={p} lang={lang} />
+            <LiveRow key={i} p={p} lang={lang} openPlayer={openPlayer} />
           ))}
         </div>
 
@@ -120,7 +124,7 @@ export default function LiveGame({ data, lang }) {
             {redBans.length === 0 && <span className="live-ban-empty">—</span>}
           </div>
           {red.players.map((p, i) => (
-            <LiveRow key={i} p={p} lang={lang} />
+            <LiveRow key={i} p={p} lang={lang} openPlayer={openPlayer} />
           ))}
         </div>
       </div>
