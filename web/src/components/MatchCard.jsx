@@ -7,6 +7,8 @@ import PlayerRow from './PlayerRow.jsx'
 const MatchMetrics = lazy(() => import('./MatchMetrics.jsx'))
 const MatchBuild = lazy(() => import('./MatchBuild.jsx'))
 
+const ARENA_QUEUES = [1700, 1710, 1740, 1750]
+
 function nameOf(entry, lang) {
   if (!entry) return ''
   if (typeof entry === 'string') return entry
@@ -57,6 +59,34 @@ function TeamPanel({ players, teamId, allMaxDamage, lang, onOpenPlayer }) {
   )
 }
 
+function ArenaPanel({ players, lang, onOpenPlayer, allMaxDamage }) {
+  const sorted = sortPlayers(players)
+  return (
+    <div className="team-panel arena-panel">
+      <div className="team-panel-head">
+        <span className="team-dot" />
+        <span className="team-name">{t(lang, 'arenaPlayers')}</span>
+      </div>
+      <div className="ghead">
+        <span />
+        <span />
+        <span />
+        <span />
+        <span className="ghead-label">{t(lang, 'carry')}</span>
+        <span className="ghead-label">{t(lang, 'kda')}</span>
+        <span className="ghead-label">{t(lang, 'damage')}</span>
+        <span className="ghead-label">{t(lang, 'gold')}</span>
+        <span className="ghead-label">{t(lang, 'cs')}</span>
+        <span className="ghead-label">{t(lang, 'visionShort')}</span>
+        <span className="ghead-label ghead-build">{t(lang, 'build')}</span>
+      </div>
+      {sorted.map((p, i) => (
+        <PlayerRow key={i} p={p} lang={lang} maxDamage={allMaxDamage} onOpenPlayer={onOpenPlayer} />
+      ))}
+    </div>
+  )
+}
+
 export default function MatchCard({ match, lang, puuid, onOpenPlayer }) {
   const [open, setOpen] = useState(false)
   const [tab, setTab] = useState('general')
@@ -65,6 +95,7 @@ export default function MatchCard({ match, lang, puuid, onOpenPlayer }) {
   const endedAt = match.created && match.duration_sec ? match.created + match.duration_sec * 1000 : match.created
   const ago = timeAgo(endedAt, lang)
 
+  const isArena = ARENA_QUEUES.includes(match.queue)
   const teamId = pl.team
 
   return (
@@ -167,20 +198,31 @@ export default function MatchCard({ match, lang, puuid, onOpenPlayer }) {
 
         {tab === 'general' ? (
           <div className="teams">
-            <TeamPanel
-              players={match.players}
-              teamId={100}
-              lang={lang}
-              onOpenPlayer={onOpenPlayer}
-              allMaxDamage={Math.max(...match.players.map((p) => p.damage || 0))}
-            />
-            <TeamPanel
-              players={match.players}
-              teamId={200}
-              lang={lang}
-              onOpenPlayer={onOpenPlayer}
-              allMaxDamage={Math.max(...match.players.map((p) => p.damage || 0))}
-            />
+            {isArena ? (
+              <ArenaPanel
+                players={match.players}
+                lang={lang}
+                onOpenPlayer={onOpenPlayer}
+                allMaxDamage={Math.max(...match.players.map((p) => p.damage || 0))}
+              />
+            ) : (
+              <>
+                <TeamPanel
+                  players={match.players}
+                  teamId={100}
+                  lang={lang}
+                  onOpenPlayer={onOpenPlayer}
+                  allMaxDamage={Math.max(...match.players.map((p) => p.damage || 0))}
+                />
+                <TeamPanel
+                  players={match.players}
+                  teamId={200}
+                  lang={lang}
+                  onOpenPlayer={onOpenPlayer}
+                  allMaxDamage={Math.max(...match.players.map((p) => p.damage || 0))}
+                />
+              </>
+            )}
           </div>
         ) : tab === 'metrics' ? (
           <Suspense

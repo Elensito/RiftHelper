@@ -864,20 +864,22 @@ body {
 
 /* ── Profile Layout ── */
 .profile-layout {
+  display: flex;
+  gap: 16px;
   margin: 16px 0 0;
 }
 
 .profile-sidebar {
-  position: fixed;
-  left: 0;
+  position: sticky;
   top: 110px;
   width: 260px;
+  align-self: flex-start;
   display: flex;
   flex-direction: column;
   gap: 16px;
   z-index: 10;
   padding: 0 12px;
-  max-height: calc(100vh - 100px);
+  max-height: calc(100vh - 120px);
   overflow-y: auto;
   scrollbar-width: none;
 }
@@ -1426,6 +1428,20 @@ body {
 .team-panel.red .team-dot {
   background: var(--red);
   box-shadow: var(--glow-red);
+}
+
+.arena-panel {
+  border-color: rgba(168, 85, 247, 0.3);
+  background: rgba(168, 85, 247, 0.03);
+}
+
+.arena-panel .team-panel-head {
+  background: rgba(168, 85, 247, 0.08);
+}
+
+.arena-panel .team-dot {
+  background: #a855f7;
+  box-shadow: 0 0 12px rgba(168, 85, 247, 0.4);
 }
 
 .team-name {
