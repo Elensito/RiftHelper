@@ -16,6 +16,11 @@
   --glow-red: 0 0 18px rgba(255, 61, 94, 0.4);
   --panel: rgba(10, 12, 24, 0.6);
   --panel-soft: rgba(10, 12, 24, 0.45);
+  --text-secondary: #6b7aa1;
+  --hover: rgba(0, 229, 255, 0.07);
+  --bg-secondary: rgba(10, 12, 24, 0.55);
+  --neon-purple: #a78bfa;
+  --neon-blue: #60a5fa;
 }
 
 :root[data-theme='light'] {
@@ -36,6 +41,11 @@
   --glow-red: 0 0 18px rgba(224, 68, 95, 0.3);
   --panel: rgba(255, 255, 255, 0.75);
   --panel-soft: rgba(255, 255, 255, 0.6);
+  --text-secondary: #6b7aa1;
+  --hover: rgba(0, 140, 175, 0.08);
+  --bg-secondary: rgba(240, 243, 250, 0.85);
+  --neon-purple: #7c5cff;
+  --neon-blue: #3b82f6;
 }
 
 :root[data-theme='light'] body {
@@ -4342,48 +4352,129 @@ button.p-name:hover {
 
 /* ─── AI Coach ──────────────────────────────────────────── */
 
+@keyframes ai-ring-pulse {
+  0%   { transform: scale(1);    opacity: 0.6; }
+  50%  { transform: scale(1.35); opacity: 0; }
+  100% { transform: scale(1.6);  opacity: 0; }
+}
+
+@keyframes ai-cursor-blink {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0; }
+}
+
+@keyframes ai-typing-dot {
+  0%, 60%, 100% { opacity: 0.25; transform: translateY(0); }
+  30%           { opacity: 1;    transform: translateY(-5px); }
+}
+
+@keyframes ai-panel-in {
+  from { transform: translateX(100%); opacity: 0; }
+  to   { transform: translateX(0);    opacity: 1; }
+}
+
+@keyframes ai-fab-breathe {
+  0%, 100% { box-shadow: 0 4px 20px rgba(120, 90, 255, 0.35), 0 0 0 0 rgba(120, 90, 255, 0.15); }
+  50%      { box-shadow: 0 6px 30px rgba(120, 90, 255, 0.55), 0 0 0 8px rgba(120, 90, 255, 0); }
+}
+
+@keyframes ai-bubble-in {
+  from { opacity: 0; transform: translateY(8px) scale(0.96); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes ai-shimmer {
+  from { background-position: -200% 0; }
+  to   { background-position: 200% 0; }
+}
+
+/* ── FAB ──────────────────────────────────────────── */
+
 .ai-coach-fab {
   position: fixed;
   bottom: 28px;
   right: 28px;
   z-index: 1000;
-  width: 56px;
-  height: 56px;
+  width: 58px;
+  height: 58px;
   border-radius: 50%;
-  border: 2px solid rgba(120, 90, 255, 0.4);
+  border: 2px solid rgba(120, 90, 255, 0.45);
   background: linear-gradient(135deg, #1a1330 0%, #0d0b1a 100%);
   cursor: pointer;
-  overflow: hidden;
+  overflow: visible;
   display: flex;
   align-items: center;
   justify-content: center;
   box-shadow: 0 4px 20px rgba(120, 90, 255, 0.35), 0 0 40px rgba(120, 90, 255, 0.1);
   transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+  animation: ai-fab-breathe 3s ease-in-out infinite;
 }
 
 .ai-coach-fab:hover {
-  transform: scale(1.1) translateY(-2px);
-  border-color: rgba(120, 90, 255, 0.7);
-  box-shadow: 0 6px 30px rgba(120, 90, 255, 0.55), 0 0 60px rgba(120, 90, 255, 0.2);
+  transform: scale(1.12) translateY(-3px);
+  border-color: var(--cyan);
+  box-shadow: 0 6px 32px rgba(0, 229, 255, 0.45), 0 0 60px rgba(0, 229, 255, 0.15);
 }
 
 .ai-coach-fab:active {
-  transform: scale(0.95);
+  transform: scale(0.93);
+  transition-duration: 0.1s;
+}
+
+.ai-coach-fab.active {
+  border-color: var(--cyan);
+  box-shadow: 0 4px 24px rgba(0, 229, 255, 0.5), 0 0 50px rgba(0, 229, 255, 0.15);
+  animation: none;
+}
+
+.ai-coach-fab-ring {
+  position: absolute;
+  inset: -4px;
+  border-radius: 50%;
+  border: 2px solid var(--cyan);
+  opacity: 0;
+  pointer-events: none;
+  animation: ai-ring-pulse 2.4s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+.ai-coach-fab-ring-2 {
+  animation-delay: 1.2s;
+}
+
+.ai-coach-fab.active .ai-coach-fab-ring {
+  animation: none;
+  opacity: 0;
 }
 
 .ai-coach-icon {
   width: 38px;
   height: 38px;
   object-fit: contain;
+  filter: drop-shadow(0 0 6px rgba(120, 90, 255, 0.4));
+  transition: filter 0.3s;
 }
+
+.ai-coach-fab:hover .ai-coach-icon {
+  filter: drop-shadow(0 0 10px rgba(0, 229, 255, 0.6));
+}
+
+/* ── Overlay ──────────────────────────────────────── */
 
 .ai-coach-overlay {
   position: fixed;
   inset: 0;
   z-index: 998;
-  background: rgba(0, 0, 0, 0.4);
-  backdrop-filter: blur(2px);
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(4px);
+  animation: ai-overlay-in 0.3s ease;
 }
+
+@keyframes ai-overlay-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* ── Panel ────────────────────────────────────────── */
 
 .ai-coach-panel {
   position: fixed;
@@ -4391,64 +4482,89 @@ button.p-name:hover {
   right: 0;
   height: 100vh;
   z-index: 999;
-  background: var(--card);
-  border-left: 1px solid var(--border);
+  background: var(--bg);
+  border-left: 1px solid rgba(120, 90, 255, 0.25);
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  box-shadow: -8px 0 30px rgba(0, 0, 0, 0.4);
+  transition: width 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: -8px 0 40px rgba(120, 90, 255, 0.12), -2px 0 12px rgba(0, 0, 0, 0.3);
 }
 
 .ai-coach-panel.open {
   width: 420px;
+  animation: ai-panel-in 0.35s cubic-bezier(0.16, 1, 0.3, 1);
 }
+
+/* ── Resize handle ────────────────────────────────── */
 
 .ai-coach-resize-handle {
   position: absolute;
   top: 0;
   left: 0;
-  width: 5px;
+  width: 6px;
   height: 100%;
   cursor: col-resize;
   z-index: 10;
   background: transparent;
-  transition: background 0.2s;
+  transition: background 0.25s, box-shadow 0.25s;
 }
 
 .ai-coach-resize-handle:hover {
-  background: rgba(120, 90, 255, 0.4);
+  background: linear-gradient(180deg, var(--cyan), var(--violet));
+  box-shadow: 0 0 12px rgba(0, 229, 255, 0.3);
 }
+
+/* ── Header ───────────────────────────────────────── */
 
 .ai-coach-header {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 14px 16px;
-  border-bottom: 1px solid var(--border);
+  gap: 8px;
+  padding: 12px 14px;
+  border-bottom: 1px solid rgba(120, 90, 255, 0.18);
+  background: linear-gradient(180deg, rgba(120, 90, 255, 0.06) 0%, transparent 100%);
   flex-shrink: 0;
 }
 
-.ai-coach-header-icon {
-  width: 28px;
-  height: 28px;
-  object-fit: contain;
+.ai-coach-header-icon-wrap {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, rgba(120, 90, 255, 0.2), rgba(0, 229, 255, 0.1));
+  border: 1px solid rgba(120, 90, 255, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
   flex-shrink: 0;
+  box-shadow: 0 0 14px rgba(120, 90, 255, 0.15);
+}
+
+.ai-coach-header-icon {
+  width: 24px;
+  height: 24px;
+  object-fit: contain;
+  filter: drop-shadow(0 0 4px rgba(120, 90, 255, 0.4));
 }
 
 .ai-coach-title {
   font-weight: 700;
   font-size: 14px;
-  color: var(--text);
+  background: linear-gradient(135deg, var(--cyan), var(--violet));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
   flex: 1;
 }
+
+/* ── Header buttons ───────────────────────────────── */
 
 .ai-coach-select-btn,
 .ai-coach-close {
   width: 32px;
   height: 32px;
   border-radius: 8px;
-  border: none;
+  border: 1px solid transparent;
   background: transparent;
   color: var(--text-secondary);
   cursor: pointer;
@@ -4461,25 +4577,139 @@ button.p-name:hover {
 
 .ai-coach-select-btn:hover,
 .ai-coach-close:hover {
-  background: var(--hover);
-  color: var(--text);
+  background: rgba(0, 229, 255, 0.08);
+  border-color: rgba(0, 229, 255, 0.25);
+  color: var(--cyan);
+  box-shadow: 0 0 12px rgba(0, 229, 255, 0.15);
 }
+
+.ai-coach-close:hover {
+  background: rgba(255, 61, 94, 0.1);
+  border-color: rgba(255, 61, 94, 0.3);
+  color: var(--red);
+  box-shadow: 0 0 12px rgba(255, 61, 94, 0.2);
+}
+
+/* ── Language selector (inline) ───────────────────── */
+
+.ai-coach-lang {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.ai-coach-lang-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  border: 1px solid rgba(120, 90, 255, 0.2);
+  background: rgba(120, 90, 255, 0.06);
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.ai-coach-lang-btn:hover,
+.ai-coach-lang-btn.open {
+  border-color: var(--cyan);
+  color: var(--cyan);
+  background: rgba(0, 229, 255, 0.08);
+}
+
+.ai-coach-lang-flag {
+  width: 14px;
+  height: 14px;
+  border-radius: 2px;
+  object-fit: contain;
+}
+
+.ai-coach-lang-fb {
+  font-size: 13px;
+}
+
+.ai-coach-lang-code {
+  letter-spacing: 0.5px;
+}
+
+.ai-coach-lang-caret {
+  transition: transform 0.2s;
+  color: inherit;
+}
+
+.ai-coach-lang-caret.open {
+  transform: rotate(180deg);
+}
+
+.ai-coach-lang-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  min-width: 140px;
+  padding: 4px;
+  border-radius: 10px;
+  border: 1px solid rgba(120, 90, 255, 0.25);
+  background: var(--bg);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4), 0 0 20px rgba(120, 90, 255, 0.08);
+  list-style: none;
+  margin: 0;
+  z-index: 20;
+  animation: ai-bubble-in 0.2s ease;
+}
+
+.ai-coach-lang-opt {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 10px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+  text-align: left;
+}
+
+.ai-coach-lang-opt:hover {
+  background: rgba(0, 229, 255, 0.08);
+}
+
+.ai-coach-lang-opt.active {
+  color: var(--cyan);
+  background: rgba(0, 229, 255, 0.06);
+}
+
+.ai-coach-lang-check {
+  margin-left: auto;
+  color: var(--cyan);
+  font-size: 12px;
+}
+
+/* ── Select bar ───────────────────────────────────── */
 
 .ai-coach-select-bar {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 16px;
-  border-bottom: 1px solid var(--border);
-  background: rgba(120, 90, 255, 0.06);
+  gap: 6px;
+  padding: 8px 14px;
+  border-bottom: 1px solid rgba(120, 90, 255, 0.15);
+  background: linear-gradient(90deg, rgba(120, 90, 255, 0.06), rgba(0, 229, 255, 0.04));
   flex-shrink: 0;
+  animation: ai-bubble-in 0.25s ease;
 }
 
 .ai-coach-select-action {
   padding: 4px 10px;
   border-radius: 6px;
-  border: 1px solid var(--border);
-  background: var(--card);
+  border: 1px solid rgba(120, 90, 255, 0.2);
+  background: rgba(120, 90, 255, 0.06);
   color: var(--text-secondary);
   font-size: 11px;
   font-weight: 600;
@@ -4489,39 +4719,49 @@ button.p-name:hover {
 }
 
 .ai-coach-select-action:hover {
-  background: var(--hover);
-  color: var(--text);
+  background: rgba(0, 229, 255, 0.1);
+  border-color: var(--cyan);
+  color: var(--cyan);
 }
 
 .ai-coach-select-count {
   font-size: 11px;
   color: var(--text-secondary);
   margin-left: auto;
-  font-weight: 600;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
 }
 
 .ai-coach-analyze-btn {
   padding: 5px 14px;
-  border-radius: 6px;
+  border-radius: 8px;
   border: none;
-  background: linear-gradient(135deg, #7c5aff, #5a3fd6);
+  background: linear-gradient(135deg, var(--violet), var(--cyan));
   color: #fff;
   font-size: 12px;
   font-weight: 700;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all 0.25s;
   white-space: nowrap;
+  box-shadow: 0 2px 10px rgba(120, 90, 255, 0.3);
 }
 
 .ai-coach-analyze-btn:hover:not(:disabled) {
-  background: linear-gradient(135deg, #8e70ff, #6b4fe8);
-  box-shadow: 0 2px 12px rgba(120, 90, 255, 0.3);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 18px rgba(0, 229, 255, 0.35);
+}
+
+.ai-coach-analyze-btn:active:not(:disabled) {
+  transform: translateY(0) scale(0.97);
 }
 
 .ai-coach-analyze-btn:disabled {
-  opacity: 0.5;
+  opacity: 0.45;
   cursor: not-allowed;
+  box-shadow: none;
 }
+
+/* ── Chat area ────────────────────────────────────── */
 
 .ai-coach-chat {
   flex: 1;
@@ -4530,12 +4770,30 @@ button.p-name:hover {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(120, 90, 255, 0.25) transparent;
 }
+
+.ai-coach-chat::-webkit-scrollbar {
+  width: 5px;
+}
+
+.ai-coach-chat::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.ai-coach-chat::-webkit-scrollbar-thumb {
+  background: rgba(120, 90, 255, 0.3);
+  border-radius: 10px;
+}
+
+/* ── Messages ─────────────────────────────────────── */
 
 .ai-coach-msg {
   display: flex;
   gap: 8px;
   align-items: flex-start;
+  animation: ai-bubble-in 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .ai-coach-msg.user {
@@ -4543,51 +4801,95 @@ button.p-name:hover {
 }
 
 .ai-coach-avatar {
-  width: 28px;
-  height: 28px;
+  width: 30px;
+  height: 30px;
   border-radius: 50%;
   overflow: hidden;
   flex-shrink: 0;
-  background: linear-gradient(135deg, #1a1330, #0d0b1a);
+  background: linear-gradient(135deg, rgba(120, 90, 255, 0.25), rgba(0, 229, 255, 0.15));
+  border: 1px solid rgba(120, 90, 255, 0.3);
   display: flex;
   align-items: center;
   justify-content: center;
+  box-shadow: 0 0 10px rgba(120, 90, 255, 0.15);
 }
 
 .ai-coach-avatar img {
-  width: 24px;
-  height: 24px;
+  width: 22px;
+  height: 22px;
   object-fit: contain;
 }
 
 .ai-coach-bubble {
-  max-width: 85%;
+  max-width: 82%;
   padding: 10px 14px;
-  border-radius: 12px;
+  border-radius: 14px;
   font-size: 13px;
-  line-height: 1.55;
+  line-height: 1.6;
   color: var(--text);
+  word-break: break-word;
 }
 
 .ai-coach-msg.coach .ai-coach-bubble {
-  background: var(--bg-secondary);
-  border: 1px solid var(--border);
+  background: linear-gradient(135deg, rgba(120, 90, 255, 0.08), rgba(0, 229, 255, 0.04));
+  border: 1px solid rgba(120, 90, 255, 0.15);
   border-top-left-radius: 4px;
 }
 
 .ai-coach-msg.user .ai-coach-bubble {
-  background: linear-gradient(135deg, #7c5aff, #5a3fd6);
+  background: linear-gradient(135deg, var(--violet), #5a3fd6);
   color: #fff;
   border-top-right-radius: 4px;
+  box-shadow: 0 2px 12px rgba(120, 90, 255, 0.25);
 }
 
+/* ── Typewriter ───────────────────────────────────── */
+
+.ai-coach-typed-text {
+  display: inline;
+}
+
+.ai-coach-cursor {
+  display: inline-block;
+  font-weight: 100;
+  color: var(--cyan);
+  animation: ai-cursor-blink 0.7s step-end infinite;
+  margin-left: 1px;
+}
+
+/* ── Typing dots ──────────────────────────────────── */
+
+.ai-coach-typing {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 12px 18px !important;
+  background: linear-gradient(135deg, rgba(120, 90, 255, 0.08), rgba(0, 229, 255, 0.04)) !important;
+  border: 1px solid rgba(120, 90, 255, 0.15) !important;
+}
+
+.ai-coach-typing span {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--cyan);
+  animation: ai-typing-dot 1.4s infinite;
+}
+
+.ai-coach-typing span:nth-child(2) { animation-delay: 0.2s; }
+.ai-coach-typing span:nth-child(3) { animation-delay: 0.4s; }
+
+/* ── Copy prompt button ───────────────────────────── */
+
 .ai-coach-copy-prompt {
-  display: block;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   margin-top: 10px;
-  padding: 6px 12px;
+  padding: 5px 10px;
   border-radius: 6px;
-  border: 1px solid var(--border);
-  background: var(--card);
+  border: 1px solid rgba(120, 90, 255, 0.2);
+  background: rgba(120, 90, 255, 0.06);
   color: var(--text-secondary);
   font-size: 11px;
   font-weight: 600;
@@ -4596,53 +4898,30 @@ button.p-name:hover {
 }
 
 .ai-coach-copy-prompt:hover {
-  background: var(--hover);
-  color: var(--text);
+  background: rgba(0, 229, 255, 0.1);
+  border-color: var(--cyan);
+  color: var(--cyan);
+  box-shadow: 0 0 10px rgba(0, 229, 255, 0.1);
 }
 
-.ai-coach-typing {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 12px 18px !important;
-}
-
-.ai-coach-typing span {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--text-secondary);
-  animation: ai-typing 1.4s infinite;
-}
-
-.ai-coach-typing span:nth-child(2) {
-  animation-delay: 0.2s;
-}
-
-.ai-coach-typing span:nth-child(3) {
-  animation-delay: 0.4s;
-}
-
-@keyframes ai-typing {
-  0%, 60%, 100% { opacity: 0.3; transform: translateY(0); }
-  30% { opacity: 1; transform: translateY(-4px); }
-}
+/* ── Input area ───────────────────────────────────── */
 
 .ai-coach-input-area {
   display: flex;
   align-items: flex-end;
   gap: 8px;
-  padding: 12px 16px;
-  border-top: 1px solid var(--border);
+  padding: 12px 14px;
+  border-top: 1px solid rgba(120, 90, 255, 0.15);
+  background: linear-gradient(0deg, rgba(120, 90, 255, 0.04), transparent);
   flex-shrink: 0;
 }
 
 .ai-coach-input {
   flex: 1;
   resize: none;
-  border: 1px solid var(--border);
+  border: 1px solid rgba(120, 90, 255, 0.2);
   border-radius: 10px;
-  background: var(--bg-secondary);
+  background: rgba(10, 12, 24, 0.6);
   color: var(--text);
   padding: 10px 14px;
   font-size: 13px;
@@ -4650,54 +4929,71 @@ button.p-name:hover {
   line-height: 1.4;
   max-height: 120px;
   outline: none;
-  transition: border-color 0.2s;
+  transition: border-color 0.25s, box-shadow 0.25s;
 }
 
 .ai-coach-input::placeholder {
   color: var(--text-secondary);
-  opacity: 0.6;
+  opacity: 0.5;
 }
 
 .ai-coach-input:focus {
-  border-color: rgba(120, 90, 255, 0.5);
+  border-color: var(--cyan);
+  box-shadow: 0 0 0 2px rgba(0, 229, 255, 0.1), 0 0 16px rgba(0, 229, 255, 0.08);
 }
 
 .ai-coach-send {
-  width: 38px;
-  height: 38px;
+  width: 40px;
+  height: 40px;
   border-radius: 10px;
   border: none;
-  background: linear-gradient(135deg, #7c5aff, #5a3fd6);
+  background: linear-gradient(135deg, var(--violet), var(--cyan));
   color: #fff;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  transition: all 0.2s;
+  transition: all 0.25s;
+  box-shadow: 0 2px 10px rgba(120, 90, 255, 0.3);
 }
 
 .ai-coach-send:hover:not(:disabled) {
-  background: linear-gradient(135deg, #8e70ff, #6b4fe8);
+  transform: translateY(-1px) scale(1.05);
+  box-shadow: 0 4px 18px rgba(0, 229, 255, 0.35);
+}
+
+.ai-coach-send:active:not(:disabled) {
+  transform: scale(0.93);
 }
 
 .ai-coach-send:disabled {
-  opacity: 0.4;
+  opacity: 0.35;
   cursor: not-allowed;
+  box-shadow: none;
 }
+
+/* ── Mobile ───────────────────────────────────────── */
 
 @media (max-width: 640px) {
   .ai-coach-fab {
     bottom: 16px;
     right: 16px;
-    width: 48px;
-    height: 48px;
+    width: 50px;
+    height: 50px;
   }
+
   .ai-coach-icon {
     width: 32px;
     height: 32px;
   }
+
   .ai-coach-panel {
     width: 100vw !important;
+    border-left: none;
+  }
+
+  .ai-coach-panel.open {
+    animation: none;
   }
 }

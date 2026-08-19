@@ -471,7 +471,7 @@ export default function App() {
         RiftHelper · {t(lang, 'footerRiot')} · {new Date().getFullYear()}
       </footer>
 
-      <AICoach matches={profile ? profile.matches : []} lang={lang} puuid={profile ? profile.summoner.puuid : null} />
+      <AICoach matches={profile ? profile.matches : []} lang={lang} puuid={profile ? profile.summoner.puuid : null} onLangChange={setLang} />
     </div>
   )
 }
