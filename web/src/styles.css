@@ -1130,7 +1130,7 @@ body {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  max-width: 93%;
+  max-width: 92%;
   margin: 0 auto;
 }
 
@@ -2853,6 +2853,9 @@ button.p-name:hover {
   display: flex;
   gap: 4px;
   margin-bottom: 14px;
+  max-width: 92%;
+  margin-left: auto;
+  margin-right: auto;
 }
 
 .profile-tabs .tab {
@@ -4177,9 +4180,16 @@ button.p-name:hover {
   }
 
 .m-team-kda {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.m-result-group {
   display: flex;
-  flex-direction: column;
-  gap: 1px;
+  align-items: center;
+  gap: 8px;
   flex-shrink: 0;
 }
 

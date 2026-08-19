@@ -80,16 +80,18 @@ export default function MatchCard({ match, lang, puuid, onOpenPlayer }) {
   return (
     <article className={`match ${open ? 'open' : ''}`}>
       <div className="match-head" onClick={() => setOpen(!open)}>
-        <div
-          className={`badge ${match.remake ? 'remake' : win ? 'win' : 'loss'}`}
-          title={match.remake ? t(lang, 'remake') : ''}
-        >
-          {match.remake ? 'R' : win ? t(lang, 'win') : t(lang, 'loss')}
-        </div>
+        <div className="m-result-group">
+          <div
+            className={`badge ${match.remake ? 'remake' : win ? 'win' : 'loss'}`}
+            title={match.remake ? t(lang, 'remake') : ''}
+          >
+            {match.remake ? 'R' : win ? t(lang, 'win') : t(lang, 'loss')}
+          </div>
 
-        <div className="m-team-kda">
-          <span className="mtk-label">{t(lang, 'teamKda')}</span>
-          <span className="mtk-value">{teamKDA.k} / {teamKDA.d} / {teamKDA.a}</span>
+          <div className="m-team-kda">
+            <span className="mtk-label">{t(lang, 'teamKda')}</span>
+            <span className="mtk-value">{teamKDA.k} / {teamKDA.d} / {teamKDA.a}</span>
+          </div>
         </div>
 
         <div className="m-meta">
