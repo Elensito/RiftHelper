@@ -527,6 +527,7 @@ export default function App() {
           theme={theme}
           onThemeChange={setTheme}
           lang={lang}
+          onLangChange={setLang}
           onClose={() => setSettingsOpen(false)}
         />
       )}

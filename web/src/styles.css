@@ -6083,6 +6083,172 @@ button.p-name:hover {
   border-top: 1px solid var(--border);
 }
 
+/* ── App Settings neon enhancements ── */
+
+.app-settings-panel {
+  border-color: rgba(0, 229, 255, 0.2);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5), 0 0 40px rgba(0, 229, 255, 0.08), inset 0 1px 0 rgba(0, 229, 255, 0.1);
+}
+
+.app-settings-panel .rt-settings-header {
+  background: linear-gradient(135deg, rgba(0, 229, 255, 0.06), rgba(139, 92, 246, 0.06));
+  border-bottom: 1px solid rgba(0, 229, 255, 0.15);
+}
+
+.app-settings-panel .rt-settings-header h3 {
+  background: linear-gradient(135deg, var(--cyan), var(--violet));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.app-settings-lang-row {
+  display: flex;
+  gap: 8px;
+}
+
+.app-settings-lang-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--card);
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s;
+  flex: 1;
+  justify-content: center;
+}
+
+.app-settings-lang-btn:hover {
+  border-color: var(--cyan);
+  color: var(--text);
+  box-shadow: 0 0 12px rgba(0, 229, 255, 0.1);
+}
+
+.app-settings-lang-btn.active {
+  border-color: var(--cyan);
+  color: var(--cyan);
+  background: rgba(0, 229, 255, 0.08);
+  box-shadow: 0 0 16px rgba(0, 229, 255, 0.15), inset 0 0 12px rgba(0, 229, 255, 0.05);
+}
+
+.app-settings-lang-flag {
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+  object-fit: cover;
+}
+
+/* ── Rift Timeline web banner ── */
+
+.rt-web-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 18px;
+  margin-bottom: 18px;
+  background: linear-gradient(135deg, rgba(0, 229, 255, 0.06), rgba(139, 92, 246, 0.04));
+  border: 1px solid rgba(0, 229, 255, 0.15);
+  border-radius: 12px;
+  font-size: 13px;
+  color: var(--muted);
+  box-shadow: 0 0 20px rgba(0, 229, 255, 0.04);
+}
+
+/* ── Hotkey capture input ── */
+
+.rt-hotkey-wrap {
+  position: relative;
+  padding: 9px 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--card);
+  cursor: pointer;
+  transition: all 0.25s;
+  min-height: 38px;
+  display: flex;
+  align-items: center;
+}
+
+.rt-hotkey-wrap:hover {
+  border-color: var(--cyan);
+  box-shadow: 0 0 8px rgba(0, 229, 255, 0.1);
+}
+
+.rt-hotkey-wrap.capturing {
+  border-color: var(--cyan);
+  box-shadow: 0 0 16px rgba(0, 229, 255, 0.2);
+  animation: hotkey-glow 1.5s ease-in-out infinite;
+}
+
+@keyframes hotkey-glow {
+  0%, 100% { box-shadow: 0 0 16px rgba(0, 229, 255, 0.2); }
+  50% { box-shadow: 0 0 24px rgba(0, 229, 255, 0.35); }
+}
+
+.rt-hotkey-value {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--cyan);
+  font-family: 'Cascadia Code', 'Fira Code', monospace;
+  letter-spacing: 0.5px;
+}
+
+.rt-hotkey-placeholder {
+  font-size: 13px;
+  color: var(--muted);
+  animation: hotkey-blink 1s ease-in-out infinite;
+}
+
+@keyframes hotkey-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.rt-hotkey-pulse {
+  position: absolute;
+  right: 10px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--cyan);
+  animation: rt-rec-pulse 1.2s ease-in-out infinite;
+}
+
+/* ── Enhanced settings neon glow ── */
+
+.rt-settings-panel {
+  border-color: rgba(0, 229, 255, 0.12);
+}
+
+.rt-settings-panel .rt-settings-header {
+  background: linear-gradient(135deg, rgba(0, 229, 255, 0.04), rgba(139, 92, 246, 0.04));
+}
+
+.rt-settings-body .rt-setting-group {
+  padding: 12px 0;
+  border-bottom: 1px solid rgba(0, 229, 255, 0.05);
+}
+
+.rt-settings-body .rt-setting-group:last-child {
+  border-bottom: none;
+}
+
+.rt-settings-body .rt-setting-label {
+  color: var(--cyan);
+  font-weight: 800;
+  letter-spacing: 0.3px;
+}
+
+.rt-settings-body .rt-toggle.on {
+  box-shadow: 0 0 12px rgba(0, 229, 255, 0.25);
+}
+
 /* ═══════════════════════════════════════════════════════
    VOD PLAYER
    ═══════════════════════════════════════════════════════ */

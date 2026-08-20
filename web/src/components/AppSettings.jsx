@@ -1,11 +1,11 @@
 import ThemeToggle from './ThemeToggle.jsx'
-import { t } from '../i18n.js'
+import { t, LANGS } from '../i18n.js'
 import { isTauri } from '../tauri.js'
 
-export default function AppSettings({ theme, onThemeChange, lang, onClose }) {
+export default function AppSettings({ theme, onThemeChange, lang, onLangChange, onClose }) {
   return (
     <div className="rt-settings-overlay" onClick={onClose}>
-      <div className="rt-settings-panel" onClick={(e) => e.stopPropagation()}>
+      <div className="rt-settings-panel app-settings-panel" onClick={(e) => e.stopPropagation()}>
         <div className="rt-settings-header">
           <h3>{t(lang, 'settings')}</h3>
           <button className="rt-settings-close" onClick={onClose}>
@@ -24,6 +24,22 @@ export default function AppSettings({ theme, onThemeChange, lang, onClose }) {
               <span className="rt-setting-desc">
                 {theme === 'light' ? t(lang, 'themeLight') : t(lang, 'themeDark')}
               </span>
+            </div>
+          </div>
+
+          <div className="rt-setting-group">
+            <label className="rt-setting-label">{t(lang, 'language')}</label>
+            <div className="app-settings-lang-row">
+              {LANGS.map((l) => (
+                <button
+                  key={l.code}
+                  className={`app-settings-lang-btn ${lang === l.code ? 'active' : ''}`}
+                  onClick={() => onLangChange(l.code)}
+                >
+                  <img className="app-settings-lang-flag" src={l.flagImg} alt="" />
+                  <span>{l.label}</span>
+                </button>
+              ))}
             </div>
           </div>
 

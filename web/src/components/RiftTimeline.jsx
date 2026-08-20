@@ -1,5 +1,6 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { t } from '../i18n.js'
+import { isTauri } from '../tauri.js'
 
 const VOD_STORAGE_KEY = 'rh-vods'
 const VOD_SETTINGS_KEY = 'rh-vod-settings'
@@ -76,6 +77,17 @@ export default function RiftTimeline({ lang, onOpenVod, profile }) {
 
   return (
     <div className="rt-view">
+      {!isTauri() && (
+        <div className="rt-web-banner">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--cyan)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="10" />
+            <line x1="12" y1="16" x2="12" y2="12" />
+            <line x1="12" y1="8" x2="12.01" y2="8" />
+          </svg>
+          <span>{t(lang, 'riftTimelineWebOnly')}</span>
+        </div>
+      )}
+
       <div className="rt-header">
         <div className="rt-header-left">
           <h2 className="rt-title">
@@ -177,6 +189,72 @@ export default function RiftTimeline({ lang, onOpenVod, profile }) {
   )
 }
 
+function HotkeyInput({ value, onChange, lang }) {
+  const [capturing, setCapturing] = useState(false)
+  const [display, setDisplay] = useState(value)
+  const keysRef = useRef(new Set())
+
+  const keyName = (e) => {
+    const parts = []
+    if (e.ctrlKey) parts.push('Ctrl')
+    if (e.altKey) parts.push('Alt')
+    if (e.shiftKey) parts.push('Shift')
+    if (e.metaKey) parts.push('Meta')
+    const k = e.key
+    if (!['Control', 'Alt', 'Shift', 'Meta'].includes(k)) {
+      parts.push(k.length === 1 ? k.toUpperCase() : k)
+    }
+    return parts.join('+')
+  }
+
+  const onKey = (e) => {
+    e.preventDefault()
+    e.stopPropagation()
+    const name = keyName(e)
+    if (e.type === 'keydown') {
+      keysRef.current.add(name)
+    } else if (e.type === 'keyup') {
+      keysRef.current.delete(name)
+    }
+    setDisplay([...keysRef.current].join('+'))
+  }
+
+  const onBlur = () => {
+    setCapturing(false)
+    if (keysRef.current.size > 0) {
+      onChange([...keysRef.current].join('+'))
+    }
+    keysRef.current.clear()
+    window.removeEventListener('keydown', onKey)
+    window.removeEventListener('keyup', onKey)
+  }
+
+  const startCapture = () => {
+    keysRef.current.clear()
+    setCapturing(true)
+    window.addEventListener('keydown', onKey)
+    window.addEventListener('keyup', onKey)
+  }
+
+  useEffect(() => {
+    return () => {
+      window.removeEventListener('keydown', onKey)
+      window.removeEventListener('keyup', onKey)
+    }
+  }, [])
+
+  return (
+    <div className={`rt-hotkey-wrap ${capturing ? 'capturing' : ''}`} onClick={startCapture} onBlur={onBlur} tabIndex={0}>
+      {capturing ? (
+        <span className="rt-hotkey-placeholder">{lang === 'es' ? 'Pulsa las teclas...' : 'Press keys...'}</span>
+      ) : (
+        <span className="rt-hotkey-value">{display || value}</span>
+      )}
+      {capturing && <span className="rt-hotkey-pulse" />}
+    </div>
+  )
+}
+
 function RiftSettings({ settings, onChange, onClose, lang }) {
   const [local, setLocal] = useState({ ...settings })
 
@@ -224,12 +302,10 @@ function RiftSettings({ settings, onChange, onClose, lang }) {
 
           <div className="rt-setting-group">
             <label className="rt-setting-label">{t(lang, 'recordHotkey')}</label>
-            <input
-              className="rt-input"
-              type="text"
+            <HotkeyInput
               value={local.recordHotkey}
-              onChange={(e) => setLocal(s => ({ ...s, recordHotkey: e.target.value }))}
-              placeholder="Ctrl+Shift+R"
+              onChange={(v) => setLocal(s => ({ ...s, recordHotkey: v }))}
+              lang={lang}
             />
           </div>
 

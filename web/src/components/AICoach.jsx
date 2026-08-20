@@ -240,12 +240,17 @@ export default function AICoach({ matches, lang, puuid, summonerName, onLangChan
       setShowPicker(false)
       setTypingDone({})
       if (messages.length === 0) {
+        const webMsg = !isTauri()
+          ? (lang === 'es'
+              ? '\n\n⚠️ El Coach IA solo está disponible en la app de escritorio de RiftHelper. Descárgalo para desbloquear análisis de partidas con datos reales.'
+              : '\n\n⚠️ AI Coach is only available in the RiftHelper desktop app. Download it to unlock match analysis with real data.')
+          : ''
         setMessages([{
           id: Date.now(),
           role: 'coach',
-          text: lang === 'es'
-            ? '¡Hola! Soy tu Coach IA 🧠\n\nPuedo analizar tus partidas con datos reales: farm, rotaciones, visión, KDA, builds, decisiones de juego y más.\n\nPulsa "Seleccionar partidas" abajo para elegir qué analizar, o escríbeme tu pregunta directamente.'
-            : "Hello! I'm your AI Coach 🧠\n\nI can analyze your matches with real data: farm, rotations, vision, KDA, builds, game decisions and more.\n\nClick \"Select matches\" below to choose what to analyze, or write me your question directly.",
+          text: (lang === 'es'
+            ? '¡Hola! Soy tu Coach IA 🧠\n\nPuedo analizar tus partidas con datos reales: farm, rotaciones, visión, KDA, builds, decisiones de juego y más.'
+            : "Hello! I'm your AI Coach 🧠\n\nI can analyze your matches with real data: farm, rotations, vision, KDA, builds, game decisions and more.") + webMsg,
         }])
         prevMsgCount.current = 1
       }
@@ -402,13 +407,7 @@ export default function AICoach({ matches, lang, puuid, summonerName, onLangChan
       {!open && (
         <button
           className="ai-coach-fab"
-          onClick={() => {
-            if (!isTauri()) {
-              setWebNotice(true)
-              return
-            }
-            setOpen(true)
-          }}
+          onClick={() => setOpen(true)}
           title={t(lang, 'aiCoach')}
           aria-label={t(lang, 'aiCoach')}
         >

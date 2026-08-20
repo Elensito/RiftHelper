@@ -211,6 +211,8 @@ const EN = {
   close: 'Close',
   desktopOnlyFeatures: 'Some features like AI Coach and Rift Timeline are only available in the desktop app.',
   aiCoachWebOnly: 'AI Coach is only available in the RiftHelper desktop app. Download it to unlock match analysis with real data.',
+  riftTimelineWebOnly: 'Rift Timeline is only available in the RiftHelper desktop app. Download it to record and review your matches.',
+  language: 'Language',
 }
 
 const ES = {
@@ -421,6 +423,8 @@ const ES = {
   close: 'Cerrar',
   desktopOnlyFeatures: 'Algunas funciones como Coach IA y Rift Timeline solo están disponibles en la app de escritorio.',
   aiCoachWebOnly: 'El Coach IA solo está disponible en la app de escritorio de RiftHelper. Descárgalo para desbloquear análisis de partidas con datos reales.',
+  riftTimelineWebOnly: 'Rift Timeline solo está disponible en la app de escritorio de RiftHelper. Descágrabalo para grabar y revisar tus partidas.',
+  language: 'Idioma',
 }
 
 export const STR = { en: EN, es: ES }
