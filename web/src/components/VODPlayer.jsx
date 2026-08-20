@@ -201,11 +201,23 @@ export default function VODPlayer({ vod, lang, onBack }) {
             {vod.path ? (
               <video ref={videoRef} className="vod-video" src={vod.path} preload="metadata" />
             ) : (
-              <div className="vod-video-placeholder">
-                <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" strokeWidth="1">
-                  <polygon points="5 3 19 12 5 21 5 3" />
-                </svg>
-                <span>{t(lang, 'videoNotAvailable')}</span>
+              <div className="vod-video-placeholder vod-match-summary">
+                {vod.championIcon && (
+                  <img className="vod-summary-champ" src={vod.championIcon} alt={vod.champion || ''} />
+                )}
+                <div className="vod-summary-info">
+                  <span className="vod-summary-champ-name">{vod.champion || '—'}</span>
+                  <span className="vod-summary-queue">{vod.queue || ''}</span>
+                  {vod.kda && <span className="vod-summary-kda">{vod.kda}</span>}
+                  {vod.result && (
+                    <span className={`vod-summary-result ${vod.result}`}>
+                      {vod.result === 'win' ? t(lang, 'victory') : t(lang, 'defeat')}
+                    </span>
+                  )}
+                  <span className="vod-summary-duration">{formatTime(vod.duration)}</span>
+                  <span className="vod-summary-date">{vod.date ? new Date(vod.date).toLocaleDateString() : ''}</span>
+                </div>
+                <span className="vod-summary-note">{t(lang, 'videoRecordingUnavailable')}</span>
               </div>
             )}
             {!playing && vod.path && (

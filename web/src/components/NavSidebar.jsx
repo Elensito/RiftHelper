@@ -48,16 +48,24 @@ export default function NavSidebar({ view, onNavigate, lang, onSettingsOpen }) {
   }, [])
 
   const collapse = useCallback(() => {
-    hoverTimerRef.current = setTimeout(() => setHovered(false), 120)
-  }, [])
-
-  const cancelCollapse = useCallback(() => {
-    clearTimeout(hoverTimerRef.current)
+    hoverTimerRef.current = setTimeout(() => setHovered(false), 180)
   }, [])
 
   useEffect(() => {
     return () => clearTimeout(hoverTimerRef.current)
   }, [])
+
+  useEffect(() => {
+    if (!isMobile) {
+      document.body.classList.toggle('sidebar-expanded', hovered)
+      return () => document.body.classList.remove('sidebar-expanded')
+    }
+  }, [hovered, isMobile])
+
+  useEffect(() => {
+    document.body.classList.toggle('sidebar-expanded', isMobile && mobileOpen)
+    return () => document.body.classList.remove('sidebar-expanded')
+  }, [mobileOpen, isMobile])
 
   const handleNav = useCallback((id) => {
     onNavigate(id)
@@ -86,7 +94,7 @@ export default function NavSidebar({ view, onNavigate, lang, onSettingsOpen }) {
       )}
 
       <div
-        className={`nav-backdrop ${(isMobile ? mobileOpen : false) ? 'visible' : ''}`}
+        className={`nav-backdrop ${isMobile && mobileOpen ? 'visible' : ''}`}
         onClick={() => setMobileOpen(false)}
       />
 
@@ -103,12 +111,12 @@ export default function NavSidebar({ view, onNavigate, lang, onSettingsOpen }) {
         onMouseLeave={collapse}
       >
         <div className="nav-sidebar-header">
-          <div className="nav-logo-mark">
-            <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
-              <path d="M14 2L2 8v12l12 6 12-6V8L14 2z" stroke="var(--cyan)" strokeWidth="1.5" fill="none" />
-              <path d="M14 2v24M2 8l12 6 12-6" stroke="var(--cyan)" strokeWidth="1" opacity="0.4" />
-            </svg>
-          </div>
+          <img
+            src="/rifthelper-avatar.png"
+            alt="RiftHelper"
+            className="nav-logo-img"
+            draggable="false"
+          />
           <span className="nav-brand-text">RiftHelper</span>
         </div>
 

@@ -47,7 +47,8 @@ export default function RiftTimeline({ lang, onOpenVod, profile }) {
     const s = loadSettings()
     return {
       autoRecord: s.autoRecord ?? true,
-      recordHotkey: s.recordHotkey ?? 'Ctrl+Shift+R',
+      closeToTray: s.closeToTray ?? true,
+      autoStart: s.autoStart ?? false,
       vodPath: s.vodPath ?? '',
       ...s,
     }
@@ -333,13 +334,19 @@ function HotkeyInput({ value, onChange, lang }) {
 function RiftSettings({ settings, onChange, onClose, lang }) {
   const [local, setLocal] = useState({ ...settings })
 
-  const apply = () => {
+  const apply = async () => {
+    if (isTauri() && local.autoStart !== undefined) {
+      try {
+        const { toggleAutostart } = await import('../tauri.js')
+        await toggleAutostart(local.autoStart)
+      } catch {}
+    }
     onChange(local)
     onClose()
   }
 
   const pickFolder = async () => {
-    if (window.__TAURI_INTERNALS__) {
+    if (isTauri()) {
       try {
         const { invoke } = await import('@tauri-apps/api/core')
         const path = await invoke('select_vod_folder')
@@ -375,14 +382,35 @@ function RiftSettings({ settings, onChange, onClose, lang }) {
             </div>
           </div>
 
-          <div className="rt-setting-group">
-            <label className="rt-setting-label">{t(lang, 'recordHotkey')}</label>
-            <HotkeyInput
-              value={local.recordHotkey}
-              onChange={(v) => setLocal(s => ({ ...s, recordHotkey: v }))}
-              lang={lang}
-            />
-          </div>
+          {isTauri() && (
+            <>
+              <div className="rt-setting-group">
+                <label className="rt-setting-label">{t(lang, 'closeToTray')}</label>
+                <div className="rt-toggle-row">
+                  <button
+                    className={`rt-toggle ${local.closeToTray ? 'on' : ''}`}
+                    onClick={() => setLocal(s => ({ ...s, closeToTray: !s.closeToTray }))}
+                  >
+                    <span className="rt-toggle-knob" />
+                  </button>
+                  <span className="rt-setting-desc">{t(lang, 'closeToTrayDesc')}</span>
+                </div>
+              </div>
+
+              <div className="rt-setting-group">
+                <label className="rt-setting-label">{t(lang, 'autoStart')}</label>
+                <div className="rt-toggle-row">
+                  <button
+                    className={`rt-toggle ${local.autoStart ? 'on' : ''}`}
+                    onClick={() => setLocal(s => ({ ...s, autoStart: !s.autoStart }))}
+                  >
+                    <span className="rt-toggle-knob" />
+                  </button>
+                  <span className="rt-setting-desc">{t(lang, 'autoStartDesc')}</span>
+                </div>
+              </div>
+            </>
+          )}
 
           <div className="rt-setting-group">
             <label className="rt-setting-label">{t(lang, 'vodSavePath')}</label>
@@ -394,12 +422,14 @@ function RiftSettings({ settings, onChange, onClose, lang }) {
                 onChange={(e) => setLocal(s => ({ ...s, vodPath: e.target.value }))}
                 placeholder={t(lang, 'vodPathPlaceholder')}
               />
-              <button className="rt-btn rt-btn-ghost rt-btn-sm" onClick={pickFolder}>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
-                </svg>
-                {t(lang, 'browse')}
-              </button>
+              {isTauri() && (
+                <button className="rt-btn rt-btn-ghost rt-btn-sm" onClick={pickFolder}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+                  </svg>
+                  {t(lang, 'browse')}
+                </button>
+              )}
             </div>
           </div>
         </div>

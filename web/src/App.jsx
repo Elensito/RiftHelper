@@ -23,23 +23,6 @@ import { matchGroup, t } from './i18n.js'
 
 const PAGE_SIZE = 20
 
-const MOD_MAP = { Control: 'Ctrl', Alt: 'Alt', Shift: 'Shift', Meta: 'Meta' }
-
-function parseHotkey(hotkey) {
-  const parts = hotkey.split('+')
-  return {
-    mods: parts.filter(p => ['Ctrl', 'Alt', 'Shift', 'Meta'].includes(p)),
-    main: parts.find(p => !['Ctrl', 'Alt', 'Shift', 'Meta'].includes(p)) || null,
-  }
-}
-
-function matchHotkey(expected, pressedMods, pressedMain) {
-  if (expected.mods.length === 0 && !expected.main) return false
-  if (!expected.mods.every(m => pressedMods.has(m))) return false
-  if (expected.main && expected.main !== pressedMain) return false
-  return true
-}
-
 export default function App() {
   const [profile, setProfile] = useState(null)
   const [loading, setLoading] = useState(false)
@@ -69,8 +52,6 @@ export default function App() {
   const recordingStartRef = useRef(null)
   const recordingGameDataRef = useRef(null)
   const wasInGameRef = useRef(null)
-  const hotkeyModsRef = useRef(new Set())
-  const hotkeyMainRef = useRef(null)
   const sentinelRef = useRef(null)
   const latestMatchRef = useRef(null)
   const busyRef = useRef(false)
@@ -274,100 +255,6 @@ export default function App() {
     const id = setInterval(poll, 15000)
     return () => clearInterval(id)
   }, [profile, tab, lang])
-
-  const saveVod = useCallback((duration, gameData) => {
-    const gd = gameData || {}
-    const playerTeam = (gd.teams || []).find(t =>
-      (t.players || []).some(p => p.is_player)
-    )
-    const player = playerTeam
-      ? playerTeam.players.find(p => p.is_player)
-      : null
-    const champion = player ? player.champion : ''
-    const championIcon = player ? player.champion_icon : ''
-    const queue = gd.queue || ''
-    const vods = JSON.parse(localStorage.getItem('rh-vods') || '[]')
-    vods.unshift({
-      id: `vod-${Date.now()}`,
-      date: Date.now(),
-      duration,
-      champion,
-      championIcon,
-      result: '',
-      kda: '',
-      queue: String(queue),
-      thumbnail: '',
-      events: [],
-      teams: gd.teams || [],
-    })
-    localStorage.setItem('rh-vods', JSON.stringify(vods))
-    window.dispatchEvent(new Event('rh-vods-changed'))
-  }, [])
-
-  const toggleRecording = useCallback(() => {
-    if (isRecording) {
-      if (recordingStartRef.current) {
-        const duration = Math.floor((Date.now() - recordingStartRef.current) / 1000)
-        recordingStartRef.current = null
-        saveVod(duration, recordingGameDataRef.current)
-        recordingGameDataRef.current = null
-        setRecordingExiting(true)
-        setTimeout(() => {
-          setIsRecording(false)
-          setRecordingExiting(false)
-        }, 600)
-      }
-    } else {
-      recordingStartRef.current = Date.now()
-      recordingGameDataRef.current = { teams: [], queue: '' }
-      setIsRecording(true)
-    }
-  }, [isRecording, saveVod])
-
-  useEffect(() => {
-    const vodSettings = JSON.parse(localStorage.getItem('rh-vod-settings') || '{}')
-    const expected = parseHotkey(vodSettings.recordHotkey || 'Ctrl+Shift+R')
-
-    const onDown = (e) => {
-      if (e.repeat) return
-      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable) return
-
-      const mod = MOD_MAP[e.key]
-      if (mod) {
-        hotkeyModsRef.current.add(mod)
-      } else {
-        const k = e.key
-        if (k !== 'Escape' && !['Control', 'Alt', 'Shift', 'Meta'].includes(k)) {
-          hotkeyMainRef.current = k.length === 1 ? k.toUpperCase() : k
-        }
-      }
-
-      if (matchHotkey(expected, hotkeyModsRef.current, hotkeyMainRef.current)) {
-        e.preventDefault()
-        e.stopPropagation()
-        toggleRecording()
-      }
-    }
-    const onUp = (e) => {
-      const mod = MOD_MAP[e.key]
-      if (mod) {
-        hotkeyModsRef.current.delete(mod)
-      } else {
-        const k = e.key
-        if (!['Control', 'Alt', 'Shift', 'Meta'].includes(k)) {
-          const main = k.length === 1 ? k.toUpperCase() : k
-          if (hotkeyMainRef.current === main) hotkeyMainRef.current = null
-        }
-      }
-    }
-
-    window.addEventListener('keydown', onDown)
-    window.addEventListener('keyup', onUp)
-    return () => {
-      window.removeEventListener('keydown', onDown)
-      window.removeEventListener('keyup', onUp)
-    }
-  }, [toggleRecording])
 
   useEffect(() => {
     if (!profile) return

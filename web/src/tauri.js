@@ -33,6 +33,48 @@ export async function getRiotClientSession() {
   }
 }
 
+export async function selectVodFolder() {
+  if (!isTauri()) return null
+  const { invoke } = await import('@tauri-apps/api/core')
+  try {
+    return await invoke('select_vod_folder')
+  } catch {
+    return null
+  }
+}
+
+export async function getDefaultVodFolder() {
+  if (!isTauri()) {
+    return `${window.location.protocol}//${window.location.host}/recordings`
+  }
+  const { invoke } = await import('@tauri-apps/api/core')
+  try {
+    return await invoke('get_default_vod_folder')
+  } catch {
+    return ''
+  }
+}
+
+export async function toggleAutostart(enabled) {
+  if (!isTauri()) return false
+  const { invoke } = await import('@tauri-apps/api/core')
+  try {
+    return await invoke('toggle_autostart', { enabled })
+  } catch {
+    return false
+  }
+}
+
+export async function isAutostartEnabled() {
+  if (!isTauri()) return false
+  const { invoke } = await import('@tauri-apps/api/core')
+  try {
+    return await invoke('is_autostart_enabled')
+  } catch {
+    return false
+  }
+}
+
 export async function notifyGameEnded(summoner, lang = 'en') {
   const { t } = await import('./i18n.js')
   const title = 'RiftHelper'

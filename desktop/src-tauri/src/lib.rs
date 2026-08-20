@@ -177,21 +177,107 @@ async fn open_vod_folder(path: Option<String>) -> Result<(), String> {
 }
 
 #[tauri::command]
-async fn select_vod_folder() -> Result<Option<String>, String> {
-    Ok(None)
+async fn select_vod_folder(app: tauri::AppHandle) -> Result<Option<String>, String> {
+    use tauri_plugin_dialog::DialogExt;
+    let result = app
+        .dialog()
+        .file()
+        .set_title("Seleccionar carpeta de grabs")
+        .blocking_pick_folder();
+    Ok(result.map(|p| p.to_string_lossy().to_string()))
+}
+
+#[tauri::command]
+async fn get_default_vod_folder() -> String {
+    let local = std::env::var("USERPROFILE").unwrap_or_else(|_| ".".to_string());
+    std::path::Path::new(&local)
+        .join("Videos")
+        .join("RiftHelper")
+        .to_string_lossy()
+        .to_string()
+}
+
+#[tauri::command]
+async fn toggle_autostart(app: tauri::AppHandle, enabled: bool) -> Result<(), String> {
+    use tauri_plugin_autostart::ManagerExt;
+    let autostart = app.autolaunch();
+    if enabled {
+        autostart.enable().map_err(|e| e.to_string())?;
+    } else {
+        autostart.disable().map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+async fn is_autostart_enabled(app: tauri::AppHandle) -> Result<bool, String> {
+    use tauri_plugin_autostart::ManagerExt;
+    let autostart = app.autolaunch();
+    Ok(autostart.is_enabled().unwrap_or(false))
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let mut builder = tauri::Builder::default()
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            Some(vec!["--minimized"]),
+        ))
         .invoke_handler(tauri::generate_handler![
             get_riot_client_session,
             open_vod_folder,
-            select_vod_folder
-        ])
+            select_vod_folder,
+            get_default_vod_folder,
+            toggle_autostart,
+            is_autostart_enabled,
+        ]);
+
+    builder = builder
+        .setup(|app| {
+            let window = app.get_webview_window("main").unwrap();
+            let _app_handle = app.handle().clone();
+
+            let tray_icon = app.tray_by_id("main-tray");
+            if let Some(tray) = tray_icon {
+                let _window = window.clone();
+                tray.on_menu_event(move |_app, event| {
+                    match event.id.as_ref() {
+                        "show" => {
+                            let _ = _window.show();
+                            let _ = _window.set_focus();
+                        }
+                        "quit" => {
+                            std::process::exit(0);
+                        }
+                        _ => {}
+                    }
+                });
+                let window_clone = window.clone();
+                tray.on_tray_icon_event(move |_tray, event| {
+                    if let tauri::tray::TrayIconEvent::Click {
+                        button: tauri::tray::MouseButton::Left,
+                        button_state: tauri::tray::MouseButtonState::Up,
+                        ..
+                    } = event
+                    {
+                        let _ = window_clone.show();
+                        let _ = window_clone.set_focus();
+                    }
+                });
+            }
+            Ok(())
+        })
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                let _ = window.hide();
+                api.prevent_close();
+            }
+        });
+
+    builder
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
