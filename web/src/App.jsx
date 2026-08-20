@@ -287,13 +287,7 @@ export default function App() {
         <>
           <header className="topbar">
             <div className="topbar-left-spacer" />
-            <SearchBar
-              onSearch={(n, t) => load(n, t)}
-              loading={loading}
-              lang={lang}
-              searchText={searchText}
-              onSearchTextChange={setSearchText}
-            />
+            <div />
             <div className="topbar-right">
               {profile && (
                 <span className="topbar-summoner-pill">
