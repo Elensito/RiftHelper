@@ -894,6 +894,107 @@ body {
   margin-left: 276px;
 }
 
+.profile-search {
+  max-width: 600px;
+  margin: 0 auto 16px;
+}
+
+.profile-search .search {
+  width: 100%;
+}
+
+/* ── Recording Overlay ── */
+.recording-overlay {
+  position: fixed;
+  top: 50%;
+  right: 32px;
+  transform: translateY(-50%);
+  z-index: 9999;
+  pointer-events: none;
+  animation: rec-slide-in 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards,
+             rec-slide-out 0.5s cubic-bezier(0.55, 0, 1, 0.45) 2.5s forwards;
+}
+
+.recording-overlay-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 18px;
+  border-radius: 14px;
+  background: rgba(13, 11, 26, 0.92);
+  border: 1px solid rgba(0, 229, 255, 0.5);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 0 30px rgba(0, 229, 255, 0.25), 0 4px 24px rgba(0, 0, 0, 0.4);
+  animation: rec-glow-pulse 1.5s ease-in-out infinite;
+}
+
+.recording-overlay-icon {
+  width: 36px;
+  height: 36px;
+  object-fit: contain;
+  border-radius: 8px;
+  filter: drop-shadow(0 0 8px rgba(120, 90, 255, 0.5));
+}
+
+.recording-overlay-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.recording-overlay-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--red, #ff4757);
+  letter-spacing: 0.02em;
+}
+
+.recording-overlay-sub {
+  font-size: 11px;
+  color: var(--muted, #888);
+}
+
+.rec-rec-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--red, #ff4757);
+  animation: rec-dot-blink 1s ease-in-out infinite;
+  box-shadow: 0 0 8px rgba(255, 71, 87, 0.6);
+}
+
+@keyframes rec-slide-in {
+  from {
+    opacity: 0;
+    transform: translateY(-50%) translateX(60px) scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(-50%) translateX(0) scale(1);
+  }
+}
+
+@keyframes rec-slide-out {
+  from {
+    opacity: 1;
+    transform: translateY(-50%) translateX(0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-50%) translateX(60px) scale(0.9);
+  }
+}
+
+@keyframes rec-glow-pulse {
+  0%, 100% { box-shadow: 0 0 20px rgba(0, 229, 255, 0.2), 0 4px 24px rgba(0, 0, 0, 0.4); }
+  50% { box-shadow: 0 0 36px rgba(0, 229, 255, 0.4), 0 4px 24px rgba(0, 0, 0, 0.4); }
+}
+
+@keyframes rec-dot-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.2; }
+}
+
 /* ── Rank Cards ── */
 .rank-cards {
   display: flex;
@@ -4263,6 +4364,10 @@ button.p-name:hover {
 
   .profile-main {
     margin-left: 0;
+  }
+
+  .profile-search {
+    max-width: 100%;
   }
 
   .profile-header {

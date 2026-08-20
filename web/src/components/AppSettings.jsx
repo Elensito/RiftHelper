@@ -1,5 +1,6 @@
 import ThemeToggle from './ThemeToggle.jsx'
 import LangSwitcher from './LangSwitcher.jsx'
+import DiscordButton from './DiscordButton.jsx'
 import { t } from '../i18n.js'
 import { isTauri } from '../tauri.js'
 
@@ -31,6 +32,11 @@ export default function AppSettings({ theme, onThemeChange, lang, onLangChange, 
           <div className="rt-setting-group">
             <label className="rt-setting-label">{t(lang, 'language')}</label>
             <LangSwitcher lang={lang} onChange={onLangChange} />
+          </div>
+
+          <div className="rt-setting-group">
+            <label className="rt-setting-label">Discord</label>
+            <DiscordButton lang={lang} />
           </div>
 
           {!isTauri() && (

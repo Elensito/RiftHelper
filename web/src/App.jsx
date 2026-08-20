@@ -6,7 +6,6 @@ import ChampionStats from './components/ChampionStats.jsx'
 import MatchCard from './components/MatchCard.jsx'
 import LiveGame from './components/LiveGame.jsx'
 import QueueFilter from './components/QueueFilter.jsx'
-import DiscordButton from './components/DiscordButton.jsx'
 import DownloadButton from './components/DownloadButton.jsx'
 import RiotClientWidget from './components/RiotClientWidget.jsx'
 import Favorites from './components/Favorites.jsx'
@@ -48,6 +47,8 @@ export default function App() {
   const [navOpen, setNavOpen] = useState(false)
   const [activeVod, setActiveVod] = useState(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [isRecording, setIsRecording] = useState(false)
+  const wasInGameRef = useRef(null)
   const sentinelRef = useRef(null)
   const latestMatchRef = useRef(null)
   const busyRef = useRef(false)
@@ -200,6 +201,20 @@ export default function App() {
     }
   }, [profile])
 
+  useEffect(() => {
+    if (!live || !live.in_game) {
+      wasInGameRef.current = false
+      return
+    }
+    if (wasInGameRef.current) return
+    wasInGameRef.current = true
+    const vodSettings = JSON.parse(localStorage.getItem('rh-vod-settings') || '{}')
+    if (!isTauri() || !vodSettings.autoRecord) return
+    setIsRecording(true)
+    const timer = setTimeout(() => setIsRecording(false), 3000)
+    return () => clearTimeout(timer)
+  }, [live])
+
   const openPlayer = (name, tag) => {
     if (!name) return
     setSearchText(`${name}#${tag}`)
@@ -299,7 +314,7 @@ export default function App() {
                   <span>{profile.summoner.name}#{profile.summoner.tag}</span>
                 </span>
               )}
-              <DiscordButton lang={lang} />
+              {isTauri() && <RiotClientWidget lang={lang} onOpen={openPlayer} />}
             </div>
           </header>
           <main className="content">
@@ -314,13 +329,16 @@ export default function App() {
         <>
           <header className="topbar">
             <div className="topbar-left-spacer" />
-            <SearchBar
-              onSearch={(n, t) => load(n, t)}
-              loading={loading}
-              lang={lang}
-              searchText={searchText}
-              onSearchTextChange={setSearchText}
-            />
+            {!profile && (
+              <SearchBar
+                onSearch={(n, t) => load(n, t)}
+                loading={loading}
+                lang={lang}
+                searchText={searchText}
+                onSearchTextChange={setSearchText}
+              />
+            )}
+            {profile && <div />}
             <div className="topbar-right">
               {profile && (
                 <button
@@ -367,7 +385,6 @@ export default function App() {
                   {t(lang, 'update')}
                 </button>
               )}
-              <DiscordButton lang={lang} />
               {isTauri() && <RiotClientWidget lang={lang} onOpen={openPlayer} />}
               {!isTauri() && <DownloadButton lang={lang} />}
             </div>
@@ -412,6 +429,15 @@ export default function App() {
                 </aside>
 
                 <div className="profile-main">
+                  <div className="profile-search">
+                    <SearchBar
+                      onSearch={(n, t) => load(n, t)}
+                      loading={loading}
+                      lang={lang}
+                      searchText={searchText}
+                      onSearchTextChange={setSearchText}
+                    />
+                  </div>
                   <ProfileHeader
                     summoner={profile.summoner}
                     matches={profile.matches}
@@ -512,6 +538,19 @@ export default function App() {
       )}
 
       <AICoach matches={profile ? profile.matches : []} lang={lang} puuid={profile ? profile.summoner.puuid : null} summonerName={profile ? profile.summoner.name : null} onLangChange={setLang} />
+
+      {isRecording && (
+        <div className="recording-overlay" key={Date.now()}>
+          <div className="recording-overlay-card">
+            <img src="/ai_coach.png" alt="" className="recording-overlay-icon" draggable="false" />
+            <div className="recording-overlay-text">
+              <span className="recording-overlay-title">{t(lang, 'recording')}</span>
+              <span className="recording-overlay-sub">Rift Timeline</span>
+            </div>
+            <span className="rec-rec-dot" />
+          </div>
+        </div>
+      )}
 
       {settingsOpen && (
         <AppSettings
