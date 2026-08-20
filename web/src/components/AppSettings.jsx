@@ -1,5 +1,6 @@
 import ThemeToggle from './ThemeToggle.jsx'
-import { t, LANGS } from '../i18n.js'
+import LangSwitcher from './LangSwitcher.jsx'
+import { t } from '../i18n.js'
 import { isTauri } from '../tauri.js'
 
 export default function AppSettings({ theme, onThemeChange, lang, onLangChange, onClose }) {
@@ -29,18 +30,7 @@ export default function AppSettings({ theme, onThemeChange, lang, onLangChange, 
 
           <div className="rt-setting-group">
             <label className="rt-setting-label">{t(lang, 'language')}</label>
-            <div className="app-settings-lang-row">
-              {LANGS.map((l) => (
-                <button
-                  key={l.code}
-                  className={`app-settings-lang-btn ${lang === l.code ? 'active' : ''}`}
-                  onClick={() => onLangChange(l.code)}
-                >
-                  <img className="app-settings-lang-flag" src={l.flagImg} alt="" />
-                  <span>{l.label}</span>
-                </button>
-              ))}
-            </div>
+            <LangSwitcher lang={lang} onChange={onLangChange} />
           </div>
 
           {!isTauri() && (
