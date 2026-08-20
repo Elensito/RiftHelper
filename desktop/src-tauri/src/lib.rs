@@ -1,4 +1,5 @@
 use serde::Serialize;
+use tauri::Manager;
 
 #[derive(Serialize)]
 struct RiotSession {
@@ -184,7 +185,7 @@ async fn select_vod_folder(app: tauri::AppHandle) -> Result<Option<String>, Stri
         .file()
         .set_title("Seleccionar carpeta de grabs")
         .blocking_pick_folder();
-    Ok(result.map(|p| p.to_string_lossy().to_string()))
+    Ok(result.map(|p| p.into_path().to_string_lossy().to_string()))
 }
 
 #[tauri::command]
