@@ -205,6 +205,12 @@ const EN = {
   noTeamData: 'No team data available for this match',
   clipSaved: 'Clip saved!',
   recording: 'Recording…',
+  theme: 'Theme',
+  themeLight: 'Light mode',
+  themeDark: 'Dark mode',
+  close: 'Close',
+  desktopOnlyFeatures: 'Some features like AI Coach and Rift Timeline are only available in the desktop app.',
+  aiCoachWebOnly: 'AI Coach is only available in the RiftHelper desktop app. Download it to unlock match analysis with real data.',
 }
 
 const ES = {
@@ -409,6 +415,12 @@ const ES = {
   noTeamData: 'No hay datos de equipo para esta partida',
   clipSaved: '¡Clip guardado!',
   recording: 'Grabando…',
+  theme: 'Tema',
+  themeLight: 'Modo claro',
+  themeDark: 'Modo oscuro',
+  close: 'Cerrar',
+  desktopOnlyFeatures: 'Algunas funciones como Coach IA y Rift Timeline solo están disponibles en la app de escritorio.',
+  aiCoachWebOnly: 'El Coach IA solo está disponible en la app de escritorio de RiftHelper. Descárgalo para desbloquear análisis de partidas con datos reales.',
 }
 
 export const STR = { en: EN, es: ES }

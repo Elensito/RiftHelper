@@ -2877,12 +2877,8 @@ button.p-name:hover {
 }
 
 .theme-toggle {
-  position: fixed;
-  left: 20px;
-  bottom: 20px;
-  z-index: 50;
-  width: 54px;
-  height: 54px;
+  width: 40px;
+  height: 40px;
   border-radius: 50%;
   border: 1px solid var(--border);
   background: var(--card-solid);
@@ -2893,6 +2889,7 @@ button.p-name:hover {
   justify-content: center;
   box-shadow: var(--glow-cyan);
   transition: transform 0.2s, box-shadow 0.2s;
+  flex-shrink: 0;
 }
 
 .theme-toggle:hover {
@@ -2900,8 +2897,70 @@ button.p-name:hover {
 }
 
 .theme-toggle svg {
-  width: 26px;
-  height: 26px;
+  width: 22px;
+  height: 22px;
+}
+
+/* ── AI Coach web-only notice ── */
+
+.ai-coach-web-notice-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 3000;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ai-coach-web-notice {
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 32px;
+  text-align: center;
+  max-width: 380px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5), 0 0 40px rgba(0, 229, 255, 0.06);
+}
+
+.ai-coach-web-notice h3 {
+  margin: 16px 0 8px;
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--text);
+}
+
+.ai-coach-web-notice p {
+  margin: 0 0 20px;
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+/* ── App settings theme row ── */
+
+.rt-toggle-row .theme-toggle {
+  width: 36px;
+  height: 36px;
+}
+
+.rt-toggle-row .theme-toggle svg {
+  width: 20px;
+  height: 20px;
+}
+
+.rt-web-notice {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  background: rgba(0, 229, 255, 0.05);
+  border: 1px solid rgba(0, 229, 255, 0.12);
+  border-radius: 10px;
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.5;
 }
 
 .profile-tabs {

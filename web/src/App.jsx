@@ -7,7 +7,6 @@ import MatchCard from './components/MatchCard.jsx'
 import LiveGame from './components/LiveGame.jsx'
 import QueueFilter from './components/QueueFilter.jsx'
 import LangSwitcher from './components/LangSwitcher.jsx'
-import ThemeToggle from './components/ThemeToggle.jsx'
 import DiscordButton from './components/DiscordButton.jsx'
 import DownloadButton from './components/DownloadButton.jsx'
 import RiotClientWidget from './components/RiotClientWidget.jsx'
@@ -19,6 +18,7 @@ import Tooltip from './components/Tooltip.jsx'
 import NavSidebar from './components/NavSidebar.jsx'
 import RiftTimeline from './components/RiftTimeline.jsx'
 import VODPlayer from './components/VODPlayer.jsx'
+import AppSettings from './components/AppSettings.jsx'
 import { fetchSummoner, fetchLatestMatch, fetchLiveGame, fetchMastery, fetchChampions, fetchChampion } from './api.js'
 import { isTauri, getRiotClientSession, notifyGameEnded } from './tauri.js'
 import { matchGroup, t } from './i18n.js'
@@ -308,7 +308,6 @@ export default function App() {
               )}
               <LangSwitcher lang={lang} onChange={setLang} />
               <DiscordButton lang={lang} />
-              <ThemeToggle theme={theme} onChange={setTheme} />
             </div>
           </header>
           <main className="content">
@@ -380,7 +379,6 @@ export default function App() {
               <DiscordButton lang={lang} />
               {isTauri() && <RiotClientWidget lang={lang} onOpen={openPlayer} />}
               {!isTauri() && <DownloadButton lang={lang} />}
-              <ThemeToggle theme={theme} onChange={setTheme} />
             </div>
           </header>
 
@@ -523,6 +521,15 @@ export default function App() {
       )}
 
       <AICoach matches={profile ? profile.matches : []} lang={lang} puuid={profile ? profile.summoner.puuid : null} summonerName={profile ? profile.summoner.name : null} onLangChange={setLang} />
+
+      {settingsOpen && (
+        <AppSettings
+          theme={theme}
+          onThemeChange={setTheme}
+          lang={lang}
+          onClose={() => setSettingsOpen(false)}
+        />
+      )}
     </div>
   )
 }

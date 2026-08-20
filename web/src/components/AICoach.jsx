@@ -5,6 +5,7 @@ import { t, LANGS, queueLabel } from '../i18n.js'
 import { kdaRatio, fmtNum } from '../utils.js'
 import { buildRichCoachingPrompt } from '../matchAnalysis.js'
 import { fetchAICoach } from '../api.js'
+import { isTauri } from '../tauri.js'
 
 const MAX_SELECTED = 1
 
@@ -222,6 +223,7 @@ export default function AICoach({ matches, lang, puuid, summonerName, onLangChan
   const [selectedMatches, setSelectedMatches] = useState(new Set())
   const [showPicker, setShowPicker] = useState(false)
   const [typingDone, setTypingDone] = useState({})
+  const [webNotice, setWebNotice] = useState(false)
   const chatRef = useRef(null)
   const resizing = useRef(false)
   const startX = useRef(0)
@@ -400,7 +402,13 @@ export default function AICoach({ matches, lang, puuid, summonerName, onLangChan
       {!open && (
         <button
           className="ai-coach-fab"
-          onClick={() => setOpen(true)}
+          onClick={() => {
+            if (!isTauri()) {
+              setWebNotice(true)
+              return
+            }
+            setOpen(true)
+          }}
           title={t(lang, 'aiCoach')}
           aria-label={t(lang, 'aiCoach')}
         >
@@ -408,6 +416,23 @@ export default function AICoach({ matches, lang, puuid, summonerName, onLangChan
           <span className="ai-coach-fab-ring ai-coach-fab-ring-2" />
           <img src="/ai_coach.png" alt="" className="ai-coach-icon" draggable="false" />
         </button>
+      )}
+
+      {webNotice && (
+        <div className="ai-coach-web-notice-overlay" onClick={() => setWebNotice(false)}>
+          <div className="ai-coach-web-notice" onClick={(e) => e.stopPropagation()}>
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--cyan)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="10" />
+              <line x1="12" y1="16" x2="12" y2="12" />
+              <line x1="12" y1="8" x2="12.01" y2="8" />
+            </svg>
+            <h3>{t(lang, 'aiCoach')}</h3>
+            <p>{t(lang, 'aiCoachWebOnly')}</p>
+            <button className="rt-btn rt-btn-primary" onClick={() => setWebNotice(false)}>
+              {t(lang, 'close')}
+            </button>
+          </div>
+        </div>
       )}
 
       {open && (
