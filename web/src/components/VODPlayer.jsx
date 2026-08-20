@@ -36,6 +36,7 @@ function PlayerTeamPanel({ team, teamLabel, isWinner, lang }) {
             <span className="vod-player-name">{p.name || '—'}</span>
             <span className="vod-player-kda">
               <span className="kda-k">{p.kills || 0}</span>/<span className="kda-d">{p.deaths || 0}</span>/<span className="kda-a">{p.assists || 0}</span>
+              {p.cs !== undefined && <span className="vod-player-cs"> | {p.cs} CS</span>}
             </span>
           </div>
           <div className="vod-player-items">
