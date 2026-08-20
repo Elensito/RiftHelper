@@ -160,6 +160,15 @@ export default function VODPlayer({ vod, lang, onBack }) {
   const speeds = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2]
 
   const eventTypes = ['all', 'kill', 'death', 'tower', 'dragon', 'baron', 'inhibitor']
+  const EVENT_LABELS = {
+    all: t(lang, 'allEvents'),
+    kill: 'Kill',
+    death: 'Death',
+    tower: t(lang, 'evTower'),
+    dragon: t(lang, 'evDragon'),
+    baron: t(lang, 'evBaron'),
+    inhibitor: t(lang, 'evInhibitor'),
+  }
 
   return (
     <div className="vod-player-view">
@@ -372,7 +381,7 @@ export default function VODPlayer({ vod, lang, onBack }) {
               onClick={() => setEventFilter(ev)}
               style={ev !== 'all' ? { borderColor: EVENT_COLORS[ev] } : undefined}
             >
-              {ev === 'all' ? t(lang, 'allEvents') : t(lang, `ev${ev.charAt(0).toUpperCase() + ev.slice(1)}`)}
+              {EVENT_LABELS[ev] || ev}
             </button>
           ))}
         </div>

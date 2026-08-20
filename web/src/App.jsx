@@ -214,11 +214,44 @@ export default function App() {
             const queue = gd.queue || ''
             let result = ''
             let kda = ''
+            let latestMatchId = ''
+            let team1 = []
+            let team2 = []
+            let matchDuration = 0
+            let winner = 0
             try {
               const matchRes = await fetchLatestMatch(profile.summoner.name, profile.summoner.tag)
               if (matchRes && matchRes.latest_match_id) {
+                latestMatchId = matchRes.latest_match_id
                 const match = (profile.matches || []).find(m => m.match_id === matchRes.latest_match_id)
                 if (match) {
+                  matchDuration = match.duration_sec || 0
+                  const bluePlayers = (match.players || []).filter(p => p.team === 100)
+                  const redPlayers = (match.players || []).filter(p => p.team === 200)
+                  const blueWins = bluePlayers.length > 0 ? bluePlayers[0].win : false
+                  winner = blueWins ? 1 : 2
+                  team1 = bluePlayers.map(p => ({
+                    name: p.player_name || '',
+                    champion: p.champion || '',
+                    championIcon: p.champion_icon || '',
+                    kills: p.kills || 0,
+                    deaths: p.deaths || 0,
+                    assists: p.assists || 0,
+                    gold: p.gold || 0,
+                    items: (p.items || []).map(it => it ? (it.src || '') : '').filter(Boolean),
+                    isPlayer: p.is_player || false,
+                  }))
+                  team2 = redPlayers.map(p => ({
+                    name: p.player_name || '',
+                    champion: p.champion || '',
+                    championIcon: p.champion_icon || '',
+                    kills: p.kills || 0,
+                    deaths: p.deaths || 0,
+                    assists: p.assists || 0,
+                    gold: p.gold || 0,
+                    items: (p.items || []).map(it => it ? (it.src || '') : '').filter(Boolean),
+                    isPlayer: p.is_player || false,
+                  }))
                   const me = (match.players || []).find(p => p.puuid === profile.summoner.puuid)
                   if (me) {
                     champion = champion || me.champion || ''
@@ -229,19 +262,38 @@ export default function App() {
                 }
               }
             } catch (e) {}
+            if (team1.length === 0 && team2.length === 0) {
+              team1 = (gd.teams || []).find(t => t.team_id === 100)?.players?.map(p => ({
+                name: p.summoner_name || '',
+                champion: p.champion || '',
+                championIcon: p.champion_icon || '',
+                kills: 0, deaths: 0, assists: 0, gold: 0,
+                items: [], isPlayer: p.is_player || false,
+              })) || []
+              team2 = (gd.teams || []).find(t => t.team_id === 200)?.players?.map(p => ({
+                name: p.summoner_name || '',
+                champion: p.champion || '',
+                championIcon: p.champion_icon || '',
+                kills: 0, deaths: 0, assists: 0, gold: 0,
+                items: [], isPlayer: p.is_player || false,
+              })) || []
+            }
             const vods = JSON.parse(localStorage.getItem('rh-vods') || '[]')
             vods.unshift({
               id: `vod-${Date.now()}`,
               date: Date.now(),
-              duration,
+              duration: matchDuration || duration,
               champion,
               championIcon,
               result,
               kda,
               queue: String(queue),
+              matchId: latestMatchId,
               thumbnail: '',
               events: [],
-              teams: gd.teams || [],
+              team1,
+              team2,
+              winner,
             })
             localStorage.setItem('rh-vods', JSON.stringify(vods))
             window.dispatchEvent(new Event('rh-vods-changed'))
