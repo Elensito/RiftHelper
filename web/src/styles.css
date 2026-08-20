@@ -89,33 +89,9 @@ body {
   margin-left: 64px;
 }
 
-body.sidebar-expanded .content {
-  margin-left: 64px;
-}
-
-body.sidebar-expanded .profile-main {
-  margin-left: 0;
-}
-
-body.sidebar-expanded .topbar-icon-rail {
-  padding-left: 78px;
-}
-
 @media (max-width: 920px) {
   .content {
     margin-left: 0 !important;
-  }
-
-  body.sidebar-expanded .content {
-    margin-left: 0 !important;
-  }
-
-  body.sidebar-expanded .profile-main {
-    margin-left: 0 !important;
-  }
-
-  body.sidebar-expanded .topbar-icon-rail {
-    padding-left: 22px !important;
   }
 }
 
@@ -925,8 +901,6 @@ body.sidebar-expanded .topbar-icon-rail {
 .profile-main {
   width: 100%;
   min-width: 0;
-  margin-left: 64px;
-  margin-right: 290px;
 }
 
 /* ── Recording Overlay ── */
