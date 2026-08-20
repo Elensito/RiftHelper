@@ -6,7 +6,6 @@ import ChampionStats from './components/ChampionStats.jsx'
 import MatchCard from './components/MatchCard.jsx'
 import LiveGame from './components/LiveGame.jsx'
 import QueueFilter from './components/QueueFilter.jsx'
-import LangSwitcher from './components/LangSwitcher.jsx'
 import DiscordButton from './components/DiscordButton.jsx'
 import DownloadButton from './components/DownloadButton.jsx'
 import RiotClientWidget from './components/RiotClientWidget.jsx'
@@ -306,7 +305,6 @@ export default function App() {
                   <span>{profile.summoner.name}#{profile.summoner.tag}</span>
                 </span>
               )}
-              <LangSwitcher lang={lang} onChange={setLang} />
               <DiscordButton lang={lang} />
             </div>
           </header>
@@ -375,7 +373,6 @@ export default function App() {
                   {t(lang, 'update')}
                 </button>
               )}
-              <LangSwitcher lang={lang} onChange={setLang} />
               <DiscordButton lang={lang} />
               {isTauri() && <RiotClientWidget lang={lang} onOpen={openPlayer} />}
               {!isTauri() && <DownloadButton lang={lang} />}

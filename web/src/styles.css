@@ -892,6 +892,8 @@ body {
   width: 100%;
   min-width: 0;
   margin-left: 276px;
+  margin-right: auto;
+  max-width: 804px;
 }
 
 /* ── Rank Cards ── */
@@ -4263,6 +4265,8 @@ button.p-name:hover {
 
   .profile-main {
     margin-left: 0;
+    margin-right: 0;
+    max-width: none;
   }
 
   .profile-header {
