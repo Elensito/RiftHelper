@@ -55,10 +55,24 @@ export default function RiftTimeline({ lang, onOpenVod, profile }) {
 
   useEffect(() => { saveSettings(settings) }, [settings])
 
+  useEffect(() => {
+    const onStorage = (e) => {
+      if (e.key === VOD_STORAGE_KEY) setVods(loadVods())
+    }
+    window.addEventListener('storage', onStorage)
+    const onCustom = () => setVods(loadVods())
+    window.addEventListener('rh-vods-changed', onCustom)
+    return () => {
+      window.removeEventListener('storage', onStorage)
+      window.removeEventListener('rh-vods-changed', onCustom)
+    }
+  }, [])
+
   const deleteVod = useCallback((id) => {
     const filtered = vods.filter(v => v.id !== id)
     setVods(filtered)
     saveVods(filtered)
+    window.dispatchEvent(new Event('rh-vods-changed'))
   }, [vods])
 
   const openFolder = async () => {
@@ -193,59 +207,91 @@ function HotkeyInput({ value, onChange, lang }) {
   const [capturing, setCapturing] = useState(false)
   const [display, setDisplay] = useState(value)
   const keysRef = useRef(new Set())
+  const mainKeyRef = useRef(null)
   const MAX_KEYS = 3
 
-  const KEY_ORDER = { 'Ctrl': 0, 'Alt': 1, 'Shift': 2, 'Meta': 3 }
+  const MOD_MAP = { Control: 'Ctrl', Alt: 'Alt', Shift: 'Shift', Meta: 'Meta' }
 
-  const keyName = (e) => {
-    const parts = []
-    if (e.ctrlKey) parts.push('Ctrl')
-    if (e.altKey) parts.push('Alt')
-    if (e.shiftKey) parts.push('Shift')
-    if (e.metaKey) parts.push('Meta')
+  const getMainKey = (e) => {
     const k = e.key
-    if (!['Control', 'Alt', 'Shift', 'Meta'].includes(k)) {
-      parts.push(k.length === 1 ? k.toUpperCase() : k)
-    }
-    return parts.join('+')
+    if (MOD_MAP[k]) return null
+    if (k === 'Escape') return null
+    return k.length === 1 ? k.toUpperCase() : k
   }
 
-  const sortedKeys = (set) => {
-    return [...set].sort((a, b) => {
-      const aIsMod = a in KEY_ORDER
-      const bIsMod = b in KEY_ORDER
-      if (aIsMod && bIsMod) return KEY_ORDER[a] - KEY_ORDER[b]
-      if (aIsMod) return -1
-      if (bIsMod) return 1
-      return 0
-    })
+  const getModifiers = (e) => {
+    const mods = []
+    if (e.ctrlKey) mods.push('Ctrl')
+    if (e.altKey) mods.push('Alt')
+    if (e.shiftKey) mods.push('Shift')
+    if (e.metaKey) mods.push('Meta')
+    return mods
+  }
+
+  const buildDisplay = (mods, main) => {
+    const parts = [...mods]
+    if (main) parts.push(main)
+    return parts.join('+')
   }
 
   const onKey = (e) => {
     e.preventDefault()
     e.stopPropagation()
-    const name = keyName(e)
-    if (e.type === 'keydown') {
-      keysRef.current.add(name)
-    } else if (e.type === 'keyup') {
-      keysRef.current.delete(name)
+
+    if (e.key === 'Escape') {
+      endCapture(false)
+      return
     }
-    setDisplay(sortedKeys(keysRef.current).join('+'))
+
+    if (e.type === 'keydown') {
+      const mod = MOD_MAP[e.key]
+      if (mod) {
+        keysRef.current.add(mod)
+      } else {
+        const main = getMainKey(e)
+        if (main) {
+          mainKeyRef.current = main
+          keysRef.current.add(main)
+        }
+      }
+    } else if (e.type === 'keyup') {
+      const mod = MOD_MAP[e.key]
+      if (mod) {
+        keysRef.current.delete(mod)
+      } else {
+        const main = getMainKey(e)
+        if (main && mainKeyRef.current === main) {
+          keysRef.current.delete(main)
+          mainKeyRef.current = null
+        }
+      }
+    }
+
+    const mods = [...keysRef.current].filter(k => k in MOD_MAP)
+    const main = mainKeyRef.current
+    setDisplay(buildDisplay(mods, main))
   }
 
-  const onBlur = () => {
+  const endCapture = (save) => {
     setCapturing(false)
-    if (keysRef.current.size > 0) {
-      onChange(sortedKeys(keysRef.current).join('+'))
+    if (save && keysRef.current.size > 0) {
+      const mods = [...keysRef.current].filter(k => k in MOD_MAP)
+      const main = mainKeyRef.current
+      if (mods.length > 0 || main) {
+        onChange(buildDisplay(mods, main))
+      }
     }
     keysRef.current.clear()
+    mainKeyRef.current = null
     window.removeEventListener('keydown', onKey)
     window.removeEventListener('keyup', onKey)
   }
 
   const startCapture = () => {
     keysRef.current.clear()
+    mainKeyRef.current = null
     setCapturing(true)
+    setDisplay('')
     window.addEventListener('keydown', onKey)
     window.addEventListener('keyup', onKey)
   }
@@ -258,17 +304,22 @@ function HotkeyInput({ value, onChange, lang }) {
   }, [])
 
   const placeholder = lang === 'es'
-    ? `Máx ${MAX_KEYS} teclas...`
+    ? 'Pulsa las teclas...'
     : lang === 'pt'
-    ? `Máx ${MAX_KEYS} teclas...`
+    ? 'Pressione as teclas...'
     : lang === 'fr'
-    ? `Max ${MAX_KEYS} touches...`
+    ? 'Appuyez sur les touches...'
     : lang === 'ko'
-    ? `최대 ${MAX_KEYS}개 키...`
-    : `Max ${MAX_KEYS} keys...`
+    ? '키를 누르세요...'
+    : 'Press keys...'
 
   return (
-    <div className={`rt-hotkey-wrap ${capturing ? 'capturing' : ''}`} onClick={startCapture} onBlur={onBlur} tabIndex={0}>
+    <div
+      className={`rt-hotkey-wrap ${capturing ? 'capturing' : ''}`}
+      onClick={() => { if (!capturing) startCapture() }}
+      onBlur={() => endCapture(true)}
+      tabIndex={0}
+    >
       {capturing ? (
         <span className="rt-hotkey-placeholder">{placeholder}</span>
       ) : (

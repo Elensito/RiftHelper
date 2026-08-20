@@ -1,3 +1,4 @@
+import { useState, useRef, useCallback, useEffect } from 'react'
 import { t } from '../i18n.js'
 
 const ICONS = {
@@ -26,22 +27,81 @@ const NAV_ITEMS = [
   { id: 'rift-timeline', icon: 'timeline', label: 'Rift Timeline', labelEs: 'Rift Timeline' },
 ]
 
-export default function NavSidebar({ open, onToggle, view, onNavigate, lang, onSettingsOpen }) {
+export default function NavSidebar({ view, onNavigate, lang, onSettingsOpen }) {
+  const [hovered, setHovered] = useState(false)
+  const [mobileOpen, setMobileOpen] = useState(false)
+  const [isMobile, setIsMobile] = useState(false)
+  const sidebarRef = useRef(null)
+  const triggerRef = useRef(null)
+  const hoverTimerRef = useRef(null)
+
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth <= 920)
+    check()
+    window.addEventListener('resize', check)
+    return () => window.removeEventListener('resize', check)
+  }, [])
+
+  const expand = useCallback(() => {
+    clearTimeout(hoverTimerRef.current)
+    setHovered(true)
+  }, [])
+
+  const collapse = useCallback(() => {
+    hoverTimerRef.current = setTimeout(() => setHovered(false), 120)
+  }, [])
+
+  const cancelCollapse = useCallback(() => {
+    clearTimeout(hoverTimerRef.current)
+  }, [])
+
+  useEffect(() => {
+    return () => clearTimeout(hoverTimerRef.current)
+  }, [])
+
+  const handleNav = useCallback((id) => {
+    onNavigate(id)
+    if (isMobile) setMobileOpen(false)
+  }, [onNavigate, isMobile])
+
+  const handleSettings = useCallback(() => {
+    onSettingsOpen()
+    if (isMobile) setMobileOpen(false)
+  }, [onSettingsOpen, isMobile])
+
+  const expanded = isMobile ? mobileOpen : hovered
+
   return (
     <>
-      <button
-        className={`nav-hamburger ${open ? 'nav-hamburger-open' : ''}`}
-        onClick={onToggle}
-        aria-label="Navigation"
+      {isMobile && (
+        <button
+          className={`nav-hamburger ${mobileOpen ? 'nav-hamburger-open' : ''}`}
+          onClick={() => setMobileOpen(!mobileOpen)}
+          aria-label="Navigation"
+        >
+          <span />
+          <span />
+          <span />
+        </button>
+      )}
+
+      <div
+        className={`nav-backdrop ${(isMobile ? mobileOpen : false) ? 'visible' : ''}`}
+        onClick={() => setMobileOpen(false)}
+      />
+
+      <div
+        ref={triggerRef}
+        className="nav-hover-trigger"
+        onMouseEnter={expand}
+      />
+
+      <nav
+        ref={sidebarRef}
+        className={`nav-sidebar ${expanded ? 'expanded' : ''}`}
+        onMouseEnter={expand}
+        onMouseLeave={collapse}
       >
-        <span />
-        <span />
-        <span />
-      </button>
-
-      <div className={`nav-backdrop ${open ? 'visible' : ''}`} onClick={onToggle} />
-
-      <nav className={`nav-sidebar ${open ? 'open' : ''}`}>
         <div className="nav-sidebar-header">
           <div className="nav-logo-mark">
             <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
@@ -57,7 +117,8 @@ export default function NavSidebar({ open, onToggle, view, onNavigate, lang, onS
             <button
               key={item.id}
               className={`nav-item ${view === item.id ? 'active' : ''}`}
-              onClick={() => { onNavigate(item.id); if (open) onToggle() }}
+              onClick={() => handleNav(item.id)}
+              title={!expanded ? (lang === 'es' ? item.labelEs : item.label) : undefined}
             >
               <span className="nav-item-icon">{ICONS[item.icon]}</span>
               <span className="nav-item-label">{lang === 'es' ? item.labelEs : item.label}</span>
@@ -67,7 +128,7 @@ export default function NavSidebar({ open, onToggle, view, onNavigate, lang, onS
         </div>
 
         <div className="nav-sidebar-footer">
-          <button className="nav-item nav-settings-btn" onClick={() => { onSettingsOpen(); if (open) onToggle() }}>
+          <button className="nav-item nav-settings-btn" onClick={handleSettings}>
             <span className="nav-item-icon">{ICONS.settings}</span>
             <span className="nav-item-label">{t(lang, 'settings')}</span>
           </button>

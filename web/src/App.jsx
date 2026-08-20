@@ -23,17 +23,21 @@ import { matchGroup, t } from './i18n.js'
 
 const PAGE_SIZE = 20
 
-function keyName(e) {
-  const parts = []
-  if (e.ctrlKey) parts.push('Ctrl')
-  if (e.altKey) parts.push('Alt')
-  if (e.shiftKey) parts.push('Shift')
-  if (e.metaKey) parts.push('Meta')
-  const k = e.key
-  if (!['Control', 'Alt', 'Shift', 'Meta'].includes(k)) {
-    parts.push(k.length === 1 ? k.toUpperCase() : k)
+const MOD_MAP = { Control: 'Ctrl', Alt: 'Alt', Shift: 'Shift', Meta: 'Meta' }
+
+function parseHotkey(hotkey) {
+  const parts = hotkey.split('+')
+  return {
+    mods: parts.filter(p => ['Ctrl', 'Alt', 'Shift', 'Meta'].includes(p)),
+    main: parts.find(p => !['Ctrl', 'Alt', 'Shift', 'Meta'].includes(p)) || null,
   }
-  return parts.join('+')
+}
+
+function matchHotkey(expected, pressedMods, pressedMain) {
+  if (expected.mods.length === 0 && !expected.main) return false
+  if (!expected.mods.every(m => pressedMods.has(m))) return false
+  if (expected.main && expected.main !== pressedMain) return false
+  return true
 }
 
 export default function App() {
@@ -57,15 +61,16 @@ export default function App() {
   const [mastery, setMastery] = useState(null)
   const [masteryLoading, setMasteryLoading] = useState(false)
   const [view, setView] = useState('profile')
-  const [navOpen, setNavOpen] = useState(false)
+
   const [activeVod, setActiveVod] = useState(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [isRecording, setIsRecording] = useState(false)
   const [recordingExiting, setRecordingExiting] = useState(false)
   const recordingStartRef = useRef(null)
+  const recordingGameDataRef = useRef(null)
   const wasInGameRef = useRef(null)
-  const hotkeyPressedRef = useRef(new Set())
-  const hotkeyExpectedRef = useRef([])
+  const hotkeyModsRef = useRef(new Set())
+  const hotkeyMainRef = useRef(null)
   const sentinelRef = useRef(null)
   const latestMatchRef = useRef(null)
   const busyRef = useRef(false)
@@ -196,6 +201,11 @@ export default function App() {
         if (inGame && wasInGameRef.current !== true) {
           wasInGameRef.current = true
           const vodSettings = JSON.parse(localStorage.getItem('rh-vod-settings') || '{}')
+          recordingGameDataRef.current = {
+            game: data.game || null,
+            teams: data.teams || [],
+            queue: data.game?.queue || '',
+          }
           if (vodSettings.autoRecord !== false) {
             recordingStartRef.current = Date.now()
             setIsRecording(true)
@@ -211,20 +221,50 @@ export default function App() {
               setIsRecording(false)
               setRecordingExiting(false)
             }, 600)
+            const gd = recordingGameDataRef.current || {}
+            const playerTeam = (gd.teams || []).find(t =>
+              (t.players || []).some(p => p.is_player)
+            )
+            const player = playerTeam
+              ? playerTeam.players.find(p => p.is_player)
+              : null
+            let champion = player ? player.champion : ''
+            let championIcon = player ? player.champion_icon : ''
+            const queue = gd.queue || ''
+            let result = ''
+            let kda = ''
+            try {
+              const matchRes = await fetchLatestMatch(profile.summoner.name, profile.summoner.tag)
+              if (matchRes && matchRes.latest_match_id) {
+                const match = (profile.matches || []).find(m => m.match_id === matchRes.latest_match_id)
+                if (match) {
+                  const me = (match.players || []).find(p => p.puuid === profile.summoner.puuid)
+                  if (me) {
+                    champion = champion || me.champion || ''
+                    championIcon = championIcon || me.champion_icon || ''
+                    result = me.win ? 'win' : 'loss'
+                    kda = `${me.kills || 0}/${me.deaths || 0}/${me.assists || 0}`
+                  }
+                }
+              }
+            } catch (e) {}
             const vods = JSON.parse(localStorage.getItem('rh-vods') || '[]')
             vods.unshift({
               id: `vod-${Date.now()}`,
               date: Date.now(),
               duration,
-              champion: '',
-              championIcon: '',
-              result: '',
-              kda: '',
-              queue: '',
+              champion,
+              championIcon,
+              result,
+              kda,
+              queue: String(queue),
               thumbnail: '',
               events: [],
+              teams: gd.teams || [],
             })
             localStorage.setItem('rh-vods', JSON.stringify(vods))
+            window.dispatchEvent(new Event('rh-vods-changed'))
+            recordingGameDataRef.current = null
           }
         }
         wasInGameLocal = inGame
@@ -235,56 +275,90 @@ export default function App() {
     return () => clearInterval(id)
   }, [profile, tab, lang])
 
+  const saveVod = useCallback((duration, gameData) => {
+    const gd = gameData || {}
+    const playerTeam = (gd.teams || []).find(t =>
+      (t.players || []).some(p => p.is_player)
+    )
+    const player = playerTeam
+      ? playerTeam.players.find(p => p.is_player)
+      : null
+    const champion = player ? player.champion : ''
+    const championIcon = player ? player.champion_icon : ''
+    const queue = gd.queue || ''
+    const vods = JSON.parse(localStorage.getItem('rh-vods') || '[]')
+    vods.unshift({
+      id: `vod-${Date.now()}`,
+      date: Date.now(),
+      duration,
+      champion,
+      championIcon,
+      result: '',
+      kda: '',
+      queue: String(queue),
+      thumbnail: '',
+      events: [],
+      teams: gd.teams || [],
+    })
+    localStorage.setItem('rh-vods', JSON.stringify(vods))
+    window.dispatchEvent(new Event('rh-vods-changed'))
+  }, [])
+
   const toggleRecording = useCallback(() => {
     if (isRecording) {
       if (recordingStartRef.current) {
         const duration = Math.floor((Date.now() - recordingStartRef.current) / 1000)
         recordingStartRef.current = null
+        saveVod(duration, recordingGameDataRef.current)
+        recordingGameDataRef.current = null
         setRecordingExiting(true)
         setTimeout(() => {
           setIsRecording(false)
           setRecordingExiting(false)
         }, 600)
-        const vods = JSON.parse(localStorage.getItem('rh-vods') || '[]')
-        vods.unshift({
-          id: `vod-${Date.now()}`,
-          date: Date.now(),
-          duration,
-          champion: '',
-          championIcon: '',
-          result: '',
-          kda: '',
-          queue: '',
-          thumbnail: '',
-          events: [],
-        })
-        localStorage.setItem('rh-vods', JSON.stringify(vods))
       }
     } else {
       recordingStartRef.current = Date.now()
+      recordingGameDataRef.current = { teams: [], queue: '' }
       setIsRecording(true)
     }
-  }, [isRecording])
+  }, [isRecording, saveVod])
 
   useEffect(() => {
     const vodSettings = JSON.parse(localStorage.getItem('rh-vod-settings') || '{}')
-    const hotkey = vodSettings.recordHotkey || 'Ctrl+Shift+R'
-    hotkeyExpectedRef.current = hotkey.split('+')
+    const expected = parseHotkey(vodSettings.recordHotkey || 'Ctrl+Shift+R')
 
     const onDown = (e) => {
       if (e.repeat) return
       if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable) return
-      const name = keyName(e)
-      hotkeyPressedRef.current.add(name)
-      const expected = hotkeyExpectedRef.current
-      if (expected.length > 0 && expected.length <= 3 && expected.every(k => hotkeyPressedRef.current.has(k))) {
+
+      const mod = MOD_MAP[e.key]
+      if (mod) {
+        hotkeyModsRef.current.add(mod)
+      } else {
+        const k = e.key
+        if (k !== 'Escape' && !['Control', 'Alt', 'Shift', 'Meta'].includes(k)) {
+          hotkeyMainRef.current = k.length === 1 ? k.toUpperCase() : k
+        }
+      }
+
+      if (matchHotkey(expected, hotkeyModsRef.current, hotkeyMainRef.current)) {
         e.preventDefault()
         e.stopPropagation()
         toggleRecording()
       }
     }
     const onUp = (e) => {
-      hotkeyPressedRef.current.delete(keyName(e))
+      const mod = MOD_MAP[e.key]
+      if (mod) {
+        hotkeyModsRef.current.delete(mod)
+      } else {
+        const k = e.key
+        if (!['Control', 'Alt', 'Shift', 'Meta'].includes(k)) {
+          const main = k.length === 1 ? k.toUpperCase() : k
+          if (hotkeyMainRef.current === main) hotkeyMainRef.current = null
+        }
+      }
     }
 
     window.addEventListener('keydown', onDown)
@@ -389,8 +463,6 @@ export default function App() {
     <div className="app">
       <Tooltip />
       <NavSidebar
-        open={navOpen}
-        onToggle={() => setNavOpen(!navOpen)}
         view={view}
         onNavigate={(v) => { setView(v); setActiveVod(null); setChampion(null) }}
         lang={lang}
@@ -401,9 +473,7 @@ export default function App() {
         <VODPlayer vod={activeVod} lang={lang} onBack={() => setActiveVod(null)} />
       ) : view === 'rift-timeline' ? (
         <>
-          <header className="topbar">
-            <div className="topbar-left-spacer" />
-            <div />
+          <header className="topbar topbar-icon-rail">
             <div className="topbar-right">
               {isTauri() && <RiotClientWidget lang={lang} onOpen={openPlayer} />}
               {!isTauri() && profile && (
@@ -428,8 +498,7 @@ export default function App() {
         </>
       ) : (
         <>
-          <header className={`topbar ${profile ? 'topbar-profile-active' : ''}`}>
-            <div className="topbar-left-spacer" />
+          <header className="topbar topbar-icon-rail">
             {profile && (
               <SearchBar
                 onSearch={(n, t) => load(n, t)}
@@ -439,7 +508,6 @@ export default function App() {
                 onSearchTextChange={setSearchText}
               />
             )}
-            {!profile && <div />}
             <div className="topbar-right">
               {profile && (
                 <button
