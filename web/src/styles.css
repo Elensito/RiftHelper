@@ -2938,6 +2938,17 @@ button.p-name:hover {
   line-height: 1.6;
 }
 
+.ai-coach-web-disabled {
+  width: 100%;
+  padding: 12px 16px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--muted);
+  background: rgba(0, 229, 255, 0.03);
+  border: 1px dashed rgba(0, 229, 255, 0.12);
+  border-radius: 10px;
+}
+
 /* ── App settings theme row ── */
 
 .rt-toggle-row .theme-toggle {

@@ -494,7 +494,7 @@ export default function AICoach({ matches, lang, puuid, summonerName, onLangChan
                         <span key={j}>{line}{j < arr.length - 1 && <br />}</span>
                       ))
                     )}
-                    {typingDone[msg.id] && i === lastCoachIdx && (
+                    {typingDone[msg.id] && i === lastCoachIdx && isTauri() && (
                       <div className="ai-coach-actions-row">
                         <button className="ai-coach-select-trigger" onClick={() => setShowPicker(true)}>
                           <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
@@ -521,14 +521,22 @@ export default function AICoach({ matches, lang, puuid, summonerName, onLangChan
             </div>
 
             <div className="ai-coach-input-area">
-              <textarea className="ai-coach-input" value={input} onChange={e => setInput(e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder={lang === 'es' ? 'Escribe tu pregunta…' : 'Type your question…'} rows={1} />
-              <button className="ai-coach-send" disabled={!input.trim() || analyzing} onClick={sendMessage}>
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-                  <path d="M5 12h14M12 5l7 7-7 7" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-              </button>
+              {isTauri() ? (
+                <>
+                  <textarea className="ai-coach-input" value={input} onChange={e => setInput(e.target.value)}
+                    onKeyDown={handleKeyDown}
+                    placeholder={lang === 'es' ? 'Escribe tu pregunta…' : 'Type your question…'} rows={1} />
+                  <button className="ai-coach-send" disabled={!input.trim() || analyzing} onClick={sendMessage}>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                      <path d="M5 12h14M12 5l7 7-7 7" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  </button>
+                </>
+              ) : (
+                <div className="ai-coach-web-disabled">
+                  {lang === 'es' ? 'El coaching IA solo está disponible en la app de escritorio.' : 'AI coaching is only available in the desktop app.'}
+                </div>
+              )}
             </div>
           </div>
         </>
