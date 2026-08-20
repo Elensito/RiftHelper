@@ -48,6 +48,8 @@ export default function App() {
   const [activeVod, setActiveVod] = useState(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [isRecording, setIsRecording] = useState(false)
+  const [recordingExiting, setRecordingExiting] = useState(false)
+  const recordingStartRef = useRef(null)
   const wasInGameRef = useRef(null)
   const sentinelRef = useRef(null)
   const latestMatchRef = useRef(null)
@@ -163,22 +165,60 @@ export default function App() {
   }
 
   useEffect(() => {
-    if (tab !== 'live' || !profile) return
-    let wasInGame = null
+    if (!profile) return
+    let wasInGameLocal = null
     const poll = async () => {
       try {
         const data = await fetchLiveGame(profile.summoner.name, profile.summoner.tag)
         setLive(data)
-        if (wasInGame === true && !data.in_game) {
-          notifyGameEnded(profile.summoner, lang)
+        const inGame = !!data.in_game
+        if (tab === 'live') {
+          if (wasInGameLocal === true && !inGame) {
+            notifyGameEnded(profile.summoner, lang)
+          }
+          if (!inGame) setTab('matches')
         }
-        wasInGame = !!data.in_game
-        if (!data.in_game) setTab('matches')
+        if (inGame && wasInGameRef.current !== true) {
+          wasInGameRef.current = true
+          const vodSettings = JSON.parse(localStorage.getItem('rh-vod-settings') || '{}')
+          if (vodSettings.autoRecord) {
+            recordingStartRef.current = Date.now()
+            setIsRecording(true)
+          }
+        }
+        if (!inGame && wasInGameRef.current === true) {
+          wasInGameRef.current = false
+          if (recordingStartRef.current) {
+            const duration = Math.floor((Date.now() - recordingStartRef.current) / 1000)
+            recordingStartRef.current = null
+            setRecordingExiting(true)
+            setTimeout(() => {
+              setIsRecording(false)
+              setRecordingExiting(false)
+            }, 600)
+            const vods = JSON.parse(localStorage.getItem('rh-vods') || '[]')
+            vods.unshift({
+              id: `vod-${Date.now()}`,
+              date: Date.now(),
+              duration,
+              champion: '',
+              championIcon: '',
+              result: '',
+              kda: '',
+              queue: '',
+              thumbnail: '',
+              events: [],
+            })
+            localStorage.setItem('rh-vods', JSON.stringify(vods))
+          }
+        }
+        wasInGameLocal = inGame
       } catch (e) {}
     }
-    const id = setInterval(poll, 30000)
+    poll()
+    const id = setInterval(poll, 15000)
     return () => clearInterval(id)
-  }, [tab, profile, lang])
+  }, [profile, tab, lang])
 
   useEffect(() => {
     if (!profile) return
@@ -200,20 +240,6 @@ export default function App() {
       clearInterval(id)
     }
   }, [profile])
-
-  useEffect(() => {
-    if (!live || !live.in_game) {
-      wasInGameRef.current = false
-      return
-    }
-    if (wasInGameRef.current) return
-    wasInGameRef.current = true
-    const vodSettings = JSON.parse(localStorage.getItem('rh-vod-settings') || '{}')
-    if (!isTauri() || !vodSettings.autoRecord) return
-    setIsRecording(true)
-    const timer = setTimeout(() => setIsRecording(false), 3000)
-    return () => clearTimeout(timer)
-  }, [live])
 
   const openPlayer = (name, tag) => {
     if (!name) return
@@ -539,8 +565,8 @@ export default function App() {
 
       <AICoach matches={profile ? profile.matches : []} lang={lang} puuid={profile ? profile.summoner.puuid : null} summonerName={profile ? profile.summoner.name : null} onLangChange={setLang} />
 
-      {isRecording && (
-        <div className="recording-overlay" key={Date.now()}>
+      {(isRecording || recordingExiting) && (
+        <div className={`recording-overlay ${recordingExiting ? 'exiting' : ''}`}>
           <div className="recording-overlay-card">
             <img src="/ai_coach.png" alt="" className="recording-overlay-icon" draggable="false" />
             <div className="recording-overlay-text">

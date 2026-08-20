@@ -906,52 +906,65 @@ body {
 /* ── Recording Overlay ── */
 .recording-overlay {
   position: fixed;
-  top: 50%;
-  right: 32px;
-  transform: translateY(-50%);
+  top: 24px;
+  right: 24px;
   z-index: 9999;
   pointer-events: none;
-  animation: rec-slide-in 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards,
-             rec-slide-out 0.5s cubic-bezier(0.55, 0, 1, 0.45) 2.5s forwards;
+  animation: rec-slide-in 0.6s cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 
 .recording-overlay-card {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 12px 18px;
-  border-radius: 14px;
-  background: rgba(13, 11, 26, 0.92);
-  border: 1px solid rgba(0, 229, 255, 0.5);
-  backdrop-filter: blur(12px);
-  box-shadow: 0 0 30px rgba(0, 229, 255, 0.25), 0 4px 24px rgba(0, 0, 0, 0.4);
-  animation: rec-glow-pulse 1.5s ease-in-out infinite;
+  gap: 10px;
+  padding: 10px 16px 10px 12px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, rgba(10, 8, 22, 0.95) 0%, rgba(15, 12, 30, 0.92) 100%);
+  border: 1px solid rgba(0, 229, 255, 0.35);
+  backdrop-filter: blur(16px);
+  box-shadow:
+    0 0 20px rgba(0, 229, 255, 0.2),
+    0 0 40px rgba(120, 90, 255, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04),
+    0 4px 16px rgba(0, 0, 0, 0.5);
+  animation: rec-card-glow 2s ease-in-out infinite;
 }
 
 .recording-overlay-icon {
-  width: 36px;
-  height: 36px;
+  width: 32px;
+  height: 32px;
   object-fit: contain;
   border-radius: 8px;
-  filter: drop-shadow(0 0 8px rgba(120, 90, 255, 0.5));
+  padding: 2px;
+  background: linear-gradient(135deg, rgba(120, 90, 255, 0.15), rgba(0, 229, 255, 0.1));
+  border: 1px solid rgba(120, 90, 255, 0.3);
+  filter: drop-shadow(0 0 6px rgba(120, 90, 255, 0.4));
 }
 
 .recording-overlay-text {
   display: flex;
   flex-direction: column;
-  gap: 1px;
+  gap: 2px;
+  min-width: 0;
 }
 
 .recording-overlay-title {
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 700;
   color: var(--red, #ff4757);
-  letter-spacing: 0.02em;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  line-height: 1;
+  text-shadow: 0 0 12px rgba(255, 71, 87, 0.5);
 }
 
 .recording-overlay-sub {
   font-size: 11px;
-  color: var(--muted, #888);
+  font-weight: 500;
+  color: var(--cyan, #00e5ff);
+  letter-spacing: 0.03em;
+  line-height: 1;
+  text-shadow: 0 0 8px rgba(0, 229, 255, 0.3);
 }
 
 .rec-rec-dot {
@@ -959,40 +972,52 @@ body {
   height: 10px;
   border-radius: 50%;
   background: var(--red, #ff4757);
-  animation: rec-dot-blink 1s ease-in-out infinite;
-  box-shadow: 0 0 8px rgba(255, 71, 87, 0.6);
+  flex-shrink: 0;
+  margin-left: 4px;
+  animation: rec-dot-pulse 1.2s ease-in-out infinite;
+  box-shadow: 0 0 6px rgba(255, 71, 87, 0.7), 0 0 14px rgba(255, 71, 87, 0.3);
 }
 
 @keyframes rec-slide-in {
   from {
     opacity: 0;
-    transform: translateY(-50%) translateX(60px) scale(0.9);
+    transform: translateY(-12px) scale(0.92);
   }
   to {
     opacity: 1;
-    transform: translateY(-50%) translateX(0) scale(1);
+    transform: translateY(0) scale(1);
   }
+}
+
+@keyframes rec-card-glow {
+  0%, 100% {
+    border-color: rgba(0, 229, 255, 0.35);
+    box-shadow: 0 0 20px rgba(0, 229, 255, 0.15), 0 0 40px rgba(120, 90, 255, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 4px 16px rgba(0, 0, 0, 0.5);
+  }
+  50% {
+    border-color: rgba(0, 229, 255, 0.55);
+    box-shadow: 0 0 28px rgba(0, 229, 255, 0.3), 0 0 50px rgba(120, 90, 255, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 4px 16px rgba(0, 0, 0, 0.5);
+  }
+}
+
+@keyframes rec-dot-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.35; transform: scale(0.85); }
+}
+
+.recording-overlay.exiting {
+  animation: rec-slide-out 0.5s cubic-bezier(0.55, 0, 1, 0.45) forwards;
 }
 
 @keyframes rec-slide-out {
   from {
     opacity: 1;
-    transform: translateY(-50%) translateX(0) scale(1);
+    transform: translateY(0) scale(1);
   }
   to {
     opacity: 0;
-    transform: translateY(-50%) translateX(60px) scale(0.9);
+    transform: translateY(-12px) scale(0.92);
   }
-}
-
-@keyframes rec-glow-pulse {
-  0%, 100% { box-shadow: 0 0 20px rgba(0, 229, 255, 0.2), 0 4px 24px rgba(0, 0, 0, 0.4); }
-  50% { box-shadow: 0 0 36px rgba(0, 229, 255, 0.4), 0 4px 24px rgba(0, 0, 0, 0.4); }
-}
-
-@keyframes rec-dot-blink {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.2; }
 }
 
 /* ── Rank Cards ── */
