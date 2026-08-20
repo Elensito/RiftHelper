@@ -29,6 +29,9 @@ assets/profileicons/
 assets/spells/
 assets/runetrees/
 
+*.exe
+*.msi
+
 desktop/node_modules/
 desktop/src-tauri/target/
 desktop/src-tauri/.updater/
