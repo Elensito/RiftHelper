@@ -87,19 +87,18 @@ body {
 .content {
   flex: 1;
   margin-left: 64px;
-  transition: margin-left 0.3s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 body.sidebar-expanded .content {
-  margin-left: 260px;
+  margin-left: 64px;
 }
 
 body.sidebar-expanded .profile-main {
-  margin-left: 260px;
+  margin-left: 0;
 }
 
 body.sidebar-expanded .topbar-icon-rail {
-  padding-left: 274px;
+  padding-left: 78px;
 }
 
 @media (max-width: 920px) {
@@ -906,7 +905,7 @@ body.sidebar-expanded .topbar-icon-rail {
 
 .profile-sidebar {
   position: fixed;
-  left: 0;
+  right: 22px;
   top: 140px;
   width: 260px;
   display: flex;
@@ -927,6 +926,7 @@ body.sidebar-expanded .topbar-icon-rail {
   width: 100%;
   min-width: 0;
   margin-left: 64px;
+  margin-right: 290px;
 }
 
 /* ── Recording Overlay ── */
@@ -4415,6 +4415,7 @@ button.p-name:hover {
 
   .profile-main {
     margin-left: 0;
+    margin-right: 0;
   }
 
   .profile-search {
