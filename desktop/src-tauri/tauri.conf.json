@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "RiftHelper",
-  "version": "1.5.11",
+  "version": "1.5.12",
   "identifier": "com.rifthelper.desktop",
   "build": {
     "frontendDist": "../dist"
@@ -18,10 +18,7 @@
         "url": "index.html",
         "resizable": true,
         "fullscreen": false,
-        "center": true,
-        "closeRequested": {
-          "action": "prevent"
-        }
+        "center": true
       }
     ],
     "trayIcon": {
