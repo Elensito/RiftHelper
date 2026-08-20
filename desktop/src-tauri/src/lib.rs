@@ -162,12 +162,36 @@ async fn get_riot_client_session() -> RiotSessionResult {
     }
 }
 
+#[tauri::command]
+async fn open_vod_folder(path: Option<String>) -> Result<(), String> {
+    let folder = path.unwrap_or_else(|| {
+        let local = std::env::var("USERPROFILE").unwrap_or_else(|_| ".".to_string());
+        std::path::Path::new(&local)
+            .join("Videos")
+            .join("RiftHelper")
+            .to_string_lossy()
+            .to_string()
+    });
+    let _ = std::fs::create_dir_all(&folder);
+    opener::open(&folder).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn select_vod_folder() -> Result<Option<String>, String> {
+    Ok(None)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_shell::init())
-        .invoke_handler(tauri::generate_handler![get_riot_client_session])
+        .plugin(tauri_plugin_dialog::init())
+        .invoke_handler(tauri::generate_handler![
+            get_riot_client_session,
+            open_vod_folder,
+            select_vod_folder
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
