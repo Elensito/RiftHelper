@@ -103,6 +103,10 @@ body {
   backdrop-filter: blur(6px);
 }
 
+.topbar-profile-active {
+  grid-template-columns: 276px 1fr auto;
+}
+
 .topbar-right {
   display: flex;
   align-items: center;
@@ -892,15 +896,6 @@ body {
   width: 100%;
   min-width: 0;
   margin-left: 276px;
-}
-
-.profile-search {
-  max-width: 600px;
-  margin: 0 auto 16px;
-}
-
-.profile-search .search {
-  width: 100%;
 }
 
 /* ── Recording Overlay ── */

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useCallback } from 'react'
 import SearchBar from './components/SearchBar.jsx'
 import ProfileHeader from './components/ProfileHeader.jsx'
 import RankCards from './components/RankCards.jsx'
@@ -22,6 +22,19 @@ import { isTauri, getRiotClientSession, notifyGameEnded } from './tauri.js'
 import { matchGroup, t } from './i18n.js'
 
 const PAGE_SIZE = 20
+
+function keyName(e) {
+  const parts = []
+  if (e.ctrlKey) parts.push('Ctrl')
+  if (e.altKey) parts.push('Alt')
+  if (e.shiftKey) parts.push('Shift')
+  if (e.metaKey) parts.push('Meta')
+  const k = e.key
+  if (!['Control', 'Alt', 'Shift', 'Meta'].includes(k)) {
+    parts.push(k.length === 1 ? k.toUpperCase() : k)
+  }
+  return parts.join('+')
+}
 
 export default function App() {
   const [profile, setProfile] = useState(null)
@@ -51,6 +64,8 @@ export default function App() {
   const [recordingExiting, setRecordingExiting] = useState(false)
   const recordingStartRef = useRef(null)
   const wasInGameRef = useRef(null)
+  const hotkeyPressedRef = useRef(new Set())
+  const hotkeyExpectedRef = useRef([])
   const sentinelRef = useRef(null)
   const latestMatchRef = useRef(null)
   const busyRef = useRef(false)
@@ -181,7 +196,7 @@ export default function App() {
         if (inGame && wasInGameRef.current !== true) {
           wasInGameRef.current = true
           const vodSettings = JSON.parse(localStorage.getItem('rh-vod-settings') || '{}')
-          if (vodSettings.autoRecord) {
+          if (vodSettings.autoRecord !== false) {
             recordingStartRef.current = Date.now()
             setIsRecording(true)
           }
@@ -219,6 +234,66 @@ export default function App() {
     const id = setInterval(poll, 15000)
     return () => clearInterval(id)
   }, [profile, tab, lang])
+
+  const toggleRecording = useCallback(() => {
+    if (isRecording) {
+      if (recordingStartRef.current) {
+        const duration = Math.floor((Date.now() - recordingStartRef.current) / 1000)
+        recordingStartRef.current = null
+        setRecordingExiting(true)
+        setTimeout(() => {
+          setIsRecording(false)
+          setRecordingExiting(false)
+        }, 600)
+        const vods = JSON.parse(localStorage.getItem('rh-vods') || '[]')
+        vods.unshift({
+          id: `vod-${Date.now()}`,
+          date: Date.now(),
+          duration,
+          champion: '',
+          championIcon: '',
+          result: '',
+          kda: '',
+          queue: '',
+          thumbnail: '',
+          events: [],
+        })
+        localStorage.setItem('rh-vods', JSON.stringify(vods))
+      }
+    } else {
+      recordingStartRef.current = Date.now()
+      setIsRecording(true)
+    }
+  }, [isRecording])
+
+  useEffect(() => {
+    const vodSettings = JSON.parse(localStorage.getItem('rh-vod-settings') || '{}')
+    const hotkey = vodSettings.recordHotkey || 'Ctrl+Shift+R'
+    hotkeyExpectedRef.current = hotkey.split('+')
+
+    const onDown = (e) => {
+      if (e.repeat) return
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable) return
+      const name = keyName(e)
+      hotkeyPressedRef.current.add(name)
+      const expected = hotkeyExpectedRef.current
+      if (expected.length > 0 && expected.length <= 3 && expected.every(k => hotkeyPressedRef.current.has(k))) {
+        e.preventDefault()
+        e.stopPropagation()
+        toggleRecording()
+      }
+    }
+    const onUp = (e) => {
+      hotkeyPressedRef.current.delete(keyName(e))
+    }
+
+    window.addEventListener('keydown', onDown)
+    window.addEventListener('keyup', onUp)
+    return () => {
+      window.removeEventListener('keydown', onDown)
+      window.removeEventListener('keyup', onUp)
+    }
+  }, [toggleRecording])
 
   useEffect(() => {
     if (!profile) return
@@ -330,7 +405,8 @@ export default function App() {
             <div className="topbar-left-spacer" />
             <div />
             <div className="topbar-right">
-              {profile && (
+              {isTauri() && <RiotClientWidget lang={lang} onOpen={openPlayer} />}
+              {!isTauri() && profile && (
                 <span className="topbar-summoner-pill">
                   <img
                     className="topbar-summoner-avatar"
@@ -340,7 +416,6 @@ export default function App() {
                   <span>{profile.summoner.name}#{profile.summoner.tag}</span>
                 </span>
               )}
-              {isTauri() && <RiotClientWidget lang={lang} onOpen={openPlayer} />}
             </div>
           </header>
           <main className="content">
@@ -353,9 +428,9 @@ export default function App() {
         </>
       ) : (
         <>
-          <header className="topbar">
+          <header className={`topbar ${profile ? 'topbar-profile-active' : ''}`}>
             <div className="topbar-left-spacer" />
-            {!profile && (
+            {profile && (
               <SearchBar
                 onSearch={(n, t) => load(n, t)}
                 loading={loading}
@@ -364,7 +439,7 @@ export default function App() {
                 onSearchTextChange={setSearchText}
               />
             )}
-            {profile && <div />}
+            {!profile && <div />}
             <div className="topbar-right">
               {profile && (
                 <button
@@ -455,15 +530,6 @@ export default function App() {
                 </aside>
 
                 <div className="profile-main">
-                  <div className="profile-search">
-                    <SearchBar
-                      onSearch={(n, t) => load(n, t)}
-                      loading={loading}
-                      lang={lang}
-                      searchText={searchText}
-                      onSearchTextChange={setSearchText}
-                    />
-                  </div>
                   <ProfileHeader
                     summoner={profile.summoner}
                     matches={profile.matches}

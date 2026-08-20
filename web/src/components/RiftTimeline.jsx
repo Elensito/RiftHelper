@@ -193,6 +193,9 @@ function HotkeyInput({ value, onChange, lang }) {
   const [capturing, setCapturing] = useState(false)
   const [display, setDisplay] = useState(value)
   const keysRef = useRef(new Set())
+  const MAX_KEYS = 3
+
+  const KEY_ORDER = { 'Ctrl': 0, 'Alt': 1, 'Shift': 2, 'Meta': 3 }
 
   const keyName = (e) => {
     const parts = []
@@ -207,6 +210,17 @@ function HotkeyInput({ value, onChange, lang }) {
     return parts.join('+')
   }
 
+  const sortedKeys = (set) => {
+    return [...set].sort((a, b) => {
+      const aIsMod = a in KEY_ORDER
+      const bIsMod = b in KEY_ORDER
+      if (aIsMod && bIsMod) return KEY_ORDER[a] - KEY_ORDER[b]
+      if (aIsMod) return -1
+      if (bIsMod) return 1
+      return 0
+    })
+  }
+
   const onKey = (e) => {
     e.preventDefault()
     e.stopPropagation()
@@ -216,13 +230,13 @@ function HotkeyInput({ value, onChange, lang }) {
     } else if (e.type === 'keyup') {
       keysRef.current.delete(name)
     }
-    setDisplay([...keysRef.current].join('+'))
+    setDisplay(sortedKeys(keysRef.current).join('+'))
   }
 
   const onBlur = () => {
     setCapturing(false)
     if (keysRef.current.size > 0) {
-      onChange([...keysRef.current].join('+'))
+      onChange(sortedKeys(keysRef.current).join('+'))
     }
     keysRef.current.clear()
     window.removeEventListener('keydown', onKey)
@@ -243,10 +257,20 @@ function HotkeyInput({ value, onChange, lang }) {
     }
   }, [])
 
+  const placeholder = lang === 'es'
+    ? `Máx ${MAX_KEYS} teclas...`
+    : lang === 'pt'
+    ? `Máx ${MAX_KEYS} teclas...`
+    : lang === 'fr'
+    ? `Max ${MAX_KEYS} touches...`
+    : lang === 'ko'
+    ? `최대 ${MAX_KEYS}개 키...`
+    : `Max ${MAX_KEYS} keys...`
+
   return (
     <div className={`rt-hotkey-wrap ${capturing ? 'capturing' : ''}`} onClick={startCapture} onBlur={onBlur} tabIndex={0}>
       {capturing ? (
-        <span className="rt-hotkey-placeholder">{lang === 'es' ? 'Pulsa las teclas...' : 'Press keys...'}</span>
+        <span className="rt-hotkey-placeholder">{placeholder}</span>
       ) : (
         <span className="rt-hotkey-value">{display || value}</span>
       )}
