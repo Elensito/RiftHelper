@@ -181,15 +181,17 @@ export default function App() {
         }
         if (inGame && wasInGameRef.current !== true) {
           wasInGameRef.current = true
-          const vodSettings = JSON.parse(localStorage.getItem('rh-vod-settings') || '{}')
-          recordingGameDataRef.current = {
-            game: data.game || null,
-            teams: data.teams || [],
-            queue: data.game?.queue || '',
-          }
-          if (vodSettings.autoRecord !== false) {
-            recordingStartRef.current = Date.now()
-            setIsRecording(true)
+          if (isTauri()) {
+            const vodSettings = JSON.parse(localStorage.getItem('rh-vod-settings') || '{}')
+            recordingGameDataRef.current = {
+              game: data.game || null,
+              teams: data.teams || [],
+              queue: data.game?.queue || '',
+            }
+            if (vodSettings.autoRecord !== false) {
+              recordingStartRef.current = Date.now()
+              setIsRecording(true)
+            }
           }
         }
         if (!inGame && wasInGameRef.current === true) {
@@ -405,7 +407,7 @@ export default function App() {
       <Tooltip />
       <NavSidebar
         view={view}
-        onNavigate={(v) => { setView(v); setActiveVod(null); setChampion(null) }}
+        onNavigate={(v) => { if (v !== 'rift-timeline' || isTauri()) setView(v); setActiveVod(null); setChampion(null) }}
         lang={lang}
         onSettingsOpen={() => setSettingsOpen(true)}
       />
@@ -640,7 +642,7 @@ export default function App() {
 
       <AICoach matches={profile ? profile.matches : []} lang={lang} puuid={profile ? profile.summoner.puuid : null} summonerName={profile ? profile.summoner.name : null} onLangChange={setLang} />
 
-      {(isRecording || recordingExiting) && (
+      {isTauri() && (isRecording || recordingExiting) && (
         <div className={`recording-overlay ${recordingExiting ? 'exiting' : ''}`}>
           <div className="recording-overlay-card">
             <img src="/ai_coach.png" alt="" className="recording-overlay-icon" draggable="false" />

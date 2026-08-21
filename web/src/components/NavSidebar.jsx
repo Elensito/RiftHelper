@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { t } from '../i18n.js'
+import { isTauri } from '../tauri.js'
 
 const ICONS = {
   profile: (
@@ -121,7 +122,7 @@ export default function NavSidebar({ view, onNavigate, lang, onSettingsOpen }) {
         </div>
 
         <div className="nav-items">
-          {NAV_ITEMS.map((item) => (
+          {NAV_ITEMS.filter(item => item.id !== 'rift-timeline' || isTauri()).map((item) => (
             <button
               key={item.id}
               className={`nav-item ${view === item.id ? 'active' : ''}`}
