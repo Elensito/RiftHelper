@@ -213,6 +213,11 @@ const EN = {
   aiCoachWebOnly: 'AI Coach is only available in the RiftHelper desktop app. Download it to unlock match analysis with real data.',
   riftTimelineWebOnly: 'Rift Timeline is only available in the RiftHelper desktop app. Download it to record and review your matches.',
   language: 'Language',
+  closeBehavior: 'Close behavior',
+  closeBehaviorTray: 'Minimize to tray',
+  closeBehaviorClose: 'Close completely',
+  autostart: 'Start with Windows',
+  autostartDesc: 'Launch RiftHelper when your PC starts',
 }
 
 const ES = {
@@ -429,6 +434,11 @@ const ES = {
   aiCoachWebOnly: 'El Coach IA solo está disponible en la app de escritorio de RiftHelper. Descárgalo para desbloquear análisis de partidas con datos reales.',
   riftTimelineWebOnly: 'Rift Timeline solo está disponible en la app de escritorio de RiftHelper. Descágrabalo para grabar y revisar tus partidas.',
   language: 'Idioma',
+  closeBehavior: 'Comportamiento al cerrar',
+  closeBehaviorTray: 'Minimizar a bandeja',
+  closeBehaviorClose: 'Cerrar completamente',
+  autostart: 'Iniciar con Windows',
+  autostartDesc: 'Abrir RiftHelper al encender el PC',
 }
 
 const PT = {
@@ -645,6 +655,11 @@ const PT = {
   aiCoachWebOnly: 'O Coach IA só está disponível no app de desktop do RiftHelper. Baixe para desbloquear análise de partidas com dados reais.',
   riftTimelineWebOnly: 'O Rift Timeline só está disponível no app de desktop do RiftHelper. Baixe para gravar e revisar suas partidas.',
   language: 'Idioma',
+  closeBehavior: 'Comportamento ao fechar',
+  closeBehaviorTray: 'Minimizar para bandeja',
+  closeBehaviorClose: 'Fechar completamente',
+  autostart: 'Iniciar com o Windows',
+  autostartDesc: 'Abrir RiftHelper ao ligar o PC',
 }
 
 const FR = {
@@ -861,6 +876,11 @@ const FR = {
   aiCoachWebOnly: 'Le Coach IA n\'est disponible que dans l\'application RiftHelper pour desktop. Téléchargez-le pour débloquer l\'analyse de parties avec des données réelles.',
   riftTimelineWebOnly: 'Rift Timeline n\'est disponible que dans l\'application RiftHelper pour desktop. Téléchargez-le pour enregistrer et revoir vos parties.',
   language: 'Langue',
+  closeBehavior: 'Comportement à la fermeture',
+  closeBehaviorTray: 'Réduire dans la barre des tâches',
+  closeBehaviorClose: 'Fermer complètement',
+  autostart: 'Démarrer avec Windows',
+  autostartDesc: 'Lancer RiftHelper au démarrage du PC',
 }
 
 const KO = {
@@ -1077,6 +1097,11 @@ const KO = {
   aiCoachWebOnly: 'AI 코치는 RiftHelper 데스크톱 앱에서만 사용할 수 있습니다. 실제 데이터로 전적 분석을 잠금 해제하려면 다운로드하세요.',
   riftTimelineWebOnly: 'Rift Timeline은 RiftHelper 데스크톱 앱에서만 사용할 수 있습니다. 전적을 녹화하고 다시 보려면 다운로드하세요.',
   language: '언어',
+  closeBehavior: '종료 동작',
+  closeBehaviorTray: '시스템 트레이로 최소화',
+  closeBehaviorClose: '완전히 종료',
+  autostart: 'Windows와 함께 시작',
+  autostartDesc: 'PC 켤 때 RiftHelper 자동 시작',
 }
 
 export const STR = { en: EN, es: ES, pt: PT, fr: FR, ko: KO }

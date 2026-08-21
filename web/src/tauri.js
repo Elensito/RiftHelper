@@ -75,6 +75,24 @@ export async function isAutostartEnabled() {
   }
 }
 
+export async function getCloseBehavior() {
+  if (!isTauri()) return 'tray'
+  const { invoke } = await import('@tauri-apps/api/core')
+  try {
+    return await invoke('get_close_behavior')
+  } catch {
+    return 'tray'
+  }
+}
+
+export async function setCloseBehavior(behavior) {
+  if (!isTauri()) return
+  const { invoke } = await import('@tauri-apps/api/core')
+  try {
+    await invoke('set_close_behavior', { behavior })
+  } catch {}
+}
+
 export async function notifyGameEnded(summoner, lang = 'en') {
   const { t } = await import('./i18n.js')
   const title = 'RiftHelper'

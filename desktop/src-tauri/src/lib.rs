@@ -1,5 +1,6 @@
 use serde::Serialize;
 use tauri::Manager;
+use std::sync::Mutex;
 
 #[derive(Serialize)]
 struct RiotSession {
@@ -217,6 +218,44 @@ async fn is_autostart_enabled(app: tauri::AppHandle) -> Result<bool, String> {
     Ok(autostart.is_enabled().unwrap_or(false))
 }
 
+fn config_path(app: &tauri::AppHandle) -> std::path::PathBuf {
+    let dir = app.path().app_config_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+    std::fs::create_dir_all(&dir).ok();
+    dir.join("config.json")
+}
+
+fn read_config(app: &tauri::AppHandle) -> serde_json::Value {
+    let path = config_path(app);
+    std::fs::read_to_string(&path)
+        .ok()
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or(serde_json::json!({}))
+}
+
+fn write_config(app: &tauri::AppHandle, cfg: &serde_json::Value) {
+    let path = config_path(app);
+    if let Ok(s) = serde_json::to_string_pretty(cfg) {
+        std::fs::write(path, s).ok();
+    }
+}
+
+#[tauri::command]
+async fn get_close_behavior(app: tauri::AppHandle) -> Result<String, String> {
+    let cfg = read_config(&app);
+    Ok(cfg.get("closeBehavior")
+        .and_then(|v| v.as_str())
+        .unwrap_or("tray")
+        .to_string())
+}
+
+#[tauri::command]
+async fn set_close_behavior(app: tauri::AppHandle, behavior: String) -> Result<(), String> {
+    let mut cfg = read_config(&app);
+    cfg["closeBehavior"] = serde_json::json!(behavior);
+    write_config(&app, &cfg);
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let mut builder = tauri::Builder::default()
@@ -234,6 +273,8 @@ pub fn run() {
             get_default_vod_folder,
             toggle_autostart,
             is_autostart_enabled,
+            get_close_behavior,
+            set_close_behavior,
         ]);
 
     builder = builder
@@ -273,8 +314,15 @@ pub fn run() {
         })
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                let _ = window.hide();
-                api.prevent_close();
+                let app = window.app_handle();
+                let cfg = read_config(app);
+                let behavior = cfg.get("closeBehavior")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("tray");
+                if behavior == "tray" {
+                    let _ = window.hide();
+                    api.prevent_close();
+                }
             }
         });
 
