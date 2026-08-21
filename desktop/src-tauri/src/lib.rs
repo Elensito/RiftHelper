@@ -356,7 +356,7 @@ async fn set_auto_record(app: tauri::AppHandle, enabled: bool) -> Result<(), Str
 #[tauri::command]
 async fn start_recording(app: tauri::AppHandle) -> Result<String, String> {
     {
-        let mut guard = FFMPEG_CHILD.lock().map_err(|e| e.to_string())?;
+        let guard = FFMPEG_CHILD.lock().map_err(|e| e.to_string())?;
         if guard.is_some() {
             return Err("Already recording".to_string());
         }
@@ -424,7 +424,7 @@ async fn stop_recording() -> Result<Option<String>, String> {
         }
         *guard = None;
     }
-    let guard = FFMPEG_OUTPUT.lock().map_err(|e| e.to_string())?;
+    let mut guard = FFMPEG_OUTPUT.lock().map_err(|e| e.to_string())?;
     Ok(guard.take())
 }
 
@@ -477,7 +477,6 @@ pub fn run() {
 
     builder = builder
         .setup(|app| {
-            use tauri::tray::TrayIconBuilder;
             use tauri::menu::{MenuBuilder, MenuItemBuilder};
 
             let window = app.get_webview_window("main").unwrap();
@@ -486,15 +485,7 @@ pub fn run() {
             let quit_item = MenuItemBuilder::with_id("quit", "Quit").build(app)?;
             let menu = MenuBuilder::new(app).item(&show_item).item(&quit_item).build()?;
 
-            let mut tray = app.tray_by_id("main-tray");
-            if tray.is_none() {
-                let new_tray = TrayIconBuilder::new()
-                    .id("main-tray")
-                    .icon(app.default_window_icon().unwrap().clone())
-                    .tooltip("RiftHelper")
-                    .build(app)?;
-                tray = app.tray_by_id("main-tray");
-            }
+            let tray = app.tray_by_id("main-tray");
 
             if let Some(tray) = tray {
                 tray.set_menu(Some(menu));
