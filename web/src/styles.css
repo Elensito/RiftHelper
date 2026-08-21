@@ -6646,8 +6646,8 @@ button.p-name:hover {
 .vod-topbar {
   display: flex;
   align-items: center;
-  gap: 16px;
-  padding: 12px 20px;
+  gap: 12px;
+  padding: 6px 16px;
   border-bottom: 1px solid var(--border);
   background: var(--bg-2);
   flex-shrink: 0;
@@ -6697,6 +6697,31 @@ button.p-name:hover {
   display: flex;
   flex-direction: column;
   min-width: 0;
+  position: relative;
+}
+
+.vod-show-teams-btn {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 10;
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.6);
+  color: var(--cyan);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(4px);
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.vod-show-teams-btn:hover {
+  background: rgba(0, 229, 255, 0.15);
+  border-color: var(--cyan);
 }
 
 .vod-video-container {
@@ -6822,18 +6847,18 @@ button.p-name:hover {
 .vod-controls {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 10px 16px;
+  gap: 8px;
+  padding: 6px 14px;
   background: var(--bg-2);
   border-top: 1px solid var(--border);
   flex-shrink: 0;
 }
 
 .vod-ctrl-btn {
-  width: 32px;
-  height: 32px;
+  width: 28px;
+  height: 28px;
   border: none;
-  border-radius: 8px;
+  border-radius: 6px;
   background: transparent;
   color: var(--text);
   cursor: pointer;
@@ -6987,13 +7012,49 @@ button.p-name:hover {
 /* ── Right sidebar ── */
 
 .vod-sidebar-right {
-  width: 280px;
+  width: 260px;
   border-left: 1px solid var(--border);
   background: var(--bg-2);
   flex-shrink: 0;
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  transition: width 0.25s ease;
+}
+
+.vod-sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.vod-sidebar-title {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.vod-sidebar-toggle {
+  width: 22px;
+  height: 22px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, color 0.15s;
+}
+
+.vod-sidebar-toggle:hover {
+  background: rgba(255, 61, 94, 0.15);
+  color: var(--red);
 }
 
 .vod-sidebar-scroll {

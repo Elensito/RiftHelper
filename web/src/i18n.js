@@ -218,6 +218,7 @@ const EN = {
   closeBehaviorClose: 'Close completely',
   autostart: 'Start with Windows',
   autostartDesc: 'Launch RiftHelper when your PC starts',
+  teams: 'Teams',
 }
 
 const ES = {
@@ -439,6 +440,7 @@ const ES = {
   closeBehaviorClose: 'Cerrar completamente',
   autostart: 'Iniciar con Windows',
   autostartDesc: 'Abrir RiftHelper al encender el PC',
+  teams: 'Equipos',
 }
 
 const PT = {
@@ -660,6 +662,7 @@ const PT = {
   closeBehaviorClose: 'Fechar completamente',
   autostart: 'Iniciar com o Windows',
   autostartDesc: 'Abrir RiftHelper ao ligar o PC',
+  teams: 'Equipes',
 }
 
 const FR = {
@@ -881,6 +884,7 @@ const FR = {
   closeBehaviorClose: 'Fermer complètement',
   autostart: 'Démarrer avec Windows',
   autostartDesc: 'Lancer RiftHelper au démarrage du PC',
+  teams: 'Équipes',
 }
 
 const KO = {
@@ -1102,6 +1106,7 @@ const KO = {
   closeBehaviorClose: '완전히 종료',
   autostart: 'Windows와 함께 시작',
   autostartDesc: 'PC 켤 때 RiftHelper 자동 시작',
+  teams: '팀',
 }
 
 export const STR = { en: EN, es: ES, pt: PT, fr: FR, ko: KO }

@@ -23,6 +23,25 @@ import { matchGroup, t } from './i18n.js'
 
 const PAGE_SIZE = 20
 
+const QUEUE_NAMES = {
+  0: 'Custom',
+  2: '5v5 Blind Pick',
+  4: '5v5 Draft Pick',
+  420: '5v5 Draft Pick',
+  430: '5v5 Blind Pick',
+  440: '5v5 Ranked Solo',
+  450: 'ARAM',
+  900: 'URF',
+  1020: 'One for All',
+  1300: 'Nexus Blitz',
+  1700: 'Arena',
+}
+
+function queueName(id) {
+  const n = QUEUE_NAMES[Number(id)]
+  return n || (id ? `Queue ${id}` : '')
+}
+
 export default function App() {
   const [profile, setProfile] = useState(null)
   const [loading, setLoading] = useState(false)
@@ -291,7 +310,7 @@ export default function App() {
               championIcon,
               result,
               kda,
-              queue: String(queue),
+              queue: queueName(queue),
               matchId: latestMatchId,
               thumbnail: '',
               events: [],

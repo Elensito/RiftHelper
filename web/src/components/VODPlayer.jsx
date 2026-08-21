@@ -228,6 +228,16 @@ export default function VODPlayer({ vod, lang, onBack }) {
 
       <div className="vod-main">
         <div className="vod-video-area">
+          {!showTeams && (
+            <button className="vod-show-teams-btn" onClick={() => setShowTeams(true)} title={t(lang, 'toggleTeams')}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                <circle cx="9" cy="7" r="4" />
+                <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+                <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+              </svg>
+            </button>
+          )}
           <div className="vod-video-container" onClick={togglePlay}>
             {videoUrl ? (
               <video ref={videoRef} className="vod-video" src={videoUrl} preload="metadata" />
@@ -377,6 +387,15 @@ export default function VODPlayer({ vod, lang, onBack }) {
 
         {showTeams && (
           <div className="vod-sidebar-right">
+            <div className="vod-sidebar-header">
+              <span className="vod-sidebar-title">{t(lang, 'teams')}</span>
+              <button className="vod-sidebar-toggle" onClick={() => setShowTeams(false)} title={t(lang, 'toggleTeams')}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="18" y1="6" x2="6" y2="18" />
+                  <line x1="6" y1="6" x2="18" y2="18" />
+                </svg>
+              </button>
+            </div>
             <div className="vod-sidebar-scroll">
               {team1.length > 0 && (
                 <PlayerTeamPanel team={team1} teamLabel={t(lang, 'blueTeam')} isWinner={vod.winner === 1} lang={lang} />
