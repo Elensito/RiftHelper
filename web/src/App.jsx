@@ -20,6 +20,7 @@ import AppSettings from './components/AppSettings.jsx'
 import { fetchSummoner, fetchLatestMatch, fetchLiveGame, fetchMastery, fetchChampions, fetchChampion } from './api.js'
 import { isTauri, getRiotClientSession, notifyGameEnded } from './tauri.js'
 import { matchGroup, t } from './i18n.js'
+import { startRecording, stopRecording, saveRecordingBlob } from './video-recorder.js'
 
 const PAGE_SIZE = 20
 
@@ -70,6 +71,7 @@ export default function App() {
   const [recordingExiting, setRecordingExiting] = useState(false)
   const recordingStartRef = useRef(null)
   const recordingGameDataRef = useRef(null)
+  const recordingActiveRef = useRef(false)
   const wasInGameRef = useRef(null)
   const sentinelRef = useRef(null)
   const latestMatchRef = useRef(null)
@@ -210,6 +212,10 @@ export default function App() {
             if (vodSettings.autoRecord !== false) {
               recordingStartRef.current = Date.now()
               setIsRecording(true)
+              recordingActiveRef.current = true
+              startRecording().then(ok => {
+                if (!ok) recordingActiveRef.current = false
+              })
             }
           }
         }
@@ -223,6 +229,11 @@ export default function App() {
               setIsRecording(false)
               setRecordingExiting(false)
             }, 600)
+            let videoBlob = null
+            if (recordingActiveRef.current) {
+              try { videoBlob = await stopRecording() } catch {}
+              recordingActiveRef.current = false
+            }
             const gd = recordingGameDataRef.current || {}
             const playerTeam = (gd.teams || []).find(t =>
               (t.players || []).some(p => p.is_player)
@@ -302,8 +313,9 @@ export default function App() {
               })) || []
             }
             const vods = JSON.parse(localStorage.getItem('rh-vods') || '[]')
+            const vodId = `vod-${Date.now()}`
             vods.unshift({
-              id: `vod-${Date.now()}`,
+              id: vodId,
               date: Date.now(),
               duration: matchDuration || duration,
               champion,
@@ -317,8 +329,12 @@ export default function App() {
               team1,
               team2,
               winner,
+              hasVideo: !!videoBlob,
             })
             localStorage.setItem('rh-vods', JSON.stringify(vods))
+            if (videoBlob) {
+              try { await saveRecordingBlob(vodId, videoBlob) } catch {}
+            }
             window.dispatchEvent(new Event('rh-vods-changed'))
             recordingGameDataRef.current = null
           }
