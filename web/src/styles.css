@@ -6689,6 +6689,29 @@ button.p-name:hover {
   background: var(--bg);
 }
 
+.vod-player-view:fullscreen {
+  background: #000;
+}
+
+.vod-player-view:fullscreen .vod-topbar {
+  background: #000;
+  border-bottom-color: #333;
+}
+
+.vod-player-view:fullscreen .vod-controls {
+  background: #000;
+  border-top-color: #333;
+}
+
+.vod-player-view:fullscreen .video-container video {
+  max-height: calc(100vh - 100px);
+}
+
+.vod-player-view:fullscreen .vod-sidebar {
+  background: #111;
+  border-left-color: #333;
+}
+
 .vod-topbar {
   display: flex;
   align-items: center;

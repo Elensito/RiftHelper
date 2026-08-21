@@ -279,17 +279,33 @@ pub fn run() {
 
     builder = builder
         .setup(|app| {
-            let window = app.get_webview_window("main").unwrap();
-            let _app_handle = app.handle().clone();
+            use tauri::tray::TrayIconBuilder;
+            use tauri::menu::{MenuBuilder, MenuItemBuilder};
 
-            let tray_icon = app.tray_by_id("main-tray");
-            if let Some(tray) = tray_icon {
-                let _window = window.clone();
+            let window = app.get_webview_window("main").unwrap();
+
+            let show_item = MenuItemBuilder::with_id("show", "Show RiftHelper").build(app)?;
+            let quit_item = MenuItemBuilder::with_id("quit", "Quit").build(app)?;
+            let menu = MenuBuilder::new(app).item(&show_item).item(&quit_item).build()?;
+
+            let mut tray = app.tray_by_id("main-tray");
+            if tray.is_none() {
+                let new_tray = TrayIconBuilder::new("main-tray")
+                    .icon(app.default_window_icon().unwrap().clone())
+                    .tooltip("RiftHelper")
+                    .build(app)?;
+                tray = app.tray_by_id("main-tray");
+            }
+
+            if let Some(tray) = tray {
+                tray.set_menu(Some(menu));
+
+                let window_show = window.clone();
                 tray.on_menu_event(move |_app, event| {
-                    match event.id.as_ref() {
+                    match event.id().as_ref() {
                         "show" => {
-                            let _ = _window.show();
-                            let _ = _window.set_focus();
+                            let _ = window_show.show();
+                            let _ = window_show.set_focus();
                         }
                         "quit" => {
                             std::process::exit(0);
@@ -297,7 +313,8 @@ pub fn run() {
                         _ => {}
                     }
                 });
-                let window_clone = window.clone();
+
+                let window_click = window.clone();
                 tray.on_tray_icon_event(move |_tray, event| {
                     if let tauri::tray::TrayIconEvent::Click {
                         button: tauri::tray::MouseButton::Left,
@@ -305,8 +322,8 @@ pub fn run() {
                         ..
                     } = event
                     {
-                        let _ = window_clone.show();
-                        let _ = window_clone.set_focus();
+                        let _ = window_click.show();
+                        let _ = window_click.set_focus();
                     }
                 });
             }

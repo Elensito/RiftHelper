@@ -179,6 +179,16 @@ export default function VODPlayer({ vod, lang, onBack }) {
     }
   }
 
+  const toggleFullscreen = () => {
+    const el = document.querySelector('.vod-player-view')
+    if (!el) return
+    if (document.fullscreenElement) {
+      document.exitFullscreen()
+    } else {
+      el.requestFullscreen().catch(() => {})
+    }
+  }
+
   const speeds = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2]
 
   const eventTypes = ['all', 'kill', 'death', 'tower', 'dragon', 'baron', 'inhibitor']
@@ -215,12 +225,9 @@ export default function VODPlayer({ vod, lang, onBack }) {
               <line x1="12" y1="15" x2="12" y2="3" />
             </svg>
           </button>
-          <button className={`rt-btn rt-btn-ghost rt-btn-sm ${showTeams ? 'active' : ''}`} onClick={() => setShowTeams(!showTeams)} title={t(lang, 'toggleTeams')}>
+          <button className="rt-btn rt-btn-ghost rt-btn-sm" onClick={toggleFullscreen} title={t(lang, 'fullscreen')}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-              <circle cx="9" cy="7" r="4" />
-              <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
-              <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+              <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3" />
             </svg>
           </button>
         </div>
