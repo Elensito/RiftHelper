@@ -93,6 +93,84 @@ export async function setCloseBehavior(behavior) {
   } catch {}
 }
 
+export async function getFfmpegPath() {
+  if (!isTauri()) return ''
+  const { invoke } = await import('@tauri-apps/api/core')
+  try { return await invoke('get_ffmpeg_path') } catch { return '' }
+}
+
+export async function setFfmpegPath(path) {
+  if (!isTauri()) return
+  const { invoke } = await import('@tauri-apps/api/core')
+  try { await invoke('set_ffmpeg_path', { path }) } catch {}
+}
+
+export async function getRecordingsFolder() {
+  if (!isTauri()) return ''
+  const { invoke } = await import('@tauri-apps/api/core')
+  try { return await invoke('get_recordings_folder') } catch { return '' }
+}
+
+export async function setRecordingsFolder(folder) {
+  if (!isTauri()) return
+  const { invoke } = await import('@tauri-apps/api/core')
+  try { await invoke('set_recordings_folder', { folder }) } catch {}
+}
+
+export async function selectRecordingsFolder() {
+  if (!isTauri()) return null
+  const { invoke } = await import('@tauri-apps/api/core')
+  try { return await invoke('select_recordings_folder') } catch { return null }
+}
+
+export async function selectFfmpegFile() {
+  if (!isTauri()) return null
+  const { invoke } = await import('@tauri-apps/api/core')
+  try { return await invoke('select_ffmpeg_file') } catch { return null }
+}
+
+export async function testFfmpeg(path) {
+  if (!isTauri()) return false
+  const { invoke } = await import('@tauri-apps/api/core')
+  try { return await invoke('test_ffmpeg', { path }) } catch { return false }
+}
+
+export async function getAutoRecord() {
+  if (!isTauri()) return false
+  const { invoke } = await import('@tauri-apps/api/core')
+  try { return await invoke('get_auto_record') } catch { return false }
+}
+
+export async function setAutoRecord(enabled) {
+  if (!isTauri()) return
+  const { invoke } = await import('@tauri-apps/api/core')
+  try { await invoke('set_auto_record', { enabled }) } catch {}
+}
+
+export async function startRecordingTauri() {
+  if (!isTauri()) return null
+  const { invoke } = await import('@tauri-apps/api/core')
+  try { return await invoke('start_recording') } catch { return null }
+}
+
+export async function stopRecordingTauri() {
+  if (!isTauri()) return null
+  const { invoke } = await import('@tauri-apps/api/core')
+  try { return await invoke('stop_recording') } catch { return null }
+}
+
+export async function isRecordingTauri() {
+  if (!isTauri()) return false
+  const { invoke } = await import('@tauri-apps/api/core')
+  try { return await invoke('is_recording') } catch { return false }
+}
+
+export async function openVodFolder(path) {
+  if (!isTauri()) return
+  const { invoke } = await import('@tauri-apps/api/core')
+  try { await invoke('open_vod_folder', { path }) } catch {}
+}
+
 export async function notifyGameEnded(summoner, lang = 'en') {
   const { t } = await import('./i18n.js')
   const title = 'RiftHelper'

@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { t } from '../i18n.js'
 import Img from './Img.jsx'
-import { getRecordingBlob, createVideoUrl } from '../video-recorder.js'
+import { isTauri } from '../tauri.js'
 
 const EVENT_COLORS = {
   kill: 'var(--cyan)',
@@ -66,30 +66,21 @@ export default function VODPlayer({ vod, lang, onBack }) {
   const [clipEnd, setClipEnd] = useState(null)
   const [showTeams, setShowTeams] = useState(true)
   const [eventFilter, setEventFilter] = useState('all')
-  const [videoUrl, setVideoUrl] = useState(vod.path || null)
-  const videoUrlRef = useRef(null)
+  const [videoUrl, setVideoUrl] = useState(null)
 
   const events = vod.events || []
   const team1 = vod.team1 || []
   const team2 = vod.team2 || []
 
   useEffect(() => {
-    if (videoUrl || !vod.hasVideo || !vod.id) return
-    let url = null
-    getRecordingBlob(vod.id).then(blob => {
-      if (blob) {
-        url = URL.createObjectURL(blob)
-        videoUrlRef.current = url
+    if (videoUrl || !vod.hasVideo) return
+    if (vod.videoPath && isTauri()) {
+      import('@tauri-apps/api/core').then(({ convertFileSrc }) => {
+        const url = convertFileSrc(vod.videoPath)
         setVideoUrl(url)
-      }
-    }).catch(() => {})
-    return () => {
-      if (videoUrlRef.current) {
-        URL.revokeObjectURL(videoUrlRef.current)
-        videoUrlRef.current = null
-      }
+      }).catch(() => {})
     }
-  }, [vod.id, vod.hasVideo])
+  }, [vod.id, vod.hasVideo, vod.videoPath])
 
   const filteredEvents = eventFilter === 'all'
     ? events

@@ -1,6 +1,10 @@
 use serde::Serialize;
 use tauri::Manager;
 use std::sync::Mutex;
+use std::process::{Command, Child};
+
+static FFMPEG_CHILD: Mutex<Option<Child>> = Mutex::new(None);
+static FFMPEG_OUTPUT: Mutex<Option<String>> = Mutex::new(None);
 
 #[derive(Serialize)]
 struct RiotSession {
@@ -256,6 +260,188 @@ async fn set_close_behavior(app: tauri::AppHandle, behavior: String) -> Result<(
     Ok(())
 }
 
+#[tauri::command]
+async fn get_ffmpeg_path(app: tauri::AppHandle) -> Result<String, String> {
+    let cfg = read_config(&app);
+    Ok(cfg.get("ffmpegPath")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string())
+}
+
+#[tauri::command]
+async fn set_ffmpeg_path(app: tauri::AppHandle, path: String) -> Result<(), String> {
+    let mut cfg = read_config(&app);
+    cfg["ffmpegPath"] = serde_json::json!(path);
+    write_config(&app, &cfg);
+    Ok(())
+}
+
+#[tauri::command]
+async fn get_recordings_folder(app: tauri::AppHandle) -> Result<String, String> {
+    let cfg = read_config(&app);
+    if let Some(folder) = cfg.get("recordingsFolder").and_then(|v| v.as_str()) {
+        return Ok(folder.to_string());
+    }
+    Ok(default_recordings_folder())
+}
+
+fn default_recordings_folder() -> String {
+    let local = std::env::var("USERPROFILE").unwrap_or_else(|_| ".".to_string());
+    std::path::Path::new(&local)
+        .join("Videos")
+        .join("RiftHelper")
+        .to_string_lossy()
+        .to_string()
+}
+
+#[tauri::command]
+async fn set_recordings_folder(app: tauri::AppHandle, folder: String) -> Result<(), String> {
+    let mut cfg = read_config(&app);
+    cfg["recordingsFolder"] = serde_json::json!(folder);
+    write_config(&app, &cfg);
+    Ok(())
+}
+
+#[tauri::command]
+async fn select_recordings_folder(app: tauri::AppHandle) -> Result<Option<String>, String> {
+    use tauri_plugin_dialog::DialogExt;
+    let result = app
+        .dialog()
+        .file()
+        .set_title("Seleccionar carpeta de grabaciones")
+        .blocking_pick_folder();
+    Ok(result.and_then(|p| p.into_path().ok()).map(|p| p.display().to_string()))
+}
+
+#[tauri::command]
+async fn select_ffmpeg_file(app: tauri::AppHandle) -> Result<Option<String>, String> {
+    use tauri_plugin_dialog::DialogExt;
+    let result = app
+        .dialog()
+        .file()
+        .set_title("Seleccionar ffmpeg.exe")
+        .add_filter("FFmpeg", &["exe"])
+        .blocking_pick_file();
+    Ok(result.and_then(|p| p.into_path().ok()).map(|p| p.display().to_string()))
+}
+
+#[tauri::command]
+async fn test_ffmpeg(path: String) -> Result<bool, String> {
+    let output = Command::new(&path)
+        .arg("-version")
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .output()
+        .map_err(|e| e.to_string())?;
+    Ok(output.status.success())
+}
+
+#[tauri::command]
+async fn get_auto_record(app: tauri::AppHandle) -> Result<bool, String> {
+    let cfg = read_config(&app);
+    Ok(cfg.get("autoRecord")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false))
+}
+
+#[tauri::command]
+async fn set_auto_record(app: tauri::AppHandle, enabled: bool) -> Result<(), String> {
+    let mut cfg = read_config(&app);
+    cfg["autoRecord"] = serde_json::json!(enabled);
+    write_config(&app, &cfg);
+    Ok(())
+}
+
+#[tauri::command]
+async fn start_recording(app: tauri::AppHandle) -> Result<String, String> {
+    {
+        let mut guard = FFMPEG_CHILD.lock().map_err(|e| e.to_string())?;
+        if guard.is_some() {
+            return Err("Already recording".to_string());
+        }
+    }
+
+    let cfg = read_config(&app);
+    let ffmpeg_path = cfg.get("ffmpegPath")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    if ffmpeg_path.is_empty() {
+        return Err("FFmpeg path not configured".to_string());
+    }
+
+    let recordings_folder = cfg.get("recordingsFolder")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string())
+        .unwrap_or_else(default_recordings_folder);
+    std::fs::create_dir_all(&recordings_folder).map_err(|e| e.to_string())?;
+
+    let ts = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    let filename = format!("recording-{}.mp4", ts);
+    let output_path = std::path::Path::new(&recordings_folder).join(&filename);
+    let output_str = output_path.to_string_lossy().to_string();
+
+    let child = Command::new(&ffmpeg_path)
+        .args([
+            "-f", "gdigrab",
+            "-framerate", "30",
+            "-i", "desktop",
+            "-c:v", "libx264",
+            "-preset", "ultrafast",
+            "-pix_fmt", "yuv420p",
+            "-movflags", "+faststart",
+            "-y",
+            &output_str,
+        ])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .map_err(|e| e.to_string())?;
+
+    {
+        let mut guard = FFMPEG_CHILD.lock().map_err(|e| e.to_string())?;
+        *guard = Some(child);
+    }
+    {
+        let mut guard = FFMPEG_OUTPUT.lock().map_err(|e| e.to_string())?;
+        *guard = Some(output_str.clone());
+    }
+
+    Ok(output_str)
+}
+
+#[tauri::command]
+async fn stop_recording() -> Result<Option<String>, String> {
+    {
+        let mut guard = FFMPEG_CHILD.lock().map_err(|e| e.to_string())?;
+        if let Some(ref mut child) = *guard {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+        *guard = None;
+    }
+    let mut guard = FFMPEG_OUTPUT.lock().map_err(|e| e.to_string())?;
+    Ok(guard.take())
+}
+
+#[tauri::command]
+async fn is_recording() -> Result<bool, String> {
+    let mut guard = FFMPEG_CHILD.lock().map_err(|e| e.to_string())?;
+    if let Some(ref mut child) = *guard {
+        match child.try_wait() {
+            Ok(Some(_)) => { *guard = None; Ok(false) }
+            Ok(None) => Ok(true),
+            Err(_) => { *guard = None; Ok(false) }
+        }
+    } else {
+        Ok(false)
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let mut builder = tauri::Builder::default()
@@ -275,6 +461,18 @@ pub fn run() {
             is_autostart_enabled,
             get_close_behavior,
             set_close_behavior,
+            get_ffmpeg_path,
+            set_ffmpeg_path,
+            get_recordings_folder,
+            set_recordings_folder,
+            select_recordings_folder,
+            select_ffmpeg_file,
+            test_ffmpeg,
+            get_auto_record,
+            set_auto_record,
+            start_recording,
+            stop_recording,
+            is_recording,
         ]);
 
     builder = builder
@@ -308,6 +506,13 @@ pub fn run() {
                             let _ = window_show.set_focus();
                         }
                         "quit" => {
+                            if let Ok(mut guard) = FFMPEG_CHILD.lock() {
+                                if let Some(ref mut child) = *guard {
+                                    let _ = child.kill();
+                                    let _ = child.wait();
+                                }
+                                *guard = None;
+                            }
                             std::process::exit(0);
                         }
                         _ => {}
@@ -339,6 +544,14 @@ pub fn run() {
                 if behavior == "tray" {
                     let _ = window.hide();
                     api.prevent_close();
+                } else {
+                    if let Ok(mut guard) = FFMPEG_CHILD.lock() {
+                        if let Some(ref mut child) = *guard {
+                            let _ = child.kill();
+                            let _ = child.wait();
+                        }
+                        *guard = None;
+                    }
                 }
             }
         });

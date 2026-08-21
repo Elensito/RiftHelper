@@ -18,9 +18,8 @@ import RiftTimeline from './components/RiftTimeline.jsx'
 import VODPlayer from './components/VODPlayer.jsx'
 import AppSettings from './components/AppSettings.jsx'
 import { fetchSummoner, fetchLatestMatch, fetchLiveGame, fetchMastery, fetchChampions, fetchChampion } from './api.js'
-import { isTauri, getRiotClientSession, notifyGameEnded } from './tauri.js'
+import { isTauri, getRiotClientSession, notifyGameEnded, startRecordingTauri, stopRecordingTauri, getAutoRecord } from './tauri.js'
 import { matchGroup, t } from './i18n.js'
-import { startRecording, stopRecording, saveRecordingBlob } from './video-recorder.js'
 
 const PAGE_SIZE = 20
 
@@ -72,6 +71,7 @@ export default function App() {
   const recordingStartRef = useRef(null)
   const recordingGameDataRef = useRef(null)
   const recordingActiveRef = useRef(false)
+  const autoRecordRef = useRef(false)
   const wasInGameRef = useRef(null)
   const sentinelRef = useRef(null)
   const latestMatchRef = useRef(null)
@@ -203,19 +203,18 @@ export default function App() {
         if (inGame && wasInGameRef.current !== true) {
           wasInGameRef.current = true
           if (isTauri()) {
-            const vodSettings = JSON.parse(localStorage.getItem('rh-vod-settings') || '{}')
             recordingGameDataRef.current = {
               game: data.game || null,
               teams: data.teams || [],
               queue: data.game?.queue || '',
             }
-            if (vodSettings.autoRecord !== false) {
+            if (autoRecordRef.current) {
               recordingStartRef.current = Date.now()
               setIsRecording(true)
               recordingActiveRef.current = true
-              startRecording().then(ok => {
-                if (!ok) recordingActiveRef.current = false
-              })
+              startRecordingTauri().then(path => {
+                if (!path) recordingActiveRef.current = false
+              }).catch(() => { recordingActiveRef.current = false })
             }
           }
         }
@@ -229,9 +228,9 @@ export default function App() {
               setIsRecording(false)
               setRecordingExiting(false)
             }, 600)
-            let videoBlob = null
+            let videoPath = null
             if (recordingActiveRef.current) {
-              try { videoBlob = await stopRecording() } catch {}
+              try { videoPath = await stopRecordingTauri() } catch {}
               recordingActiveRef.current = false
             }
             const gd = recordingGameDataRef.current || {}
@@ -329,12 +328,10 @@ export default function App() {
               team1,
               team2,
               winner,
-              hasVideo: !!videoBlob,
+              hasVideo: !!videoPath,
+              videoPath: videoPath || '',
             })
             localStorage.setItem('rh-vods', JSON.stringify(vods))
-            if (videoBlob) {
-              try { await saveRecordingBlob(vodId, videoBlob) } catch {}
-            }
             window.dispatchEvent(new Event('rh-vods-changed'))
             recordingGameDataRef.current = null
           }
@@ -436,6 +433,12 @@ export default function App() {
       }).catch(() => {})
     }
   }, [])
+
+  useEffect(() => {
+    if (isTauri()) {
+      getAutoRecord().then(v => { autoRecordRef.current = v })
+    }
+  }, [settingsOpen])
 
   return (
     <div className="app">
