@@ -424,7 +424,7 @@ async fn stop_recording() -> Result<Option<String>, String> {
         }
         *guard = None;
     }
-    let mut guard = FFMPEG_OUTPUT.lock().map_err(|e| e.to_string())?;
+    let guard = FFMPEG_OUTPUT.lock().map_err(|e| e.to_string())?;
     Ok(guard.take())
 }
 
@@ -488,7 +488,8 @@ pub fn run() {
 
             let mut tray = app.tray_by_id("main-tray");
             if tray.is_none() {
-                let new_tray = TrayIconBuilder::new("main-tray")
+                let new_tray = TrayIconBuilder::new()
+                    .id("main-tray")
                     .icon(app.default_window_icon().unwrap().clone())
                     .tooltip("RiftHelper")
                     .build(app)?;
