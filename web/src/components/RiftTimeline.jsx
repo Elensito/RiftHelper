@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { t } from '../i18n.js'
 import { isTauri } from '../tauri.js'
+import { deleteRecordingBlob } from '../video-recorder.js'
 
 const VOD_STORAGE_KEY = 'rh-vods'
 const VOD_SETTINGS_KEY = 'rh-vod-settings'
@@ -74,6 +75,7 @@ export default function RiftTimeline({ lang, onOpenVod, profile }) {
     setVods(filtered)
     saveVods(filtered)
     window.dispatchEvent(new Event('rh-vods-changed'))
+    deleteRecordingBlob(id).catch(() => {})
   }, [vods])
 
   const openFolder = async () => {
@@ -163,6 +165,7 @@ export default function RiftTimeline({ lang, onOpenVod, profile }) {
                   </div>
                 )}
                 <span className="rt-card-duration">{formatDuration(vod.duration)}</span>
+                {vod.hasVideo && <span className="rt-card-badge video" title="Video recorded">▶</span>}
                 {vod.result === 'win' && <span className="rt-card-badge win">W</span>}
                 {vod.result === 'loss' && <span className="rt-card-badge loss">L</span>}
               </div>

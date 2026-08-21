@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { t } from '../i18n.js'
 import Img from './Img.jsx'
+import { getRecordingBlob, createVideoUrl } from '../video-recorder.js'
 
 const EVENT_COLORS = {
   kill: 'var(--cyan)',
@@ -65,10 +66,30 @@ export default function VODPlayer({ vod, lang, onBack }) {
   const [clipEnd, setClipEnd] = useState(null)
   const [showTeams, setShowTeams] = useState(true)
   const [eventFilter, setEventFilter] = useState('all')
+  const [videoUrl, setVideoUrl] = useState(vod.path || null)
+  const videoUrlRef = useRef(null)
 
   const events = vod.events || []
   const team1 = vod.team1 || []
   const team2 = vod.team2 || []
+
+  useEffect(() => {
+    if (videoUrl || !vod.hasVideo || !vod.id) return
+    let url = null
+    getRecordingBlob(vod.id).then(blob => {
+      if (blob) {
+        url = URL.createObjectURL(blob)
+        videoUrlRef.current = url
+        setVideoUrl(url)
+      }
+    }).catch(() => {})
+    return () => {
+      if (videoUrlRef.current) {
+        URL.revokeObjectURL(videoUrlRef.current)
+        videoUrlRef.current = null
+      }
+    }
+  }, [vod.id, vod.hasVideo])
 
   const filteredEvents = eventFilter === 'all'
     ? events
@@ -150,10 +171,10 @@ export default function VODPlayer({ vod, lang, onBack }) {
   }
 
   const downloadVod = () => {
-    if (vod.path) {
+    if (videoUrl) {
       const a = document.createElement('a')
-      a.href = vod.path
-      a.download = vod.filename || 'vod.mp4'
+      a.href = videoUrl
+      a.download = vod.filename || 'vod.webm'
       a.click()
     }
   }
@@ -208,8 +229,8 @@ export default function VODPlayer({ vod, lang, onBack }) {
       <div className="vod-main">
         <div className="vod-video-area">
           <div className="vod-video-container" onClick={togglePlay}>
-            {vod.path ? (
-              <video ref={videoRef} className="vod-video" src={vod.path} preload="metadata" />
+            {videoUrl ? (
+              <video ref={videoRef} className="vod-video" src={videoUrl} preload="metadata" />
             ) : (
               <div className="vod-video-placeholder vod-match-summary">
                 {vod.championIcon && (
@@ -230,7 +251,7 @@ export default function VODPlayer({ vod, lang, onBack }) {
                 <span className="vod-summary-note">{t(lang, 'videoRecordingUnavailable')}</span>
               </div>
             )}
-            {!playing && vod.path && (
+            {!playing && videoUrl && (
               <div className="vod-play-overlay">
                 <svg width="48" height="48" viewBox="0 0 24 24" fill="white" opacity="0.8">
                   <polygon points="5 3 19 12 5 21 5 3" />
