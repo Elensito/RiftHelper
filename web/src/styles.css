@@ -6276,6 +6276,52 @@ button.p-name:hover {
   color: var(--red);
 }
 
+.rt-context-menu {
+  position: fixed;
+  z-index: 3000;
+  min-width: 160px;
+  padding: 6px 0;
+  border-radius: 10px;
+  background: var(--card-solid, #1a1a2e);
+  border: 1px solid var(--border);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(12px);
+}
+
+.rt-context-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 14px;
+  border: none;
+  background: none;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.12s;
+}
+
+.rt-context-item:hover {
+  background: rgba(0, 229, 255, 0.1);
+}
+
+.rt-context-danger {
+  color: var(--red);
+}
+
+.rt-context-danger:hover {
+  background: rgba(255, 61, 94, 0.15);
+}
+
+.rt-context-sep {
+  height: 1px;
+  margin: 4px 10px;
+  background: var(--border);
+}
+
 /* ── Settings overlay ── */
 
 .rt-settings-overlay {

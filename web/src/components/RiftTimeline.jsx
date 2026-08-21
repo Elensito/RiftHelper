@@ -44,6 +44,7 @@ export { loadVods, saveVods, loadSettings, saveSettings, VOD_STORAGE_KEY, VOD_SE
 export default function RiftTimeline({ lang, onOpenVod, profile }) {
   const [vods, setVods] = useState(loadVods)
   const [showSettings, setShowSettings] = useState(false)
+  const [contextMenu, setContextMenu] = useState(null)
   const [settings, setSettings] = useState(() => {
     const s = loadSettings()
     return {
@@ -77,6 +78,22 @@ export default function RiftTimeline({ lang, onOpenVod, profile }) {
     window.dispatchEvent(new Event('rh-vods-changed'))
     deleteRecordingBlob(id).catch(() => {})
   }, [vods])
+
+  const handleContextMenu = useCallback((e, vod) => {
+    e.preventDefault()
+    setContextMenu({ x: e.clientX, y: e.clientY, vod })
+  }, [])
+
+  useEffect(() => {
+    if (!contextMenu) return
+    const close = () => setContextMenu(null)
+    window.addEventListener('click', close)
+    window.addEventListener('contextmenu', close)
+    return () => {
+      window.removeEventListener('click', close)
+      window.removeEventListener('contextmenu', close)
+    }
+  }, [contextMenu])
 
   const openFolder = async () => {
     if (window.__TAURI_INTERNALS__) {
@@ -153,7 +170,7 @@ export default function RiftTimeline({ lang, onOpenVod, profile }) {
       ) : (
         <div className="rt-grid">
           {vods.map((vod) => (
-            <div key={vod.id} className="rt-card" onClick={() => onOpenVod(vod)}>
+            <div key={vod.id} className="rt-card" onClick={() => onOpenVod(vod)} onContextMenu={(e) => handleContextMenu(e, vod)}>
               <div className="rt-card-thumb">
                 {vod.thumbnail ? (
                   <img src={vod.thumbnail} alt="" />
@@ -202,6 +219,36 @@ export default function RiftTimeline({ lang, onOpenVod, profile }) {
           onClose={() => setShowSettings(false)}
           lang={lang}
         />
+      )}
+
+      {contextMenu && (
+        <div
+          className="rt-context-menu"
+          style={{ left: contextMenu.x, top: contextMenu.y }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <button className="rt-context-item" onClick={() => { onOpenVod(contextMenu.vod); setContextMenu(null) }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polygon points="5 3 19 12 5 21 5 3" />
+            </svg>
+            {t(lang, 'open')}
+          </button>
+          <button className="rt-context-item" onClick={() => { window.dispatchEvent(new Event('rh-vods-changed')); setContextMenu(null) }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="23 4 23 10 17 10" />
+              <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
+            </svg>
+            {t(lang, 'refresh')}
+          </button>
+          <div className="rt-context-sep" />
+          <button className="rt-context-item rt-context-danger" onClick={() => { deleteVod(contextMenu.vod.id); setContextMenu(null) }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="3 6 5 6 21 6" />
+              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+            </svg>
+            {t(lang, 'deleteVod')}
+          </button>
+        </div>
       )}
     </div>
   )
