@@ -448,7 +448,7 @@ const FFMPEG_URL: &str = "https://github.com/BtbN/FFmpeg-Builds/releases/downloa
 #[tauri::command]
 async fn download_and_setup_ffmpeg(app: tauri::AppHandle) -> Result<String, String> {
 
-    #[derive(Serialize)]
+    #[derive(Serialize, Clone)]
     struct ProgressPayload {
         percent: f64,
         downloaded: u64,
