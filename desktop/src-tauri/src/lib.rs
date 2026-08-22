@@ -9,6 +9,45 @@ use std::os::windows::process::CommandExt;
 static FFMPEG_CHILD: Mutex<Option<Child>> = Mutex::new(None);
 static FFMPEG_OUTPUT: Mutex<Option<String>> = Mutex::new(None);
 
+fn find_lol_window_title() -> String {
+    use std::ffi::c_void;
+    type HWND = *mut c_void;
+    type BOOL = i32;
+    type LPARAM = isize;
+    type WNDENUMPROC = Option<unsafe extern "system" fn(HWND, LPARAM) -> BOOL>;
+
+    extern "system" {
+        fn EnumWindows(lpEnumFunc: WNDENUMPROC, lParam: LPARAM) -> BOOL;
+        fn GetWindowTextW(hWnd: HWND, lpString: *mut u16, nMaxCount: i32) -> i32;
+        fn IsWindowVisible(hWnd: HWND) -> BOOL;
+    }
+
+    unsafe extern "system" fn callback(hwnd: HWND, lparam: LPARAM) -> BOOL {
+        let mut buf = [0u16; 256];
+        let len = GetWindowTextW(hwnd, buf.as_mut_ptr(), 256);
+        if len > 0 && IsWindowVisible(hwnd) != 0 {
+            let title = String::from_utf16_lossy(&buf[..len as usize]);
+            if title.contains("League of Legends") {
+                let slot = &*(lparam as *const Mutex<Option<String>>);
+                if let Ok(mut guard) = slot.lock() {
+                    *guard = Some(title);
+                }
+                return 0;
+            }
+        }
+        1
+    }
+
+    let result: Mutex<Option<String>> = Mutex::new(None);
+    let ptr = &result as *const Mutex<Option<String>> as LPARAM;
+
+    unsafe {
+        let _ = EnumWindows(Some(callback), ptr);
+    }
+
+    result.lock().ok().and_then(|mut g| g.take()).unwrap_or_else(|| "desktop".to_string())
+}
+
 #[derive(Serialize)]
 struct RiotSession {
     game_name: String,
@@ -389,11 +428,13 @@ async fn start_recording(app: tauri::AppHandle) -> Result<String, String> {
     let output_path = std::path::Path::new(&recordings_folder).join(&filename);
     let output_str = output_path.to_string_lossy().to_string();
 
+    let input_source = find_lol_window_title();
+
     let child = Command::new(&ffmpeg_path)
         .args([
             "-f", "gdigrab",
             "-framerate", "30",
-            "-i", "desktop",
+            "-i", &input_source,
             "-c:v", "libx264",
             "-preset", "ultrafast",
             "-pix_fmt", "yuv420p",
