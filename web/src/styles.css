@@ -107,7 +107,7 @@ body {
   top: 0;
   z-index: 20;
   display: grid;
-  grid-template-columns: auto 1fr auto;
+  grid-template-columns: auto 1fr;
   align-items: center;
   column-gap: 16px;
   padding: 12px 22px;
@@ -119,12 +119,6 @@ body {
   display: flex;
   align-items: center;
   gap: 12px;
-}
-
-.topbar-center {
-  display: flex;
-  justify-content: center;
-  align-items: center;
 }
 
 .topbar-right {
@@ -920,6 +914,16 @@ body {
 .profile-main {
   width: 100%;
   min-width: 0;
+}
+
+.profile-search-area {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 12px;
+}
+
+.profile-search-area .search {
+  width: min(640px, 100%);
 }
 
 /* ── Recording Overlay ── */
@@ -4331,7 +4335,7 @@ button.p-name:hover {
   }
 
   .topbar {
-    grid-template-columns: 1fr;
+    grid-template-columns: 1fr auto;
     gap: 8px;
     padding: 10px 12px;
   }
@@ -4339,17 +4343,6 @@ button.p-name:hover {
   .topbar-left {
     order: 1;
     justify-self: start;
-  }
-
-  .topbar-center {
-    order: 2;
-    width: 100%;
-  }
-
-  .topbar-center .search {
-    width: 100%;
-    min-width: 0;
-    max-width: none;
   }
 
   .topbar-right {
@@ -4360,6 +4353,10 @@ button.p-name:hover {
 
   .match-list {
     max-width: 100%;
+  }
+
+  .profile-search-area .search {
+    width: 100%;
   }
 
   .topbar-summoner-card {

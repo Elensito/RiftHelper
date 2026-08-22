@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import SearchBar from './components/SearchBar.jsx'
 import RankCards from './components/RankCards.jsx'
+import ProfileHeader from './components/ProfileHeader.jsx'
 import ChampionStats from './components/ChampionStats.jsx'
 import MatchCard from './components/MatchCard.jsx'
 import LiveGame from './components/LiveGame.jsx'
@@ -557,51 +558,15 @@ export default function App() {
                   {refreshing ? (
                     <span className="btn-spinner" aria-hidden="true" />
                   ) : (
-                    <svg
-                      className="refresh-icon"
-                      width="15"
-                      height="15"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      aria-hidden="true"
-                    >
-                      <path
-                        d="M23 4v6h-6"
-                        stroke="currentColor"
-                        strokeWidth="2.4"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      />
-                      <path
-                        d="M1 20v-6h6"
-                        stroke="currentColor"
-                        strokeWidth="2.4"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      />
-                      <path
-                        d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"
-                        stroke="currentColor"
-                        strokeWidth="2.4"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      />
+                    <svg className="refresh-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                      <path d="M23 4v6h-6" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
+                      <path d="M1 20v-6h6" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
+                      <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
                     </svg>
                   )}
                   {t(lang, 'update')}
                 </button>
               )}
-              {isTauri() && <RiotClientWidget lang={lang} onOpen={openPlayer} />}
-            </div>
-
-            <div className="topbar-center">
-              <SearchBar
-                onSearch={(n, t) => load(n, t)}
-                loading={loading}
-                lang={lang}
-                searchText={searchText}
-                onSearchTextChange={setSearchText}
-              />
             </div>
 
             <div className="topbar-right">
@@ -618,7 +583,6 @@ export default function App() {
                   </div>
                 </div>
               )}
-              {!isTauri() && <DownloadButton lang={lang} />}
             </div>
           </header>
 
@@ -661,6 +625,21 @@ export default function App() {
                 </aside>
 
                 <div className="profile-main">
+                  <div className="profile-search-area">
+                    <SearchBar
+                      onSearch={(n, t) => load(n, t)}
+                      loading={loading}
+                      lang={lang}
+                      searchText={searchText}
+                      onSearchTextChange={setSearchText}
+                    />
+                  </div>
+                  <ProfileHeader
+                    summoner={profile.summoner}
+                    matches={profile.matches}
+                    lang={lang}
+                    inGame={!!(live && live.in_game)}
+                  />
                     <div className="profile-tabs">
                       <button
                         className={`tab ${tab === 'matches' ? 'active' : ''}`}
