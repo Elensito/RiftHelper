@@ -3,6 +3,8 @@ use tauri::Emitter;
 use tauri::Manager;
 use std::sync::Mutex;
 use std::process::{Command, Child};
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
 
 static FFMPEG_CHILD: Mutex<Option<Child>> = Mutex::new(None);
 static FFMPEG_OUTPUT: Mutex<Option<String>> = Mutex::new(None);
