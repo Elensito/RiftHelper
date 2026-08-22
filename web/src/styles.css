@@ -935,7 +935,8 @@ body {
 }
 
 .profile-search-area .search {
-  width: min(640px, 100%);
+  width: 100%;
+  max-width: 42%;
 }
 
 /* ── Recording Overlay ── */

@@ -546,15 +546,6 @@ export default function App() {
       ) : (
         <>
           <header className="topbar topbar-icon-rail">
-            <div className="topbar-left">
-              <SearchBar
-                onSearch={(n, t) => load(n, t)}
-                loading={loading}
-                lang={lang}
-                searchText={searchText}
-                onSearchTextChange={setSearchText}
-              />
-            </div>
             <div className="topbar-right">
               {profile && (
                 <button
@@ -632,6 +623,15 @@ export default function App() {
                 </aside>
 
                 <div className="profile-main">
+                  <div className="profile-search-area">
+                    <SearchBar
+                      onSearch={(n, t) => load(n, t)}
+                      loading={loading}
+                      lang={lang}
+                      searchText={searchText}
+                      onSearchTextChange={setSearchText}
+                    />
+                  </div>
                   <ProfileHeader
                     summoner={profile.summoner}
                     matches={profile.matches}
