@@ -115,13 +115,20 @@ body {
   backdrop-filter: blur(6px);
 }
 
+.topbar-icon-rail {
+  width: 100vw;
+  margin-left: calc(50% - 50vw);
+  box-sizing: border-box;
+}
+
 .topbar-left {
   display: flex;
   align-items: center;
   gap: 12px;
 }
 
-.topbar-search-wrap .search {
+.topbar-search-wrap .search,
+.topbar-left .search {
   width: min(550px, 50%);
   min-width: 200px;
   margin: 0;
@@ -3131,8 +3138,9 @@ button.p-name:hover {
 .profile-tabs {
   display: flex;
   gap: 4px;
-  margin-bottom: 14px;
   justify-content: flex-start;
+  max-width: 70%;
+  margin: 0 auto 14px;
 }
 
 .profile-tabs .tab {
