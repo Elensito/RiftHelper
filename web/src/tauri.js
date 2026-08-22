@@ -186,6 +186,12 @@ export async function openVodFolder(path) {
   try { await invoke('open_vod_folder', { path }) } catch {}
 }
 
+export async function showInFolder(path) {
+  if (!isTauri()) return
+  const { invoke } = await import('@tauri-apps/api/core')
+  try { await invoke('show_in_folder', { path }) } catch {}
+}
+
 export async function notifyGameEnded(summoner, lang = 'en') {
   const { t } = await import('./i18n.js')
   const title = 'RiftHelper'

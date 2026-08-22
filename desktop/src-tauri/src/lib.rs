@@ -225,6 +225,25 @@ async fn open_vod_folder(path: Option<String>) -> Result<(), String> {
 }
 
 #[tauri::command]
+async fn show_in_folder(path: String) -> Result<(), String> {
+    let p = std::path::Path::new(&path);
+    if p.is_file() {
+        std::process::Command::new("explorer")
+            .arg(format!("/select,{}", p.to_string_lossy()))
+            .creation_flags(0x08000000)
+            .spawn()
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    } else if p.is_dir() {
+        opener::open(p).map_err(|e| e.to_string())
+    } else {
+        let default = get_default_vod_folder().await;
+        std::fs::create_dir_all(&default).map_err(|e| e.to_string())?;
+        opener::open(&default).map_err(|e| e.to_string())
+    }
+}
+
+#[tauri::command]
 async fn select_vod_folder(app: tauri::AppHandle) -> Result<Option<String>, String> {
     use tauri_plugin_dialog::DialogExt;
     let result = app
@@ -385,7 +404,7 @@ async fn get_auto_record(app: tauri::AppHandle) -> Result<bool, String> {
     let cfg = read_config(&app);
     Ok(cfg.get("autoRecord")
         .and_then(|v| v.as_bool())
-        .unwrap_or(false))
+        .unwrap_or(true))
 }
 
 #[tauri::command]
@@ -606,6 +625,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             get_riot_client_session,
             open_vod_folder,
+            show_in_folder,
             select_vod_folder,
             get_default_vod_folder,
             toggle_autostart,
@@ -632,6 +652,22 @@ pub fn run() {
             use tauri::menu::{MenuBuilder, MenuItemBuilder};
 
             let window = app.get_webview_window("main").unwrap();
+
+            {
+                let mut cfg = read_config(&app.handle());
+                let changed = if cfg.get("recordingsFolder").is_none() {
+                    cfg["recordingsFolder"] = serde_json::json!(default_recordings_folder());
+                    true
+                } else {
+                    false
+                };
+                if cfg.get("autoRecord").is_none() {
+                    cfg["autoRecord"] = serde_json::json!(true);
+                }
+                if changed || cfg.get("autoRecord").is_none() {
+                    write_config(&app.handle(), &cfg);
+                }
+            }
 
             let show_item = MenuItemBuilder::with_id("show", "Show RiftHelper").build(app)?;
             let quit_item = MenuItemBuilder::with_id("quit", "Quit").build(app)?;
