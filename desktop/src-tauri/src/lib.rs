@@ -454,22 +454,18 @@ async fn start_recording(app: tauri::AppHandle) -> Result<String, String> {
     let output_path = std::path::Path::new(&recordings_folder).join(&filename);
     let output_str = output_path.to_string_lossy().to_string();
 
+    let (x, y, w, h) = find_lol_window_rect()
+        .ok_or_else(|| "League of Legends window not found".to_string())?;
+
     let mut ffmpeg_args = vec![
         "-f".to_string(), "gdigrab".to_string(),
         "-framerate".to_string(), "30".to_string(),
         "-draw_mouse".to_string(), "0".to_string(),
+        "-offset_x".to_string(), x.to_string(),
+        "-offset_y".to_string(), y.to_string(),
+        "-video_size".to_string(), format!("{}x{}", w, h),
+        "-i".to_string(), "desktop".to_string(),
     ];
-
-    if let Some((x, y, w, h)) = find_lol_window_rect() {
-        ffmpeg_args.extend([
-            "-offset_x".to_string(), x.to_string(),
-            "-offset_y".to_string(), y.to_string(),
-            "-video_size".to_string(), format!("{}x{}", w, h),
-            "-i".to_string(), "desktop".to_string(),
-        ]);
-    } else {
-        ffmpeg_args.extend(["-i".to_string(), "desktop".to_string()]);
-    }
 
     ffmpeg_args.extend([
         "-c:v".to_string(), "libx264".to_string(),
