@@ -165,6 +165,21 @@ export async function isRecordingTauri() {
   try { return await invoke('is_recording') } catch { return false }
 }
 
+export async function downloadFfmpeg() {
+  if (!isTauri()) return null
+  const { invoke } = await import('@tauri-apps/api/core')
+  try { return await invoke('download_and_setup_ffmpeg') } catch { return null }
+}
+
+export async function onFfmpegProgress(callback) {
+  if (!isTauri()) return () => {}
+  const { listen } = await import('@tauri-apps/api/event')
+  const unlisten = await listen('ffmpeg-download-progress', (event) => {
+    callback(event.payload)
+  })
+  return unlisten
+}
+
 export async function openVodFolder(path) {
   if (!isTauri()) return
   const { invoke } = await import('@tauri-apps/api/core')

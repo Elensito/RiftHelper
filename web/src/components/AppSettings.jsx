@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import ThemeToggle from './ThemeToggle.jsx'
 import LangSwitcher from './LangSwitcher.jsx'
 import DiscordButton from './DiscordButton.jsx'
@@ -9,6 +9,7 @@ import {
   getFfmpegPath, setFfmpegPath, testFfmpeg,
   getRecordingsFolder, setRecordingsFolder, selectRecordingsFolder, selectFfmpegFile,
   getAutoRecord, setAutoRecord, openVodFolder,
+  downloadFfmpeg, onFfmpegProgress,
 } from '../tauri.js'
 
 export default function AppSettings({ theme, onThemeChange, lang, onLangChange, onClose }) {
@@ -19,6 +20,11 @@ export default function AppSettings({ theme, onThemeChange, lang, onLangChange, 
   const [autoRecord, setAutoRecordState] = useState(false)
   const [ffmpegTest, setFfmpegTest] = useState(null)
   const [confirmPopup, setConfirmPopup] = useState(false)
+  const [downloadState, setDownloadState] = useState('confirm')
+  const [downloadPercent, setDownloadPercent] = useState(0)
+  const [downloadedMB, setDownloadedMB] = useState(0)
+  const [totalMB, setTotalMB] = useState(0)
+  const unlistenRef = useRef(null)
 
   useEffect(() => {
     if (!isTauri()) return
@@ -27,6 +33,12 @@ export default function AppSettings({ theme, onThemeChange, lang, onLangChange, 
     getFfmpegPath().then(setFfmpegPathState)
     getRecordingsFolder().then(setRecordingsFolderState)
     getAutoRecord().then(setAutoRecordState)
+  }, [])
+
+  useEffect(() => {
+    return () => {
+      if (unlistenRef.current) unlistenRef.current()
+    }
   }, [])
 
   const handleCloseBehavior = async (val) => {
@@ -74,9 +86,41 @@ export default function AppSettings({ theme, onThemeChange, lang, onLangChange, 
   }
 
   const handleConfirmAutoRecord = async () => {
-    setAutoRecordState(true)
-    await setAutoRecord(true)
-    setConfirmPopup(false)
+    setDownloadState('downloading')
+    setDownloadPercent(0)
+    setDownloadedMB(0)
+    setTotalMB(0)
+
+    const unlisten = await onFfmpegProgress((payload) => {
+      setDownloadPercent(Math.round(payload.percent))
+      setDownloadedMB(Math.round((payload.downloaded / (1024 * 1024)) * 10) / 10)
+      setTotalMB(Math.round((payload.total / (1024 * 1024)) * 10) / 10)
+      if (payload.stage === 'extracting') setDownloadState('extracting')
+      if (payload.stage === 'done') {
+        setDownloadState('done')
+        if (unlistenRef.current) unlistenRef.current()
+        setTimeout(() => {
+          setConfirmPopup(false)
+          setDownloadState('confirm')
+          setAutoRecordState(true)
+          setAutoRecord(true)
+          getFfmpegPath().then(setFfmpegPathState)
+          setFfmpegTest(true)
+        }, 1200)
+      }
+    })
+    unlistenRef.current = unlisten
+
+    try {
+      const result = await downloadFfmpeg()
+      if (!result) {
+        setDownloadState('error')
+        if (unlisten) unlisten()
+      }
+    } catch {
+      setDownloadState('error')
+      if (unlisten) unlisten()
+    }
   }
 
   return (
@@ -232,25 +276,88 @@ export default function AppSettings({ theme, onThemeChange, lang, onLangChange, 
       </div>
 
       {confirmPopup && (
-        <div className="neon-confirm-overlay" onClick={() => setConfirmPopup(false)}>
+        <div className="neon-confirm-overlay" onClick={() => { if (downloadState === 'confirm' || downloadState === 'error') setConfirmPopup(false) }}>
           <div className="neon-confirm-card" onClick={(e) => e.stopPropagation()}>
-            <div className="neon-confirm-icon">
-              <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--cyan)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="12" cy="12" r="10" />
-                <path d="M12 8v4" />
-                <path d="M12 16h.01" />
-              </svg>
-            </div>
-            <h4 className="neon-confirm-title">{t(lang, 'confirmAutoRecord')}</h4>
-            <p className="neon-confirm-text">{t(lang, 'confirmAutoRecordDesc')}</p>
-            <div className="neon-confirm-actions">
-              <button className="neon-confirm-btn neon-confirm-btn-yes" onClick={handleConfirmAutoRecord}>
-                {t(lang, 'yes')}
-              </button>
-              <button className="neon-confirm-btn neon-confirm-btn-no" onClick={() => setConfirmPopup(false)}>
-                {t(lang, 'no')}
-              </button>
-            </div>
+            {downloadState === 'confirm' && (
+              <>
+                <div className="neon-confirm-icon">
+                  <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--cyan)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="12" r="10" />
+                    <path d="M12 8v4" />
+                    <path d="M12 16h.01" />
+                  </svg>
+                </div>
+                <h4 className="neon-confirm-title">{t(lang, 'confirmAutoRecord')}</h4>
+                <p className="neon-confirm-text">{t(lang, 'confirmAutoRecordDesc')}</p>
+                <div className="neon-confirm-actions">
+                  <button className="neon-confirm-btn neon-confirm-btn-yes" onClick={handleConfirmAutoRecord}>
+                    {t(lang, 'yes')}
+                  </button>
+                  <button className="neon-confirm-btn neon-confirm-btn-no" onClick={() => setConfirmPopup(false)}>
+                    {t(lang, 'no')}
+                  </button>
+                </div>
+              </>
+            )}
+
+            {(downloadState === 'downloading' || downloadState === 'extracting') && (
+              <>
+                <div className="neon-confirm-icon neon-spin">
+                  <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--cyan)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+                  </svg>
+                </div>
+                <h4 className="neon-confirm-title">
+                  {downloadState === 'downloading' ? t(lang, 'downloadingFfmpeg') : t(lang, 'extractingFfmpeg')}
+                </h4>
+                <div className="neon-progress-wrap">
+                  <div className="neon-progress-bar">
+                    <div className="neon-progress-fill" style={{ width: `${downloadPercent}%` }} />
+                  </div>
+                  <span className="neon-progress-text">
+                    {downloadState === 'downloading'
+                      ? `${downloadedMB} MB / ${totalMB} MB`
+                      : t(lang, 'installingFfmpeg')
+                    }
+                  </span>
+                  <span className="neon-progress-percent">{downloadPercent}%</span>
+                </div>
+              </>
+            )}
+
+            {downloadState === 'done' && (
+              <>
+                <div className="neon-confirm-icon">
+                  <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--green)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="12" r="10" />
+                    <polyline points="9 12 11.5 14.5 15.5 9.5" />
+                  </svg>
+                </div>
+                <h4 className="neon-confirm-title neon-title-success">{t(lang, 'setupComplete')}</h4>
+              </>
+            )}
+
+            {downloadState === 'error' && (
+              <>
+                <div className="neon-confirm-icon">
+                  <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--red)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="12" r="10" />
+                    <line x1="15" y1="9" x2="9" y2="15" />
+                    <line x1="9" y1="9" x2="15" y2="15" />
+                  </svg>
+                </div>
+                <h4 className="neon-confirm-title neon-title-error">{t(lang, 'downloadError')}</h4>
+                <p className="neon-confirm-text">{t(lang, 'downloadErrorDesc')}</p>
+                <div className="neon-confirm-actions">
+                  <button className="neon-confirm-btn neon-confirm-btn-yes" onClick={handleConfirmAutoRecord}>
+                    {t(lang, 'retry')}
+                  </button>
+                  <button className="neon-confirm-btn neon-confirm-btn-no" onClick={() => { setConfirmPopup(false); setDownloadState('confirm') }}>
+                    {t(lang, 'cancel')}
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}

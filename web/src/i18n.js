@@ -237,6 +237,14 @@ const EN = {
   yes: 'Yes',
   no: 'No',
   openFolder: 'Open folder',
+  downloadingFfmpeg: 'Downloading FFmpeg...',
+  extractingFfmpeg: 'Installing FFmpeg...',
+  installingFfmpeg: 'Extracting files...',
+  setupComplete: 'FFmpeg installed successfully!',
+  downloadError: 'Download failed',
+  downloadErrorDesc: 'Could not download FFmpeg. Check your internet connection and try again.',
+  retry: 'Retry',
+  cancel: 'Cancel',
 }
 
 const ES = {
@@ -477,6 +485,14 @@ const ES = {
   yes: 'Sí',
   no: 'No',
   openFolder: 'Abrir carpeta',
+  downloadingFfmpeg: 'Descargando FFmpeg...',
+  extractingFfmpeg: 'Instalando FFmpeg...',
+  installingFfmpeg: 'Extrayendo archivos...',
+  setupComplete: 'FFmpeg instalado correctamente',
+  downloadError: 'Error en la descarga',
+  downloadErrorDesc: 'No se pudo descargar FFmpeg. Comprueba tu conexión a internet e inténtalo de nuevo.',
+  retry: 'Reintentar',
+  cancel: 'Cancelar',
 }
 
 const PT = {
@@ -717,6 +733,14 @@ const PT = {
   yes: 'Sim',
   no: 'Não',
   openFolder: 'Abrir pasta',
+  downloadingFfmpeg: 'Baixando FFmpeg...',
+  extractingFfmpeg: 'Instalando FFmpeg...',
+  installingFfmpeg: 'Extraindo arquivos...',
+  setupComplete: 'FFmpeg instalado com sucesso!',
+  downloadError: 'Falha no download',
+  downloadErrorDesc: 'Não foi possível baixar o FFmpeg. Verifique sua conexão e tente novamente.',
+  retry: 'Tentar novamente',
+  cancel: 'Cancelar',
 }
 
 const FR = {
@@ -957,6 +981,14 @@ const FR = {
   yes: 'Oui',
   no: 'Non',
   openFolder: 'Ouvrir le dossier',
+  downloadingFfmpeg: 'Téléchargement de FFmpeg...',
+  extractingFfmpeg: 'Installation de FFmpeg...',
+  installingFfmpeg: 'Extraction des fichiers...',
+  setupComplete: 'FFmpeg installé avec succès!',
+  downloadError: 'Échec du téléchargement',
+  downloadErrorDesc: 'Impossible de télécharger FFmpeg. Vérifiez votre connexion et réessayez.',
+  retry: 'Réessayer',
+  cancel: 'Annuler',
 }
 
 const KO = {
@@ -1197,6 +1229,14 @@ const KO = {
   yes: '예',
   no: '아니오',
   openFolder: '폴더 열기',
+  downloadingFfmpeg: 'FFmpeg 다운로드 중...',
+  extractingFfmpeg: 'FFmpeg 설치 중...',
+  installingFfmpeg: '파일 압축 해제 중...',
+  setupComplete: 'FFmpeg가 성공적으로 설치되었습니다!',
+  downloadError: '다운로드 실패',
+  downloadErrorDesc: 'FFmpeg를 다운로드할 수 없습니다. 인터넷 연결을 확인하고 다시 시도하세요.',
+  retry: '다시 시도',
+  cancel: '취소',
 }
 
 export const STR = { en: EN, es: ES, pt: PT, fr: FR, ko: KO }

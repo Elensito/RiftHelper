@@ -442,6 +442,112 @@ async fn is_recording() -> Result<bool, String> {
     }
 }
 
+const FFMPEG_URL: &str = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip";
+
+#[tauri::command]
+async fn download_and_setup_ffmpeg(app: tauri::AppHandle) -> Result<String, String> {
+    use serde::Deserialize;
+
+    #[derive(Serialize)]
+    struct ProgressPayload {
+        percent: f64,
+        downloaded: u64,
+        total: u64,
+        stage: String,
+    }
+
+    let ffmpeg_dir = app.path().app_config_dir()
+        .map_err(|e| e.to_string())?
+        .join("ffmpeg");
+    std::fs::create_dir_all(&ffmpeg_dir).map_err(|e| e.to_string())?;
+
+    let zip_path = ffmpeg_dir.join("ffmpeg.zip");
+
+    let client = reqwest::Client::new();
+    let resp = client.get(FFMPEG_URL)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let total = resp.content_length().unwrap_or(0);
+    let mut stream = resp.bytes_stream();
+    let mut downloaded: u64 = 0;
+    let mut file = std::fs::File::create(&zip_path).map_err(|e| e.to_string())?;
+
+    use std::io::Write;
+    use futures_util::StreamExt;
+
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk.map_err(|e| e.to_string())?;
+        file.write_all(&chunk).map_err(|e| e.to_string())?;
+        downloaded += chunk.len() as u64;
+        let percent = if total > 0 { (downloaded as f64 / total as f64) * 100.0 } else { 0.0 };
+        let _ = app.emit("ffmpeg-download-progress", ProgressPayload {
+            percent,
+            downloaded,
+            total,
+            stage: "downloading".to_string(),
+        });
+    }
+    drop(file);
+
+    let _ = app.emit("ffmpeg-download-progress", ProgressPayload {
+        percent: 100.0,
+        downloaded,
+        total,
+        stage: "extracting".to_string(),
+    });
+
+    let zip_file = std::fs::File::open(&zip_path).map_err(|e| e.to_string())?;
+    let mut archive = zip::ZipArchive::new(zip_file).map_err(|e| e.to_string())?;
+
+    let ffmpeg_exe_path = ffmpeg_dir.join("ffmpeg.exe");
+    let mut found_exe = false;
+
+    for i in 0..archive.len() {
+        let mut entry = archive.by_index(i).map_err(|e| e.to_string())?;
+        let name = entry.name().to_string();
+
+        let is_bin_exe = name.ends_with("/bin/ffmpeg.exe");
+        let is_root_exe = name == "ffmpeg.exe";
+
+        if is_bin_exe || is_root_exe {
+            let mut out = std::fs::File::create(&ffmpeg_exe_path).map_err(|e| e.to_string())?;
+            std::io::copy(&mut entry, &mut out).map_err(|e| e.to_string())?;
+            found_exe = true;
+        } else if name.ends_with("/bin/") && !name.ends_with(".exe") {
+            let entry_name = entry.name().to_string();
+            if entry_name.ends_with(".dll") || entry_name.contains("swresample") || entry_name.contains("swscale") || entry_name.contains("avcodec") || entry_name.contains("avformat") || entry_name.contains("avutil") || entry_name.contains("avfilter") {
+                let file_name = std::path::Path::new(&entry_name).file_name().unwrap().to_string_lossy();
+                let out_path = ffmpeg_dir.join(file_name.as_ref());
+                let mut out = std::fs::File::create(&out_path).map_err(|e| e.to_string())?;
+                std::io::copy(&mut entry, &mut out).map_err(|e| e.to_string())?;
+            }
+        }
+    }
+
+    drop(archive);
+    let _ = std::fs::remove_file(&zip_path);
+
+    if !found_exe {
+        return Err("ffmpeg.exe not found in archive".to_string());
+    }
+
+    let path_str = ffmpeg_exe_path.to_string_lossy().to_string();
+    let mut cfg = read_config(&app);
+    cfg["ffmpegPath"] = serde_json::json!(path_str);
+    write_config(&app, &cfg);
+
+    let _ = app.emit("ffmpeg-download-progress", ProgressPayload {
+        percent: 100.0,
+        downloaded,
+        total,
+        stage: "done".to_string(),
+    });
+
+    Ok(path_str)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let mut builder = tauri::Builder::default()
@@ -473,6 +579,7 @@ pub fn run() {
             start_recording,
             stop_recording,
             is_recording,
+            download_and_setup_ffmpeg,
         ]);
 
     builder = builder
