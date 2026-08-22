@@ -107,16 +107,24 @@ body {
   top: 0;
   z-index: 20;
   display: grid;
-  grid-template-columns: 1fr auto;
+  grid-template-columns: auto 1fr auto;
   align-items: center;
-  column-gap: 12px;
-  padding: 16px 22px;
+  column-gap: 16px;
+  padding: 12px 22px;
   background: linear-gradient(180deg, var(--bg) 70%, transparent);
   backdrop-filter: blur(6px);
 }
 
-.topbar-icon-rail {
-  padding-left: 78px;
+.topbar-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.topbar-center {
+  display: flex;
+  justify-content: center;
+  align-items: center;
 }
 
 .topbar-right {
@@ -226,8 +234,8 @@ body {
 .search {
   display: flex;
   gap: 8px;
-  width: min(640px, 45%);
-  min-width: 240px;
+  width: min(700px, 60%);
+  min-width: 300px;
 }
 
 .search-center {
@@ -1301,7 +1309,7 @@ body {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  max-width: 100%;
+  max-width: 70%;
   margin: 0 auto;
 }
 
@@ -4323,41 +4331,52 @@ button.p-name:hover {
   }
 
   .topbar {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 10px 14px;
-    margin: 0;
-    padding: 12px 14px;
+    grid-template-columns: 1fr;
+    gap: 8px;
+    padding: 10px 12px;
   }
 
-  .topbar .brand-logo {
+  .topbar-left {
     order: 1;
+    justify-self: start;
   }
 
-  .topbar .brand-logo img {
-    width: 64px;
-    height: 64px;
-  }
-
-  .topbar .topbar-right {
+  .topbar-center {
     order: 2;
+    width: 100%;
+  }
+
+  .topbar-center .search {
+    width: 100%;
+    min-width: 0;
+    max-width: none;
+  }
+
+  .topbar-right {
+    order: 3;
     justify-self: auto;
     margin-left: auto;
   }
 
-  .topbar .download-btn {
-    order: 4;
+  .match-list {
+    max-width: 100%;
   }
 
-  .search-center {
-    width: auto;
-    padding: 8px 16px;
+  .topbar-summoner-card {
+    padding: 4px 10px 4px 4px;
   }
-  .search-center .search {
-    width: auto;
-    min-width: 0;
-    max-width: none;
-    margin: 0;
+
+  .topbar-summoner-avatar {
+    width: 26px;
+    height: 26px;
+  }
+
+  .topbar-summoner-name {
+    font-size: 12px;
+  }
+
+  .topbar-summoner-tag {
+    font-size: 10px;
   }
 
   .topbar .btn-update {
@@ -5940,24 +5959,45 @@ button.p-name:hover {
 }
 
 
-.topbar-summoner-pill {
+.topbar-summoner-card {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 5px 12px;
-  border-radius: 10px;
+  gap: 10px;
+  padding: 6px 14px 6px 6px;
+  border-radius: 12px;
   background: var(--card);
   border: 1px solid var(--border);
-  font-size: 12px;
+  cursor: pointer;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.topbar-summoner-card:hover {
+  border-color: var(--cyan);
+  box-shadow: 0 0 12px rgba(0, 229, 255, 0.12);
+}
+
+.topbar-summoner-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+}
+
+.topbar-summoner-info {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.2;
+}
+
+.topbar-summoner-name {
+  font-size: 13px;
   font-weight: 700;
   color: var(--text);
 }
 
-.topbar-summoner-avatar {
-  width: 22px;
-  height: 22px;
-  border-radius: 6px;
-  border: 1px solid var(--border);
+.topbar-summoner-tag {
+  font-size: 11px;
+  color: var(--text-secondary);
 }
 
 /* ═══════════════════════════════════════════════════════

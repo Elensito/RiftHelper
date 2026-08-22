@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import SearchBar from './components/SearchBar.jsx'
-import ProfileHeader from './components/ProfileHeader.jsx'
 import RankCards from './components/RankCards.jsx'
 import ChampionStats from './components/ChampionStats.jsx'
 import MatchCard from './components/MatchCard.jsx'
@@ -546,7 +545,7 @@ export default function App() {
       ) : (
         <>
           <header className="topbar topbar-icon-rail">
-            <div className="topbar-right">
+            <div className="topbar-left">
               {profile && (
                 <button
                   className="btn btn-update"
@@ -593,6 +592,32 @@ export default function App() {
                 </button>
               )}
               {isTauri() && <RiotClientWidget lang={lang} onOpen={openPlayer} />}
+            </div>
+
+            <div className="topbar-center">
+              <SearchBar
+                onSearch={(n, t) => load(n, t)}
+                loading={loading}
+                lang={lang}
+                searchText={searchText}
+                onSearchTextChange={setSearchText}
+              />
+            </div>
+
+            <div className="topbar-right">
+              {profile && (
+                <div className="topbar-summoner-card" onClick={() => setTab('matches')}>
+                  <img
+                    className="topbar-summoner-avatar"
+                    src={`https://ddragon.leagueoflegends.com/cdn/14.10.1/img/profileicon/${profile.summoner.profile_icon || 0}.png`}
+                    alt=""
+                  />
+                  <div className="topbar-summoner-info">
+                    <span className="topbar-summoner-name">{profile.summoner.name}</span>
+                    <span className="topbar-summoner-tag">#{profile.summoner.tag}</span>
+                  </div>
+                </div>
+              )}
               {!isTauri() && <DownloadButton lang={lang} />}
             </div>
           </header>
@@ -629,29 +654,13 @@ export default function App() {
             )}
 
             {profile && !loading && !champion && (
-              <>
-                <div className="search search-center">
-                  <SearchBar
-                    onSearch={(n, t) => load(n, t)}
-                    loading={loading}
-                    lang={lang}
-                    searchText={searchText}
-                    onSearchTextChange={setSearchText}
-                  />
-                </div>
-                <div className="profile-layout">
+              <div className="profile-layout">
                 <aside className="profile-sidebar">
                   <RankCards summoner={profile.summoner} lang={lang} />
                   <ChampionStats matches={profile.matches} lang={lang} />
                 </aside>
 
                 <div className="profile-main">
-                  <ProfileHeader
-                    summoner={profile.summoner}
-                    matches={profile.matches}
-                    lang={lang}
-                    inGame={!!(live && live.in_game)}
-                  />
                     <div className="profile-tabs">
                       <button
                         className={`tab ${tab === 'matches' ? 'active' : ''}`}
@@ -732,9 +741,8 @@ export default function App() {
                         </div>
                       </div>
                     )}
-                  </div>
                 </div>
-              </>
+              </div>
             )}
           </main>
         </>
