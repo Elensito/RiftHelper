@@ -84,6 +84,12 @@ body {
   min-height: 100vh;
 }
 
+.app.app-full {
+  max-width: none;
+  padding: 0;
+  width: 100%;
+}
+
 .content {
   flex: 1;
   margin-left: 64px;
@@ -6686,6 +6692,7 @@ button.p-name:hover {
   display: flex;
   flex-direction: column;
   height: 100vh;
+  width: 100%;
   background: var(--bg);
 }
 
@@ -6801,6 +6808,34 @@ button.p-name:hover {
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+.vod-fullscreen-btn {
+  position: absolute;
+  bottom: 10px;
+  right: 10px;
+  z-index: 10;
+  width: 36px;
+  height: 36px;
+  border: none;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(4px);
+  opacity: 0;
+  transition: opacity 0.2s, background 0.15s;
+}
+
+.vod-video-container:hover .vod-fullscreen-btn {
+  opacity: 1;
+}
+
+.vod-fullscreen-btn:hover {
+  background: rgba(255, 255, 255, 0.15);
 }
 
 .vod-video {

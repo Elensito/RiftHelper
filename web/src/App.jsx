@@ -441,7 +441,7 @@ export default function App() {
   }, [settingsOpen])
 
   return (
-    <div className="app">
+    <div className={`app ${view === 'rift-timeline' && activeVod ? 'app-full' : ''}`}>
       <Tooltip />
       <NavSidebar
         view={view}
