@@ -31,7 +31,7 @@ fn find_lol_window_rect() -> Option<(i32, i32, i32, i32)> {
         let len = GetWindowTextW(hwnd, buf.as_mut_ptr(), 256);
         if len > 0 && IsWindowVisible(hwnd) != 0 {
             let title = String::from_utf16_lossy(&buf[..len as usize]);
-            if title.contains("League of Legends") {
+            if title.contains("League of Legends (TM) Client") {
                 let mut rect = RECT { left: 0, top: 0, right: 0, bottom: 0 };
                 if GetWindowRect(hwnd, &mut rect) != 0 {
                     let slot = &*(lparam as *const Mutex<Option<(i32, i32, i32, i32)>>);
