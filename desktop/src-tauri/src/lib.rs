@@ -400,7 +400,7 @@ async fn test_ffmpeg(path: String) -> Result<bool, String> {
         .arg("-version")
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
-        .creation_flags(0x08000000)
+        .creation_flags(0x00000008)
         .output()
         .map_err(|e| e.to_string())?;
     Ok(output.status.success())
@@ -482,9 +482,10 @@ async fn start_recording(app: tauri::AppHandle) -> Result<String, String> {
 
     let child = Command::new(&ffmpeg_path)
         .args(&ffmpeg_args)
+        .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
-        .creation_flags(0x08000000)
+        .creation_flags(0x00000008)
         .spawn()
         .map_err(|e| e.to_string())?;
 
