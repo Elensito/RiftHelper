@@ -3,10 +3,16 @@ use tauri::Emitter;
 use tauri::Manager;
 use std::sync::Mutex;
 use std::process::{Command, Child};
+use std::io::Write;
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
 
-static FFMPEG_CHILD: Mutex<Option<Child>> = Mutex::new(None);
+struct FFmpegProcess {
+    child: Child,
+    stdin: Option<std::process::ChildStdin>,
+}
+
+static FFMPEG_PROC: Mutex<Option<FFmpegProcess>> = Mutex::new(None);
 static FFMPEG_OUTPUT: Mutex<Option<String>> = Mutex::new(None);
 
 fn find_lol_window_rect() -> Option<(i32, i32, i32, i32)> {
@@ -425,7 +431,7 @@ async fn set_auto_record(app: tauri::AppHandle, enabled: bool) -> Result<(), Str
 #[tauri::command]
 async fn start_recording(app: tauri::AppHandle) -> Result<String, String> {
     {
-        let guard = FFMPEG_CHILD.lock().map_err(|e| e.to_string())?;
+        let guard = FFMPEG_PROC.lock().map_err(|e| e.to_string())?;
         if guard.is_some() {
             return Err("Already recording".to_string());
         }
@@ -471,23 +477,26 @@ async fn start_recording(app: tauri::AppHandle) -> Result<String, String> {
         "-c:v".to_string(), "libx264".to_string(),
         "-preset".to_string(), "ultrafast".to_string(),
         "-pix_fmt".to_string(), "yuv420p".to_string(),
-        "-movflags".to_string(), "+faststart".to_string(),
+        "-movflags".to_string(), "+faststart+frag_keyframe+empty_moov".to_string(),
+        "-max_muxing_queue_size".to_string(), "4096".to_string(),
         "-y".to_string(),
         output_str.clone(),
     ]);
 
-    let child = Command::new(&ffmpeg_path)
+    let mut child = Command::new(&ffmpeg_path)
         .args(&ffmpeg_args)
-        .stdin(std::process::Stdio::null())
+        .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
         .creation_flags(0x08000000)
         .spawn()
         .map_err(|e| e.to_string())?;
 
+    let stdin = child.stdin.take();
+
     {
-        let mut guard = FFMPEG_CHILD.lock().map_err(|e| e.to_string())?;
-        *guard = Some(child);
+        let mut guard = FFMPEG_PROC.lock().map_err(|e| e.to_string())?;
+        *guard = Some(FFmpegProcess { child, stdin });
     }
     {
         let mut guard = FFMPEG_OUTPUT.lock().map_err(|e| e.to_string())?;
@@ -499,23 +508,43 @@ async fn start_recording(app: tauri::AppHandle) -> Result<String, String> {
 
 #[tauri::command]
 async fn stop_recording() -> Result<Option<String>, String> {
-    {
-        let mut guard = FFMPEG_CHILD.lock().map_err(|e| e.to_string())?;
-        if let Some(ref mut child) = *guard {
-            let _ = child.kill();
-            let _ = child.wait();
+    let output_path = {
+        let mut guard = FFMPEG_PROC.lock().map_err(|e| e.to_string())?;
+        if let Some(ref mut proc) = *guard {
+            // Try graceful shutdown: send 'q' to FFmpeg stdin
+            let mut gracefully_closed = false;
+            if let Some(ref mut stdin) = proc.stdin {
+                let _ = stdin.write_all(b"q\n");
+                let _ = stdin.flush();
+                // Wait up to 5 seconds for FFmpeg to finalize the file
+                let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+                while std::time::Instant::now() < deadline {
+                    match proc.child.try_wait() {
+                        Ok(Some(_)) => { gracefully_closed = true; break; }
+                        Ok(None) => { std::thread::sleep(std::time::Duration::from_millis(100)); }
+                        Err(_) => break,
+                    }
+                }
+            }
+            // Force kill only if graceful shutdown failed
+            if !gracefully_closed {
+                let _ = proc.child.kill();
+                let _ = proc.child.wait();
+            }
         }
         *guard = None;
-    }
-    let mut guard = FFMPEG_OUTPUT.lock().map_err(|e| e.to_string())?;
-    Ok(guard.take())
+        FFMPEG_OUTPUT.lock().map_err(|e| e.to_string())?.take()
+    };
+    // Small delay to let the file system flush
+    std::thread::sleep(std::time::Duration::from_millis(200));
+    Ok(output_path)
 }
 
 #[tauri::command]
 async fn is_recording() -> Result<bool, String> {
-    let mut guard = FFMPEG_CHILD.lock().map_err(|e| e.to_string())?;
-    if let Some(ref mut child) = *guard {
-        match child.try_wait() {
+    let mut guard = FFMPEG_PROC.lock().map_err(|e| e.to_string())?;
+    if let Some(ref mut proc) = *guard {
+        match proc.child.try_wait() {
             Ok(Some(_)) => { *guard = None; Ok(false) }
             Ok(None) => Ok(true),
             Err(_) => { *guard = None; Ok(false) }
@@ -751,10 +780,15 @@ pub fn run() {
                             let _ = window_show.set_focus();
                         }
                         "quit" => {
-                            if let Ok(mut guard) = FFMPEG_CHILD.lock() {
-                                if let Some(ref mut child) = *guard {
-                                    let _ = child.kill();
-                                    let _ = child.wait();
+                            if let Ok(mut guard) = FFMPEG_PROC.lock() {
+                                if let Some(ref mut proc) = *guard {
+                                    if let Some(ref mut stdin) = proc.stdin {
+                                        let _ = stdin.write_all(b"q\n");
+                                        let _ = stdin.flush();
+                                        std::thread::sleep(std::time::Duration::from_millis(500));
+                                    }
+                                    let _ = proc.child.kill();
+                                    let _ = proc.child.wait();
                                 }
                                 *guard = None;
                             }
@@ -790,10 +824,15 @@ pub fn run() {
                     let _ = window.hide();
                     api.prevent_close();
                 } else {
-                    if let Ok(mut guard) = FFMPEG_CHILD.lock() {
-                        if let Some(ref mut child) = *guard {
-                            let _ = child.kill();
-                            let _ = child.wait();
+                    if let Ok(mut guard) = FFMPEG_PROC.lock() {
+                        if let Some(ref mut proc) = *guard {
+                            if let Some(ref mut stdin) = proc.stdin {
+                                let _ = stdin.write_all(b"q\n");
+                                let _ = stdin.flush();
+                                std::thread::sleep(std::time::Duration::from_millis(500));
+                            }
+                            let _ = proc.child.kill();
+                            let _ = proc.child.wait();
                         }
                         *guard = None;
                     }
