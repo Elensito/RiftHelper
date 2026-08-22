@@ -592,7 +592,7 @@ pub fn run() {
             let quit_item = MenuItemBuilder::with_id("quit", "Quit").build(app)?;
             let menu = MenuBuilder::new(app).item(&show_item).item(&quit_item).build()?;
 
-            let tray = app.tray_by_id("main-tray");
+            let tray = app.tray_by_id("main");
 
             if let Some(tray) = tray {
                 tray.set_menu(Some(menu));

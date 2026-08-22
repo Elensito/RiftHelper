@@ -27,9 +27,10 @@ const QUEUE_NAMES = {
   0: 'Custom',
   2: '5v5 Blind Pick',
   4: '5v5 Draft Pick',
-  420: '5v5 Draft Pick',
+  400: '5v5 Draft Pick',
+  420: '5v5 Ranked Solo/Duo',
   430: '5v5 Blind Pick',
-  440: '5v5 Ranked Solo',
+  440: '5v5 Ranked Flex',
   450: 'ARAM',
   900: 'URF',
   1020: 'One for All',
@@ -81,6 +82,15 @@ export default function App() {
   useEffect(() => {
     loadRef.current = load
   })
+
+  useEffect(() => {
+    const handler = (e) => {
+      if (e.target.closest('.rt-card')) return
+      e.preventDefault()
+    }
+    document.addEventListener('contextmenu', handler)
+    return () => document.removeEventListener('contextmenu', handler)
+  }, [])
 
   useEffect(() => {
     fetchChampions().then(setChampions).catch(() => {})
@@ -333,6 +343,62 @@ export default function App() {
             })
             localStorage.setItem('rh-vods', JSON.stringify(vods))
             window.dispatchEvent(new Event('rh-vods-changed'))
+
+            const needsBackfill = team1.length > 0 && team1.every(p => p.kills === 0 && p.deaths === 0) && latestMatchId
+            if (needsBackfill) {
+              const backfillVodId = vodId
+              const backfillMatchId = latestMatchId
+              const backfillName = profile.summoner.name
+              const backfillTag = profile.summoner.tag
+              const backfillPuuid = profile.summoner.puuid
+              setTimeout(async () => {
+                try {
+                  const freshData = await fetchSummoner(backfillName, backfillTag, 20, 0, true)
+                  const match = (freshData.matches || []).find(m => m.match_id === backfillMatchId)
+                  if (!match) return
+                  const allVods = JSON.parse(localStorage.getItem('rh-vods') || '[]')
+                  const vod = allVods.find(v => v.id === backfillVodId)
+                  if (!vod) return
+                  const bluePlayers = (match.players || []).filter(p => p.team === 100)
+                  const redPlayers = (match.players || []).filter(p => p.team === 200)
+                  const blueWins = bluePlayers.length > 0 ? bluePlayers[0].win : false
+                  vod.winner = blueWins ? 1 : 2
+                  vod.duration = match.duration_sec || vod.duration
+                  vod.team1 = bluePlayers.map(p => ({
+                    name: p.player_name || '',
+                    champion: p.champion || '',
+                    championIcon: p.champion_icon || '',
+                    kills: p.kills || 0,
+                    deaths: p.deaths || 0,
+                    assists: p.assists || 0,
+                    cs: p.cs || 0,
+                    gold: p.gold || 0,
+                    items: (p.items || []).map(it => it ? (it.src || '') : '').filter(Boolean),
+                    isPlayer: p.is_player || false,
+                  }))
+                  vod.team2 = redPlayers.map(p => ({
+                    name: p.player_name || '',
+                    champion: p.champion || '',
+                    championIcon: p.champion_icon || '',
+                    kills: p.kills || 0,
+                    deaths: p.deaths || 0,
+                    assists: p.assists || 0,
+                    cs: p.cs || 0,
+                    gold: p.gold || 0,
+                    items: (p.items || []).map(it => it ? (it.src || '') : '').filter(Boolean),
+                    isPlayer: p.is_player || false,
+                  }))
+                  const me = (match.players || []).find(p => p.puuid === backfillPuuid)
+                  if (me) {
+                    vod.result = me.win ? 'win' : 'loss'
+                    vod.kda = `${me.kills || 0}/${me.deaths || 0}/${me.assists || 0}`
+                  }
+                  localStorage.setItem('rh-vods', JSON.stringify(allVods))
+                  window.dispatchEvent(new Event('rh-vods-changed'))
+                } catch (e) {}
+              }, 30000)
+            }
+
             recordingGameDataRef.current = null
           }
         }
@@ -480,15 +546,6 @@ export default function App() {
       ) : (
         <>
           <header className="topbar topbar-icon-rail">
-            {profile && (
-              <SearchBar
-                onSearch={(n, t) => load(n, t)}
-                loading={loading}
-                lang={lang}
-                searchText={searchText}
-                onSearchTextChange={setSearchText}
-              />
-            )}
             <div className="topbar-right">
               {profile && (
                 <button
@@ -572,7 +629,17 @@ export default function App() {
             )}
 
             {profile && !loading && !champion && (
-              <div className="profile-layout">
+              <>
+                <div className="search search-center">
+                  <SearchBar
+                    onSearch={(n, t) => load(n, t)}
+                    loading={loading}
+                    lang={lang}
+                    searchText={searchText}
+                    onSearchTextChange={setSearchText}
+                  />
+                </div>
+                <div className="profile-layout">
                 <aside className="profile-sidebar">
                   <RankCards summoner={profile.summoner} lang={lang} />
                   <ChampionStats matches={profile.matches} lang={lang} />
@@ -667,6 +734,7 @@ export default function App() {
                     )}
                   </div>
                 </div>
+              </>
             )}
           </main>
         </>
