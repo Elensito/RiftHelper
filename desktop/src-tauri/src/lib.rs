@@ -9,17 +9,21 @@ use std::os::windows::process::CommandExt;
 static FFMPEG_CHILD: Mutex<Option<Child>> = Mutex::new(None);
 static FFMPEG_OUTPUT: Mutex<Option<String>> = Mutex::new(None);
 
-fn find_lol_window_title() -> String {
+fn find_lol_window_rect() -> Option<(i32, i32, i32, i32)> {
     use std::ffi::c_void;
     type HWND = *mut c_void;
     type BOOL = i32;
     type LPARAM = isize;
     type WNDENUMPROC = Option<unsafe extern "system" fn(HWND, LPARAM) -> BOOL>;
 
+    #[repr(C)]
+    struct RECT { left: i32, top: i32, right: i32, bottom: i32 }
+
     extern "system" {
         fn EnumWindows(lpEnumFunc: WNDENUMPROC, lParam: LPARAM) -> BOOL;
         fn GetWindowTextW(hWnd: HWND, lpString: *mut u16, nMaxCount: i32) -> i32;
         fn IsWindowVisible(hWnd: HWND) -> BOOL;
+        fn GetWindowRect(hWnd: HWND, lpRect: *mut RECT) -> BOOL;
     }
 
     unsafe extern "system" fn callback(hwnd: HWND, lparam: LPARAM) -> BOOL {
@@ -28,9 +32,12 @@ fn find_lol_window_title() -> String {
         if len > 0 && IsWindowVisible(hwnd) != 0 {
             let title = String::from_utf16_lossy(&buf[..len as usize]);
             if title.contains("League of Legends") {
-                let slot = &*(lparam as *const Mutex<Option<String>>);
-                if let Ok(mut guard) = slot.lock() {
-                    *guard = Some(title);
+                let mut rect = RECT { left: 0, top: 0, right: 0, bottom: 0 };
+                if GetWindowRect(hwnd, &mut rect) != 0 {
+                    let slot = &*(lparam as *const Mutex<Option<(i32, i32, i32, i32)>>);
+                    if let Ok(mut guard) = slot.lock() {
+                        *guard = Some((rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top));
+                    }
                 }
                 return 0;
             }
@@ -38,14 +45,14 @@ fn find_lol_window_title() -> String {
         1
     }
 
-    let result: Mutex<Option<String>> = Mutex::new(None);
-    let ptr = &result as *const Mutex<Option<String>> as LPARAM;
+    let result: Mutex<Option<(i32, i32, i32, i32)>> = Mutex::new(None);
+    let ptr = &result as *const Mutex<Option<(i32, i32, i32, i32)>> as LPARAM;
 
     unsafe {
         let _ = EnumWindows(Some(callback), ptr);
     }
 
-    result.lock().ok().and_then(|mut g| g.take()).unwrap_or_else(|| "desktop".to_string())
+    result.lock().ok().and_then(|mut g| g.take())
 }
 
 #[derive(Serialize)]
@@ -447,20 +454,34 @@ async fn start_recording(app: tauri::AppHandle) -> Result<String, String> {
     let output_path = std::path::Path::new(&recordings_folder).join(&filename);
     let output_str = output_path.to_string_lossy().to_string();
 
-    let input_source = find_lol_window_title();
+    let mut ffmpeg_args = vec![
+        "-f".to_string(), "gdigrab".to_string(),
+        "-framerate".to_string(), "30".to_string(),
+        "-draw_mouse".to_string(), "0".to_string(),
+    ];
+
+    if let Some((x, y, w, h)) = find_lol_window_rect() {
+        ffmpeg_args.extend([
+            "-offset_x".to_string(), x.to_string(),
+            "-offset_y".to_string(), y.to_string(),
+            "-video_size".to_string(), format!("{}x{}", w, h),
+            "-i".to_string(), "desktop".to_string(),
+        ]);
+    } else {
+        ffmpeg_args.extend(["-i".to_string(), "desktop".to_string()]);
+    }
+
+    ffmpeg_args.extend([
+        "-c:v".to_string(), "libx264".to_string(),
+        "-preset".to_string(), "ultrafast".to_string(),
+        "-pix_fmt".to_string(), "yuv420p".to_string(),
+        "-movflags".to_string(), "+faststart".to_string(),
+        "-y".to_string(),
+        output_str.clone(),
+    ]);
 
     let child = Command::new(&ffmpeg_path)
-        .args([
-            "-f", "gdigrab",
-            "-framerate", "30",
-            "-i", &input_source,
-            "-c:v", "libx264",
-            "-preset", "ultrafast",
-            "-pix_fmt", "yuv420p",
-            "-movflags", "+faststart",
-            "-y",
-            &output_str,
-        ])
+        .args(&ffmpeg_args)
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
         .creation_flags(0x08000000)
