@@ -165,6 +165,18 @@ export async function isRecordingTauri() {
   try { return await invoke('is_recording') } catch { return false }
 }
 
+export async function showOverlay(lang) {
+  if (!isTauri()) return
+  const { invoke } = await import('@tauri-apps/api/core')
+  try { await invoke('show_overlay', { lang }) } catch {}
+}
+
+export async function hideOverlay() {
+  if (!isTauri()) return
+  const { invoke } = await import('@tauri-apps/api/core')
+  try { await invoke('hide_overlay') } catch {}
+}
+
 export async function downloadFfmpeg() {
   if (!isTauri()) return null
   const { invoke } = await import('@tauri-apps/api/core')

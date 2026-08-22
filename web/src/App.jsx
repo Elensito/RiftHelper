@@ -18,7 +18,7 @@ import RiftTimeline from './components/RiftTimeline.jsx'
 import VODPlayer from './components/VODPlayer.jsx'
 import AppSettings from './components/AppSettings.jsx'
 import { fetchSummoner, fetchLatestMatch, fetchLiveGame, fetchMastery, fetchChampions, fetchChampion } from './api.js'
-import { isTauri, getRiotClientSession, notifyGameEnded, startRecordingTauri, stopRecordingTauri, getAutoRecord } from './tauri.js'
+import { isTauri, getRiotClientSession, notifyGameEnded, startRecordingTauri, stopRecordingTauri, getAutoRecord, showOverlay, hideOverlay } from './tauri.js'
 import { matchGroup, t } from './i18n.js'
 
 const PAGE_SIZE = 20
@@ -72,7 +72,7 @@ export default function App() {
   const recordingStartRef = useRef(null)
   const recordingGameDataRef = useRef(null)
   const recordingActiveRef = useRef(false)
-  const autoRecordRef = useRef(false)
+  const autoRecordRef = useRef(null)
   const wasInGameRef = useRef(null)
   const sentinelRef = useRef(null)
   const latestMatchRef = useRef(null)
@@ -218,18 +218,32 @@ export default function App() {
               teams: data.teams || [],
               queue: data.game?.queue || '',
             }
-            if (autoRecordRef.current) {
+            const tryRecord = () => {
+              if (autoRecordRef.current === null) {
+                getAutoRecord().then(v => {
+                  autoRecordRef.current = v
+                  if (v) doRecord()
+                }).catch(() => { autoRecordRef.current = false })
+              } else if (autoRecordRef.current) {
+                doRecord()
+              }
+            }
+            const doRecord = () => {
+              if (recordingActiveRef.current || recordingStartRef.current) return
               recordingStartRef.current = Date.now()
               setIsRecording(true)
               recordingActiveRef.current = true
+              showOverlay(lang)
               startRecordingTauri().then(path => {
                 if (!path) recordingActiveRef.current = false
               }).catch(() => { recordingActiveRef.current = false })
             }
+            tryRecord()
           }
         }
         if (!inGame && wasInGameRef.current === true) {
           wasInGameRef.current = false
+          hideOverlay()
           if (recordingStartRef.current) {
             const duration = Math.floor((Date.now() - recordingStartRef.current) / 1000)
             recordingStartRef.current = null
@@ -501,8 +515,8 @@ export default function App() {
   }, [])
 
   useEffect(() => {
-    if (isTauri()) {
-      getAutoRecord().then(v => { autoRecordRef.current = v })
+    if (!settingsOpen && isTauri()) {
+      getAutoRecord().then(v => { autoRecordRef.current = v }).catch(() => {})
     }
   }, [settingsOpen])
 

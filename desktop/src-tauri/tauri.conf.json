@@ -19,6 +19,20 @@
         "resizable": true,
         "fullscreen": false,
         "center": true
+      },
+      {
+        "title": "Overlay",
+        "label": "overlay",
+        "url": "overlay.html",
+        "width": 340,
+        "height": 90,
+        "decorations": false,
+        "transparent": true,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "visible": false,
+        "resizable": false,
+        "shadow": false
       }
     ],
     "trayIcon": {

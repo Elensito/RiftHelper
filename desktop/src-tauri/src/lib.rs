@@ -400,7 +400,7 @@ async fn test_ffmpeg(path: String) -> Result<bool, String> {
         .arg("-version")
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
-        .creation_flags(0x00000008)
+        .creation_flags(0x08000000)
         .output()
         .map_err(|e| e.to_string())?;
     Ok(output.status.success())
@@ -481,7 +481,7 @@ async fn start_recording(app: tauri::AppHandle) -> Result<String, String> {
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
-        .creation_flags(0x00000008)
+        .creation_flags(0x08000000)
         .spawn()
         .map_err(|e| e.to_string())?;
 
@@ -523,6 +523,51 @@ async fn is_recording() -> Result<bool, String> {
     } else {
         Ok(false)
     }
+}
+
+#[tauri::command]
+async fn show_overlay(app: tauri::AppHandle, lang: String) -> Result<(), String> {
+    use tauri::Manager;
+
+    let title_text = match lang.as_str() {
+        "es" => "Grabando",
+        "pt" => "Gravando",
+        "fr" => "Enregistrement",
+        "ko" => "녹화 중",
+        _ => "Recording",
+    };
+    let js = format!("document.getElementById('title').textContent='{}';", title_text);
+
+    if let Some(win) = app.get_webview_window("overlay") {
+        let _ = win.eval(&js);
+        if let Some((x, y, w, h)) = find_lol_window_rect() {
+            let overlay_x = x + w - 360;
+            let overlay_y = y + (h / 2) - 45;
+            let _ = win.set_position(tauri::Position::Physical(tauri::PhysicalPosition {
+                x: overlay_x.max(x),
+                y: overlay_y.max(y),
+            }));
+        }
+        let _ = win.show();
+        let _ = win.set_always_on_top(true);
+        let handle = app.clone();
+        std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_secs(5));
+            if let Some(w) = handle.get_webview_window("overlay") {
+                let _ = w.hide();
+            }
+        });
+    }
+    Ok(())
+}
+
+#[tauri::command]
+async fn hide_overlay(app: tauri::AppHandle) -> Result<(), String> {
+    use tauri::Manager;
+    if let Some(win) = app.get_webview_window("overlay") {
+        let _ = win.hide();
+    }
+    Ok(())
 }
 
 const FFMPEG_URL: &str = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip";
@@ -662,6 +707,8 @@ pub fn run() {
             start_recording,
             stop_recording,
             is_recording,
+            show_overlay,
+            hide_overlay,
             download_and_setup_ffmpeg,
         ]);
 
