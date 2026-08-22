@@ -567,10 +567,20 @@ export default function App() {
                   {t(lang, 'update')}
                 </button>
               )}
+              <div className="topbar-search-wrap">
+                <SearchBar
+                  onSearch={(n, t) => load(n, t)}
+                  loading={loading}
+                  lang={lang}
+                  searchText={searchText}
+                  onSearchTextChange={setSearchText}
+                />
+              </div>
             </div>
 
             <div className="topbar-right">
-              {profile && (
+              {isTauri() && <RiotClientWidget lang={lang} onOpen={openPlayer} />}
+              {!isTauri() && profile && (
                 <div className="topbar-summoner-card" onClick={() => setTab('matches')}>
                   <img
                     className="topbar-summoner-avatar"
@@ -625,15 +635,6 @@ export default function App() {
                 </aside>
 
                 <div className="profile-main">
-                  <div className="profile-search-area">
-                    <SearchBar
-                      onSearch={(n, t) => load(n, t)}
-                      loading={loading}
-                      lang={lang}
-                      searchText={searchText}
-                      onSearchTextChange={setSearchText}
-                    />
-                  </div>
                   <ProfileHeader
                     summoner={profile.summoner}
                     matches={profile.matches}

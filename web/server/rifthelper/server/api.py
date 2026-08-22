@@ -785,7 +785,14 @@ async def fetch_match_metrics(match_id: str, puuid: str | None = None) -> dict:
     except RiotAPIError as e:
         raise RiotAPIError(f"Partida {match_id} no disponible: {e}", 404) from e
     champ_info = await riot.get_champion_info()
-    return stats_service.timeline_metrics(match, timeline, champ_info, puuid or "")
+    payload = stats_service.timeline_metrics(match, timeline, champ_info, puuid or "")
+    images: set[str] = set()
+    for p in payload.get("players", []):
+        icon = p.get("champion_icon")
+        if icon:
+            images.add(icon.rsplit("/", 1)[-1])
+    await _ensure_champion_icons(images)
+    return payload
 
 
 async def fetch_match_events(match_id: str, puuid: str | None = None) -> dict:
