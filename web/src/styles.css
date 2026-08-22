@@ -126,6 +126,7 @@ body {
   align-items: center;
   gap: 12px;
   flex: 1;
+  margin-left: 40px;
   justify-content: center;
 }
 
