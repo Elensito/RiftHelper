@@ -125,11 +125,14 @@ body {
   display: flex;
   align-items: center;
   gap: 12px;
+  flex: 1;
+  margin-left: 64px;
+  justify-content: center;
 }
 
 .topbar-search-wrap .search,
 .topbar-left .search {
-  width: min(550px, 50%);
+  width: min(550px, 100%);
   min-width: 200px;
   margin: 0;
 }

@@ -156,7 +156,6 @@ export default function RiftTimeline({ lang, onOpenVod, profile }) {
         <span className="rt-rec-label">
           {settings.autoRecord ? t(lang, 'autoRecordingOn') : t(lang, 'autoRecordingOff')}
         </span>
-        <span className="rt-rec-hotkey">{settings.recordHotkey}</span>
       </div>
 
       {vods.length === 0 ? (
