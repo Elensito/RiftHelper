@@ -1,4 +1,5 @@
 use serde::Serialize;
+use tauri::Emitter;
 use tauri::Manager;
 use std::sync::Mutex;
 use std::process::{Command, Child};
@@ -446,7 +447,6 @@ const FFMPEG_URL: &str = "https://github.com/BtbN/FFmpeg-Builds/releases/downloa
 
 #[tauri::command]
 async fn download_and_setup_ffmpeg(app: tauri::AppHandle) -> Result<String, String> {
-    use serde::Deserialize;
 
     #[derive(Serialize)]
     struct ProgressPayload {
