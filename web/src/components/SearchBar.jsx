@@ -63,7 +63,6 @@ export default function SearchBar({ onSearch, loading, lang, searchText, onSearc
             if (e.key === 'Escape') setOpen(false)
           }}
           placeholder={t(lang, 'placeholder')}
-          autoFocus
           spellCheck="false"
           autoComplete="off"
         />

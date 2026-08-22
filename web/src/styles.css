@@ -122,18 +122,20 @@ body {
 }
 
 .topbar-left {
+  position: absolute;
+  left: calc(50% + 32px);
+  top: 50%;
+  transform: translate(-50%, -50%);
   display: flex;
   align-items: center;
   gap: 12px;
-  flex: 1;
-  margin-left: 140px;
-  justify-content: center;
+  width: clamp(240px, calc(50vw - 220px), 550px);
 }
 
 .topbar-search-wrap .search,
 .topbar-left .search {
-  width: min(550px, 100%);
-  min-width: 200px;
+  width: 100%;
+  min-width: 0;
   margin: 0;
 }
 
@@ -4356,8 +4358,11 @@ button.p-name:hover {
   }
 
   .topbar-left {
+    position: static;
+    transform: none;
     order: 1;
-    justify-self: start;
+    width: 100%;
+    justify-content: center;
   }
 
   .topbar-right {
