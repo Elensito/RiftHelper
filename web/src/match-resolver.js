@@ -45,7 +45,12 @@ export async function retryPendingMatches(summoner, excludeIds = []) {
 
   let fresh = null
   try {
-    const data = await fetchSummoner(summoner.name, summoner.tag, 5, 0, true)
+    /* Each poll only needs the most recent matches — one per pending VOD
+       (usually exactly 1) instead of a fixed batch of 5. This cuts the
+       Riot API cost of the aggressive polling window by ~3x while staying
+       correct when several recordings are pending at once. */
+    const need = Math.min(Math.max(pending.length, 1), 5)
+    const data = await fetchSummoner(summoner.name, summoner.tag, need, 0, true)
     fresh = data.matches || []
   } catch {
     return pending.length
