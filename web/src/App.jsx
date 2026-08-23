@@ -18,7 +18,7 @@ import RiftTimeline from './components/RiftTimeline.jsx'
 import VODPlayer from './components/VODPlayer.jsx'
 import AppSettings from './components/AppSettings.jsx'
 import { fetchSummoner, fetchLatestMatch, fetchLiveGame, fetchMastery, fetchChampions, fetchChampion } from './api.js'
-import { isTauri, getRiotClientSession, notifyGameEnded, startRecordingTauri, stopRecordingTauri, getAutoRecord, showOverlay, hideOverlay } from './tauri.js'
+import { isTauri, getRiotClientSession, notifyGameEnded, startRecordingTauri, stopRecordingTauri, getAutoRecord, isLolWindowOpen, showOverlay, hideOverlay } from './tauri.js'
 import { matchGroup, t } from './i18n.js'
 
 const PAGE_SIZE = 20
@@ -201,65 +201,25 @@ export default function App() {
   useEffect(() => {
     if (!profile) return
     let wasInGameLocal = null
-    const poll = async () => {
-      try {
-        const data = await fetchLiveGame(profile.summoner.name, profile.summoner.tag)
-        setLive(data)
-        const inGame = !!data.in_game
-        if (tab === 'live') {
-          if (wasInGameLocal === true && !inGame) {
-            notifyGameEnded(profile.summoner, lang)
-          }
-          if (!inGame) setTab('matches')
-        }
-        if (inGame && wasInGameRef.current !== true) {
-          wasInGameRef.current = true
-          if (isTauri()) {
-            recordingGameDataRef.current = {
-              game: data.game || null,
-              teams: data.teams || [],
-              queue: data.game?.queue || '',
-            }
-            const tryRecord = () => {
-              if (autoRecordRef.current === null) {
-                getAutoRecord().then(v => {
-                  autoRecordRef.current = v
-                  if (v) doRecord()
-                }).catch(() => { autoRecordRef.current = false })
-              } else if (autoRecordRef.current) {
-                doRecord()
-              }
-            }
-            const doRecord = () => {
-              if (recordingActiveRef.current || recordingStartRef.current) return
-              recordingStartRef.current = Date.now()
-              setIsRecording(true)
-              recordingActiveRef.current = true
-              showOverlay(lang)
-              startRecordingTauri().then(path => {
-                if (!path) recordingActiveRef.current = false
-              }).catch(() => { recordingActiveRef.current = false })
-            }
-            tryRecord()
-          }
-        }
-        if (!inGame && wasInGameRef.current === true) {
-          wasInGameRef.current = false
-          hideOverlay()
-          if (recordingStartRef.current) {
-            const duration = Math.floor((Date.now() - recordingStartRef.current) / 1000)
-            recordingStartRef.current = null
-            setRecordingExiting(true)
-            setTimeout(() => {
-              setIsRecording(false)
-              setRecordingExiting(false)
-            }, 600)
-            let videoPath = null
-            if (recordingActiveRef.current) {
-              try { videoPath = await stopRecordingTauri() } catch {}
-              recordingActiveRef.current = false
-            }
-            const gd = recordingGameDataRef.current || {}
+
+    /* Shared end-of-game flow: stop ffmpeg, save the VOD entry, backfill stats */
+    const finalizeRecording = async () => {
+      wasInGameRef.current = false
+      hideOverlay()
+      if (!recordingStartRef.current) return
+      const duration = Math.floor((Date.now() - recordingStartRef.current) / 1000)
+      recordingStartRef.current = null
+      setRecordingExiting(true)
+      setTimeout(() => {
+        setIsRecording(false)
+        setRecordingExiting(false)
+      }, 600)
+      let videoPath = null
+      if (recordingActiveRef.current) {
+        try { videoPath = await stopRecordingTauri() } catch {}
+        recordingActiveRef.current = false
+      }
+      const gd = recordingGameDataRef.current || {}
             const playerTeam = (gd.teams || []).find(t =>
               (t.players || []).some(p => p.is_player)
             )
@@ -415,15 +375,81 @@ export default function App() {
               }, 30000)
             }
 
-            recordingGameDataRef.current = null
+      recordingGameDataRef.current = null
+    }
+
+    const poll = async () => {
+      try {
+        const data = await fetchLiveGame(profile.summoner.name, profile.summoner.tag)
+        setLive(data)
+        const inGame = !!data.in_game
+        if (tab === 'live') {
+          if (wasInGameLocal === true && !inGame) {
+            notifyGameEnded(profile.summoner, lang)
           }
+          if (!inGame) setTab('matches')
+        }
+        if (inGame && wasInGameRef.current !== true) {
+          wasInGameRef.current = true
+          if (isTauri()) {
+            recordingGameDataRef.current = {
+              game: data.game || null,
+              teams: data.teams || [],
+              queue: data.game?.queue || '',
+            }
+            const tryRecord = () => {
+              if (autoRecordRef.current === null) {
+                getAutoRecord().then(v => {
+                  autoRecordRef.current = v
+                  if (v) doRecord()
+                }).catch(() => { autoRecordRef.current = false })
+              } else if (autoRecordRef.current) {
+                doRecord()
+              }
+            }
+            const doRecord = () => {
+              if (recordingActiveRef.current || recordingStartRef.current) return
+              recordingStartRef.current = Date.now()
+              setIsRecording(true)
+              recordingActiveRef.current = true
+              showOverlay(lang)
+              startRecordingTauri().then(path => {
+                if (!path) recordingActiveRef.current = false
+              }).catch(() => { recordingActiveRef.current = false })
+            }
+            tryRecord()
+          }
+        }
+        if (!inGame && wasInGameRef.current === true) {
+          await finalizeRecording()
         }
         wasInGameLocal = inGame
       } catch (e) {}
     }
     poll()
     const id = setInterval(poll, 15000)
-    return () => clearInterval(id)
+
+    /* Fast watchdog while recording: poll the LoL window every 1.5s via
+       WinAPI so the end of the game is detected within ~3s of the client
+       closing, instead of waiting for the 15s backend live-game poll */
+    let wdMisses = 0
+    const wd = setInterval(async () => {
+      if (!recordingActiveRef.current || !recordingStartRef.current || !wasInGameRef.current) {
+        wdMisses = 0
+        return
+      }
+      try {
+        const open = await isLolWindowOpen()
+        if (open) { wdMisses = 0; return }
+        wdMisses += 1
+        if (wdMisses >= 2) {
+          wdMisses = 0
+          await finalizeRecording()
+        }
+      } catch {}
+    }, 1500)
+
+    return () => { clearInterval(id); clearInterval(wd) }
   }, [profile, tab, lang])
 
   useEffect(() => {

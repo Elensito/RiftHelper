@@ -165,6 +165,12 @@ export async function isRecordingTauri() {
   try { return await invoke('is_recording') } catch { return false }
 }
 
+export async function isLolWindowOpen() {
+  if (!isTauri()) return true
+  const { invoke } = await import('@tauri-apps/api/core')
+  try { return await invoke('is_lol_window_open') } catch { return true }
+}
+
 export async function showOverlay(lang) {
   if (!isTauri()) return
   const { invoke } = await import('@tauri-apps/api/core')

@@ -705,9 +705,15 @@ async fn stop_recording() -> Result<Option<String>, String> {
     Ok(output_path)
 }
 
+/// Cheap WinAPI check used by the frontend watchdog to detect the end of a
+/// game the moment the "League of Legends (TM) Client" window disappears.
 #[tauri::command]
-async fn is_recording() -> Result<bool, String> {
-    let mut guard = FFMPEG_PROC.lock().map_err(|e| e.to_string())?;
+fn is_lol_window_open() -> bool {
+    find_lol_window_rect().is_some()
+}
+
+#[tauri::command]
+async fn is_recording() -> Result<bool, String> {    let mut guard = FFMPEG_PROC.lock().map_err(|e| e.to_string())?;
     if let Some(ref mut proc) = *guard {
         match proc.child.try_wait() {
             Ok(Some(_)) => { *guard = None; Ok(false) }
@@ -909,6 +915,7 @@ pub fn run() {
             start_recording,
             stop_recording,
             is_recording,
+            is_lol_window_open,
             show_overlay,
             hide_overlay,
             download_and_setup_ffmpeg,
