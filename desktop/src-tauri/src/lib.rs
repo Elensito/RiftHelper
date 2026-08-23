@@ -460,8 +460,20 @@ async fn start_recording(app: tauri::AppHandle) -> Result<String, String> {
     let output_path = std::path::Path::new(&recordings_folder).join(&filename);
     let output_str = output_path.to_string_lossy().to_string();
 
-    let (x, y, w, h) = find_lol_window_rect()
-        .ok_or_else(|| "League of Legends window not found".to_string())?;
+    // The in-game detection can fire during champ select, before the LoL
+    // window exists: poll for it instead of failing permanently.
+    let (x, y, w, h) = tauri::async_runtime::spawn_blocking(|| {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(180);
+        let mut rect = find_lol_window_rect();
+        while rect.is_none() && std::time::Instant::now() < deadline {
+            std::thread::sleep(std::time::Duration::from_secs(2));
+            rect = find_lol_window_rect();
+        }
+        rect
+    })
+    .await
+    .map_err(|e| e.to_string())?
+    .ok_or_else(|| "League of Legends window not found".to_string())?;
 
     let mut ffmpeg_args = vec![
         "-f".to_string(), "gdigrab".to_string(),

@@ -67,6 +67,7 @@ export default function VODPlayer({ vod, lang, onBack }) {
   const [showTeams, setShowTeams] = useState(true)
   const [eventFilter, setEventFilter] = useState('all')
   const [videoUrl, setVideoUrl] = useState(null)
+  const [videoError, setVideoError] = useState(false)
 
   const events = vod.events || []
   const team1 = vod.team1 || []
@@ -81,6 +82,10 @@ export default function VODPlayer({ vod, lang, onBack }) {
       }).catch(() => {})
     }
   }, [vod.id, vod.hasVideo, vod.videoPath])
+
+  useEffect(() => {
+    setVideoError(false)
+  }, [videoUrl])
 
   const filteredEvents = eventFilter === 'all'
     ? events
@@ -232,8 +237,14 @@ export default function VODPlayer({ vod, lang, onBack }) {
             </button>
           )}
           <div className="vod-video-container" onClick={togglePlay}>
-            {videoUrl ? (
-              <video ref={videoRef} className="vod-video" src={videoUrl} preload="metadata" />
+            {videoUrl && !videoError ? (
+              <video
+                ref={videoRef}
+                className="vod-video"
+                src={videoUrl}
+                preload="metadata"
+                onError={() => setVideoError(true)}
+              />
             ) : (
               <div className="vod-video-placeholder vod-match-summary">
                 {vod.championIcon && (
