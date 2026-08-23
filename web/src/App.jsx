@@ -532,7 +532,7 @@ export default function App() {
       />
 
       {view === 'rift-timeline' && activeVod ? (
-        <VODPlayer vod={activeVod} lang={lang} onBack={() => setActiveVod(null)} />
+        <VODPlayer vod={activeVod} lang={lang} puuid={profile?.summoner?.puuid} onBack={() => setActiveVod(null)} />
       ) : view === 'rift-timeline' ? (
         <>
           <header className="topbar topbar-icon-rail">

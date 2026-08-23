@@ -1,27 +1,226 @@
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useEffect, useMemo, useCallback } from 'react'
 import { t } from '../i18n.js'
 import Img from './Img.jsx'
 import { isTauri } from '../tauri.js'
+import { fetchMatchEvents } from '../api.js'
 
-const EVENT_COLORS = {
-  kill: 'var(--cyan)',
-  death: 'var(--red)',
-  assist: 'var(--green)',
-  tower: 'var(--neon-purple)',
-  dragon: '#ff9800',
-  baron: '#ffd54f',
-  herald: '#ab47bc',
-  inhibitor: '#ff5722',
-  firstBlood: 'var(--pink)',
-  shutdown: '#ff9800',
+/* ── Event icons (neon line style) ─────────────────────────── */
+
+const IconSword = () => (
+  <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M14.5 17.5L3 6V3h3l11.5 11.5" />
+    <path d="M13 19l6-6" />
+    <path d="M16 16l4 4" />
+    <path d="M19 21l2-2" />
+  </svg>
+)
+
+const IconSkull = () => (
+  <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M12 2a8 8 0 0 0-8 8c0 2.5 1.2 4.4 3 5.7V20h10v-4.3c1.8-1.3 3-3.2 3-5.7a8 8 0 0 0-8-8z" />
+    <circle cx="9" cy="10.5" r="1.2" fill="currentColor" stroke="none" />
+    <circle cx="15" cy="10.5" r="1.2" fill="currentColor" stroke="none" />
+    <path d="M10 20v-2M14 20v-2M12 20v-2.2" />
+  </svg>
+)
+
+const IconTower = () => (
+  <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M6 21V8h12v13" />
+    <path d="M4 21h16" />
+    <path d="M6 8V5h2.5v2h3V5h3v2H17V8" />
+    <path d="M11 21v-4h2v4" />
+  </svg>
+)
+
+const IconInhib = () => (
+  <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="6.5" y="6.5" width="11" height="11" rx="2.5" />
+    <path d="M12 10l2.4 4h-4.8z" />
+  </svg>
+)
+
+const IconBaron = () => (
+  <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M7.5 3.5c2.2 4 2.2 9-.5 17" />
+    <path d="M12.5 2.5c2.6 5 2.6 11-.5 19" />
+    <path d="M17.5 4c2 4.5 1.8 9-1 15.5" />
+  </svg>
+)
+
+const KIND_META = {
+  'kill-me':   { cls: 'kill',   icon: IconSword },
+  'death-me':  { cls: 'death',  icon: IconSkull },
+  'tower':     { cls: 'tower',  icon: IconTower },
+  'inhib':     { cls: 'inhib',  icon: IconInhib },
+  'baron':     { cls: 'baron',  icon: IconBaron },
 }
 
-function formatTime(sec) {
-  if (!sec && sec !== 0) return '0:00'
-  const m = Math.floor(sec / 60)
-  const s = Math.floor(sec % 60)
-  return `${m}:${s.toString().padStart(2, '0')}`
+function parseTimeToSec(ev) {
+  const tm = typeof ev.time === 'string' ? ev.time.match(/(\d+)\s*:\s*(\d{1,2})/) : null
+  if (tm) return Number(tm[1]) * 60 + Number(tm[2])
+  const minute = Number(ev.minute)
+  if (!Number.isNaN(minute)) return minute * 60
+  return null
 }
+
+/* ── Neon match timeline ───────────────────────────────────── */
+
+function NeonTimeline({ matchId, puuid, lang, duration, current, onSeek }) {
+  const CACHE_PREFIX = 'rh-vtl-'
+  const [data, setData] = useState(null)
+  const [status, setStatus] = useState(matchId ? 'loading' : 'empty')
+
+  useEffect(() => {
+    if (!matchId) { setStatus('empty'); setData(null); return }
+    let cancelled = false
+    try {
+      const cached = sessionStorage.getItem(CACHE_PREFIX + matchId)
+      if (cached) {
+        setData(JSON.parse(cached))
+        setStatus('ok')
+        return
+      }
+    } catch {}
+    setStatus('loading')
+    fetchMatchEvents(matchId, puuid)
+      .then((d) => {
+        if (cancelled) return
+        setData(d)
+        setStatus('ok')
+        try { sessionStorage.setItem(CACHE_PREFIX + matchId, JSON.stringify(d)) } catch {}
+      })
+      .catch(() => !cancelled && setStatus('error'))
+    return () => { cancelled = true }
+  }, [matchId, puuid])
+
+  const tlDuration = Math.max(1, duration || (data ? (data.duration_min || 0) * 60 : 0))
+
+  const events = useMemo(() => {
+    if (!data || !data.events) return []
+
+    const out = []
+    for (const ev of data.events) {
+      const sec = parseTimeToSec(ev)
+      if (sec == null) continue
+      let kind = null
+      if (ev.type === 'kill') {
+        if (ev.killer?.is_player) kind = 'kill-me'
+        else if (ev.victim?.is_player) kind = 'death-me'
+      } else if (ev.type === 'building') {
+        kind = ev.building === 'INHIBITOR' ? 'inhib' : 'tower'
+      } else if (ev.type === 'objective' && /BARON/i.test(ev.monster || '')) {
+        kind = 'baron'
+      }
+      if (!kind) continue
+      out.push({ kind, sec, time: ev.time, team: ev.team === 200 ? 200 : 100, ally: ev.team === 100 })
+    }
+
+    // Team alignment relative to MY team
+    const myTeam = (data.players || []).find(p => p.is_player)?.team ?? null
+    if (myTeam != null) {
+      for (const o of out) o.ally = o.team === myTeam
+    }
+
+    // Collision-free lanes: sort by time, stack overlapping markers
+    out.sort((a, b) => a.sec - b.sec)
+    const minGap = Math.max(8, tlDuration * 0.022)
+    const laneEnds = [-Infinity]
+    for (const o of out) {
+      let lane = laneEnds.findIndex(end => o.sec - end >= minGap)
+      if (lane === -1) lane = laneEnds.length < 4 ? laneEnds.length : 0
+      laneEnds[lane] = o.sec
+      o.lane = lane
+    }
+    return out.slice(0, 120)
+  }, [data, tlDuration])
+
+  const pct = (sec) => Math.min(100, Math.max(0, (sec / tlDuration) * 100))
+  const stepMin = tlDuration <= 20 * 60 ? 2 : tlDuration <= 35 * 60 ? 5 : 10
+  const ticks = useMemo(() => {
+    const arr = []
+    for (let m = 0; m * 60 <= tlDuration; m += stepMin) arr.push(m * 60)
+    return arr
+  }, [tlDuration, stepMin])
+
+  const labelFor = useCallback((ev) => {
+    const side = ev.kind === 'kill-me' || ev.kind === 'death-me'
+      ? ''
+      : ` · ${t(lang, ev.ally ? 'vtlAlly' : 'vtlEnemy')}`
+    const base =
+      ev.kind === 'kill-me' ? t(lang, 'vtlKills') :
+      ev.kind === 'death-me' ? t(lang, 'vtlDeaths') :
+      ev.kind === 'tower' ? t(lang, 'evTower') :
+      ev.kind === 'inhib' ? t(lang, 'evInhibitor') :
+      t(lang, 'evBaron')
+    return `${ev.time} · ${base}${side}`
+  }, [lang])
+
+  const progressPct = pct(current)
+
+  return (
+    <section className="vtl" aria-label={t(lang, 'vtlTitle')}>
+      <div className="vtl-head">
+        <span className="vtl-title">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="10" />
+            <polyline points="12 6 12 12 16 14" />
+          </svg>
+          {t(lang, 'vtlTitle')}
+        </span>
+        <div className="vtl-legend">
+          <span className="vtl-lg"><i className="lg kill" />{t(lang, 'vtlKills')}</span>
+          <span className="vtl-lg"><i className="lg death" />{t(lang, 'vtlDeaths')}</span>
+          <span className="vtl-lg"><i className="lg ally" />{t(lang, 'vtlAlly')}</span>
+          <span className="vtl-lg"><i className="lg enemy" />{t(lang, 'vtlEnemy')}</span>
+        </div>
+      </div>
+
+      <div className={`vtl-track ${status}`}>
+        {/* progress */}
+        <div className="vtl-progress" style={{ width: `${progressPct}%` }} />
+
+        {/* ticks */}
+        {ticks.map((sec, i) => (
+          <span key={sec} className={`vtl-tick ${i % 2 === 0 ? 'major' : 'minor'}`} style={{ left: `${pct(sec)}%` }}>
+            {i % 2 === 0 && <label>{Math.round(sec / 60)}:00</label>}
+          </span>
+        ))}
+
+        {/* playhead */}
+        <span className="vtl-playhead" style={{ left: `${progressPct}%` }} />
+
+        {/* events */}
+        {status === 'ok' && events.map((ev, i) => {
+          const meta = KIND_META[ev.kind]
+          const Icon = meta.icon
+          return (
+            <button
+              key={i}
+              className={`vtl-ev ${meta.cls} ${ev.ally ? 'ally' : 'enemy'} lane-${ev.lane % 4}`}
+              style={{ left: `${pct(ev.sec)}%` }}
+              data-tip={labelFor(ev)}
+              aria-label={labelFor(ev)}
+              onClick={() => onSeek(Math.max(0, ev.sec - 5))}
+            >
+              <Icon />
+            </button>
+          )
+        })}
+
+        {status === 'loading' && <div className="vtl-shimmer" />}
+        {(status === 'empty' || status === 'error') && (
+          <div className="vtl-empty">{t(lang, 'evEmpty')}</div>
+        )}
+        {status === 'ok' && events.length === 0 && (
+          <div className="vtl-empty">{t(lang, 'evEmpty')}</div>
+        )}
+      </div>
+    </section>
+  )
+}
+
+/* ── Teams panel ───────────────────────────────────────────── */
 
 function PlayerTeamPanel({ team, teamLabel, isWinner, lang }) {
   return (
@@ -52,10 +251,14 @@ function PlayerTeamPanel({ team, teamLabel, isWinner, lang }) {
   )
 }
 
-export default function VODPlayer({ vod, lang, onBack }) {
+/* ── Player ────────────────────────────────────────────────── */
+
+export default function VODPlayer({ vod, lang, onBack, puuid }) {
   const videoRef = useRef(null)
-  const timelineRef = useRef(null)
+  const seekRef = useRef(null)
+
   const [playing, setPlaying] = useState(false)
+  const [hovering, setHovering] = useState(false)
   const [currentTime, setCurrent] = useState(0)
   const [duration, setDuration] = useState(vod.duration || 0)
   const [volume, setVolume] = useState(0.8)
@@ -65,11 +268,9 @@ export default function VODPlayer({ vod, lang, onBack }) {
   const [clipStart, setClipStart] = useState(null)
   const [clipEnd, setClipEnd] = useState(null)
   const [showTeams, setShowTeams] = useState(true)
-  const [eventFilter, setEventFilter] = useState('all')
   const [videoUrl, setVideoUrl] = useState(null)
   const [videoError, setVideoError] = useState(false)
 
-  const events = vod.events || []
   const team1 = vod.team1 || []
   const team2 = vod.team2 || []
 
@@ -77,25 +278,19 @@ export default function VODPlayer({ vod, lang, onBack }) {
     if (videoUrl || !vod.hasVideo) return
     if (vod.videoPath && isTauri()) {
       import('@tauri-apps/api/core').then(({ convertFileSrc }) => {
-        const url = convertFileSrc(vod.videoPath)
-        setVideoUrl(url)
+        setVideoUrl(convertFileSrc(vod.videoPath))
       }).catch(() => {})
     }
   }, [vod.id, vod.hasVideo, vod.videoPath])
 
-  useEffect(() => {
-    setVideoError(false)
-  }, [videoUrl])
+  useEffect(() => { setVideoError(false) }, [videoUrl])
 
-  const filteredEvents = eventFilter === 'all'
-    ? events
-    : events.filter(e => e.type === eventFilter)
-
+  /* Video element events */
   useEffect(() => {
     const vid = videoRef.current
     if (!vid) return
     const onTime = () => setCurrent(vid.currentTime)
-    const onLoaded = () => setDuration(vid.duration)
+    const onLoaded = () => setDuration(vid.duration || vod.duration || 0)
     const onEnd = () => setPlaying(false)
     vid.addEventListener('timeupdate', onTime)
     vid.addEventListener('loadedmetadata', onLoaded)
@@ -105,49 +300,53 @@ export default function VODPlayer({ vod, lang, onBack }) {
       vid.removeEventListener('loadedmetadata', onLoaded)
       vid.removeEventListener('ended', onEnd)
     }
-  }, [])
+  }, [videoUrl])
 
-  const togglePlay = () => {
+  /* Auto-hide cursor over video while playing */
+  const containerRef = useRef(null)
+  useEffect(() => {
+    if (containerRef.current) {
+      containerRef.current.style.cursor = playing && !hovering ? 'none' : 'pointer'
+    }
+  }, [playing, hovering])
+
+  const hasVideo = !!videoUrl && !videoError
+  const showDeck = hasVideo && (!playing || hovering)
+
+  const togglePlay = (e) => {
+    if (e) e.stopPropagation()
     const vid = videoRef.current
     if (!vid) return
-    if (playing) vid.pause()
-    else vid.play()
-    setPlaying(!playing)
+    if (playing) { vid.pause(); setPlaying(false) }
+    else { vid.play().then(() => setPlaying(true)).catch(() => {}) }
   }
 
-  const seek = (time) => {
+  const seek = useCallback((time) => {
     const vid = videoRef.current
-    if (vid) vid.currentTime = time
+    if (!vid || !Number.isFinite(time)) return
+    const max = Number.isFinite(vid.duration) && vid.duration > 0 ? vid.duration : time
+    vid.currentTime = Math.max(0, Math.min(time, max))
+    setCurrent(vid.currentTime)
+  }, [])
+
+  const seekFromEvent = (e) => {
+    const el = seekRef.current
+    if (!el || !duration) return
+    const rect = el.getBoundingClientRect()
+    const p = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width))
+    seek(p * duration)
   }
 
-  const seekTimeline = (e) => {
-    if (!timelineRef.current || !duration) return
-    const rect = timelineRef.current.getBoundingClientRect()
-    const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width))
-    seek(pct * duration)
-  }
-
-  const toggleSpeed = () => setShowSpeed(!showSpeed)
   const setSpeed = (rate) => {
     setPlaybackRate(rate)
     if (videoRef.current) videoRef.current.playbackRate = rate
     setShowSpeed(false)
   }
 
-  const startClip = () => {
-    setClipping(true)
-    setClipStart(currentTime)
-    setClipEnd(null)
-  }
-  const endClip = () => {
-    setClipping(false)
-    setClipEnd(currentTime)
-  }
-  const clearClip = () => {
-    setClipping(false)
-    setClipStart(null)
-    setClipEnd(null)
-  }
+  /* Clip helpers */
+  const startClip = () => { setClipping(true); setClipStart(currentTime); setClipEnd(null) }
+  const endClip = () => { setClipping(false); setClipEnd(currentTime) }
+  const clearClip = () => { setClipping(false); setClipStart(null); setClipEnd(null) }
 
   const createClip = async () => {
     if (clipStart === null || clipEnd === null) return
@@ -170,7 +369,7 @@ export default function VODPlayer({ vod, lang, onBack }) {
     if (videoUrl) {
       const a = document.createElement('a')
       a.href = videoUrl
-      a.download = vod.filename || 'vod.webm'
+      a.download = vod.filename || 'vod.mp4'
       a.click()
     }
   }
@@ -178,24 +377,16 @@ export default function VODPlayer({ vod, lang, onBack }) {
   const toggleFullscreen = () => {
     const el = document.querySelector('.vod-player-view')
     if (!el) return
-    if (document.fullscreenElement) {
-      document.exitFullscreen()
-    } else {
-      el.requestFullscreen().catch(() => {})
-    }
+    if (document.fullscreenElement) document.exitFullscreen().catch(() => {})
+    else el.requestFullscreen().catch(() => {})
   }
 
   const speeds = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2]
-
-  const eventTypes = ['all', 'kill', 'death', 'tower', 'dragon', 'baron', 'inhibitor']
-  const EVENT_LABELS = {
-    all: t(lang, 'allEvents'),
-    kill: 'Kill',
-    death: 'Death',
-    tower: t(lang, 'evTower'),
-    dragon: t(lang, 'evDragon'),
-    baron: t(lang, 'evBaron'),
-    inhibitor: t(lang, 'evInhibitor'),
+  const fmt = (sec) => {
+    if (!sec && sec !== 0) return '0:00'
+    const m = Math.floor(sec / 60)
+    const s = Math.floor(sec % 60)
+    return `${m}:${s.toString().padStart(2, '0')}`
   }
 
   return (
@@ -214,7 +405,7 @@ export default function VODPlayer({ vod, lang, onBack }) {
           <span className="vod-topbar-date">{vod.date ? new Date(vod.date).toLocaleDateString() : ''}</span>
         </div>
         <div className="vod-topbar-actions">
-          <button className="rt-btn rt-btn-ghost rt-btn-sm" onClick={downloadVod} title={t(lang, 'downloadVod')}>
+          <button className="rt-btn rt-btn-ghost rt-btn-sm" onClick={downloadVod} title={t(lang, 'downloadVod')} disabled={!hasVideo}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
               <polyline points="7 10 12 15 17 10" />
@@ -225,7 +416,10 @@ export default function VODPlayer({ vod, lang, onBack }) {
       </div>
 
       <div className="vod-main">
-        <div className="vod-video-area">
+        <div className="vod-video-area"
+          onMouseEnter={() => setHovering(true)}
+          onMouseLeave={() => setHovering(false)}
+        >
           {!showTeams && (
             <button className="vod-show-teams-btn" onClick={() => setShowTeams(true)} title={t(lang, 'toggleTeams')}>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -236,20 +430,13 @@ export default function VODPlayer({ vod, lang, onBack }) {
               </svg>
             </button>
           )}
-          <div className="vod-video-container" onClick={togglePlay}>
-            {videoUrl && !videoError ? (
-              <video
-                ref={videoRef}
-                className="vod-video"
-                src={videoUrl}
-                preload="metadata"
-                onError={() => setVideoError(true)}
-              />
+
+          <div ref={containerRef} className="vod-video-container" onClick={(e) => { if (hasVideo) togglePlay(e) }}>
+            {hasVideo ? (
+              <video ref={videoRef} className="vod-video" src={videoUrl} preload="metadata" onError={() => setVideoError(true)} />
             ) : (
               <div className="vod-video-placeholder vod-match-summary">
-                {vod.championIcon && (
-                  <img className="vod-summary-champ" src={vod.championIcon} alt={vod.champion || ''} />
-                )}
+                {vod.championIcon && <img className="vod-summary-champ" src={vod.championIcon} alt={vod.champion || ''} />}
                 <div className="vod-summary-info">
                   <span className="vod-summary-champ-name">{vod.champion || '—'}</span>
                   <span className="vod-summary-queue">{vod.queue || ''}</span>
@@ -259,139 +446,138 @@ export default function VODPlayer({ vod, lang, onBack }) {
                       {vod.result === 'win' ? t(lang, 'victory') : t(lang, 'defeat')}
                     </span>
                   )}
-                  <span className="vod-summary-duration">{formatTime(vod.duration)}</span>
+                  <span className="vod-summary-duration">{fmt(vod.duration)}</span>
                   <span className="vod-summary-date">{vod.date ? new Date(vod.date).toLocaleDateString() : ''}</span>
                 </div>
                 <span className="vod-summary-note">{t(lang, 'videoRecordingUnavailable')}</span>
               </div>
             )}
-            {!playing && videoUrl && (
-              <div className="vod-play-overlay">
-                <svg width="48" height="48" viewBox="0 0 24 24" fill="white" opacity="0.8">
-                  <polygon points="5 3 19 12 5 21 5 3" />
-                </svg>
+
+            {hasVideo && !playing && (
+              <div className="vod-play-overlay" onClick={(e) => togglePlay(e)}>
+                <span className="vod-play-btn-big">
+                  <svg width="30" height="30" viewBox="0 0 24 24" fill="currentColor">
+                    <polygon points="6 3 21 12 6 21 6 3" />
+                  </svg>
+                </span>
               </div>
             )}
-            {videoUrl && (
-              <button className="vod-fullscreen-btn" onClick={(e) => { e.stopPropagation(); toggleFullscreen() }} title={t(lang, 'fullscreen')}>
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3" />
-                </svg>
-              </button>
-            )}
-          </div>
 
-          <div className="vod-controls">
-            <button className="vod-ctrl-btn" onClick={togglePlay}>
-              {playing ? (
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-                  <rect x="6" y="4" width="4" height="16" />
-                  <rect x="14" y="4" width="4" height="16" />
-                </svg>
-              ) : (
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-                  <polygon points="5 3 19 12 5 21 5 3" />
-                </svg>
-              )}
-            </button>
-
-            <span className="vod-time">{formatTime(currentTime)}</span>
-
-            <div className="vod-timeline-wrap" ref={timelineRef} onClick={seekTimeline}>
-              <div className="vod-timeline-track">
-                <div className="vod-timeline-progress" style={{ width: duration ? `${(currentTime / duration) * 100}%` : '0%' }} />
-                {clipStart !== null && (
-                  <div className="vod-clip-region" style={{
-                    left: `${(Math.min(clipStart, clipEnd || currentTime) / duration) * 100}%`,
-                    width: `${((Math.abs((clipEnd || currentTime) - clipStart)) / duration) * 100}%`
-                  }} />
-                )}
-                {events.map((ev, i) => (
-                  <div
-                    key={i}
-                    className="vod-event-marker"
-                    style={{
-                      left: `${duration ? (ev.time / duration) * 100 : 0}%`,
-                      backgroundColor: EVENT_COLORS[ev.type] || 'var(--muted)',
-                    }}
-                    title={`${ev.label || ev.type} ${formatTime(ev.time)}`}
-                    onClick={(e) => { e.stopPropagation(); seek(ev.time) }}
-                  />
-                ))}
-              </div>
-            </div>
-
-            <span className="vod-time">{formatTime(duration)}</span>
-
-            <div className="vod-speed-wrap">
-              <button className="vod-ctrl-btn vod-speed-btn" onClick={toggleSpeed}>
-                {playbackRate}x
-              </button>
-              {showSpeed && (
-                <div className="vod-speed-menu">
-                  {speeds.map(s => (
-                    <button key={s} className={`vod-speed-opt ${s === playbackRate ? 'active' : ''}`} onClick={() => setSpeed(s)}>
-                      {s}x
-                    </button>
-                  ))}
+            {hasVideo && (
+              <div
+                className={`vod-deck ${showDeck ? 'visible' : ''}`}
+                onClick={(e) => e.stopPropagation()}
+                onMouseEnter={() => setHovering(true)}
+              >
+                <div className="vod-seek" ref={seekRef} onClick={seekFromEvent}>
+                  <div className="vod-seek-rail" />
+                  <div className="vod-seek-fill" style={{ width: duration ? `${(currentTime / duration) * 100}%` : '0%' }} />
+                  {clipStart !== null && (
+                    <div className="vod-clip-region" style={{
+                      left: `${duration ? (Math.min(clipStart, clipEnd ?? currentTime) / duration) * 100 : 0}%`,
+                      width: `${duration ? (Math.abs((clipEnd ?? currentTime) - clipStart) / duration) * 100 : 0}%`,
+                    }} />
+                  )}
+                  <div className="vod-seek-thumb" style={{ left: duration ? `${(currentTime / duration) * 100}%` : '0%' }} />
                 </div>
-              )}
-            </div>
 
-            <input
-              type="range"
-              className="vod-volume"
-              min="0"
-              max="1"
-              step="0.05"
-              value={volume}
-              onChange={(e) => {
-                const v = parseFloat(e.target.value)
-                setVolume(v)
-                if (videoRef.current) videoRef.current.volume = v
-              }}
-            />
+                <div className="vod-deck-row">
+                  <button className="vod-ctrl-btn vod-playpause" onClick={(e) => togglePlay(e)} title={playing ? 'Pause' : 'Play'}>
+                    {playing ? (
+                      <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor">
+                        <rect x="6" y="4" width="4" height="16" rx="1" />
+                        <rect x="14" y="4" width="4" height="16" rx="1" />
+                      </svg>
+                    ) : (
+                      <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor">
+                        <polygon points="6 3 21 12 6 21 6 3" />
+                      </svg>
+                    )}
+                  </button>
 
-            {clipping ? (
-              <button className="vod-ctrl-btn vod-clip-active" onClick={endClip} title={t(lang, 'setClipEnd')}>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--pink)" strokeWidth="2">
-                  <circle cx="6" cy="6" r="3" />
-                  <circle cx="6" cy="18" r="3" />
-                  <line x1="20" y1="4" x2="8.12" y2="15.88" />
-                  <line x1="14.47" y1="14.48" x2="20" y2="20" />
-                  <line x1="8.12" y1="8.12" x2="12" y2="12" />
-                </svg>
-                {clipEnd === null && <span className="clip-pulse" />}
-              </button>
-            ) : (
-              <button className="vod-ctrl-btn" onClick={startClip} title={t(lang, 'createClip')}>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <circle cx="6" cy="6" r="3" />
-                  <circle cx="6" cy="18" r="3" />
-                  <line x1="20" y1="4" x2="8.12" y2="15.88" />
-                  <line x1="14.47" y1="14.48" x2="20" y2="20" />
-                  <line x1="8.12" y1="8.12" x2="12" y2="12" />
-                </svg>
-              </button>
-            )}
+                  <span className="vod-time now">{fmt(currentTime)}</span>
+                  <span className="vod-time-sep">/</span>
+                  <span className="vod-time total">{fmt(duration)}</span>
 
-            {clipStart !== null && clipEnd !== null && (
-              <button className="vod-ctrl-btn vod-clip-save" onClick={createClip} title={t(lang, 'saveClip')}>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--green)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
-                  <polyline points="17 21 17 13 7 13 7 21" />
-                  <polyline points="7 3 7 8 15 8" />
-                </svg>
-              </button>
-            )}
+                  <div className="vod-deck-spacer" />
 
-            {(clipStart !== null || clipEnd !== null) && (
-              <button className="vod-ctrl-btn" onClick={clearClip} title={t(lang, 'clearClip')}>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--red)" strokeWidth="2">
-                  <line x1="18" y1="6" x2="6" y2="18" />
-                  <line x1="6" y1="6" x2="18" y2="18" />
-                </svg>
-              </button>
+                  <input
+                    type="range"
+                    className="vod-volume"
+                    min="0" max="1" step="0.05"
+                    value={volume}
+                    onChange={(e) => {
+                      const v = parseFloat(e.target.value)
+                      setVolume(v)
+                      if (videoRef.current) videoRef.current.volume = v
+                    }}
+                    title="Volume"
+                  />
+
+                  <div className="vod-speed-wrap">
+                    <button className="vod-ctrl-btn vod-speed-btn" onClick={() => setShowSpeed(!showSpeed)}>
+                      {playbackRate}x
+                    </button>
+                    {showSpeed && (
+                      <div className="vod-speed-menu">
+                        {speeds.map(s => (
+                          <button key={s} className={`vod-speed-opt ${s === playbackRate ? 'active' : ''}`} onClick={() => setSpeed(s)}>
+                            {s}x
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {clipping ? (
+                    <button className="vod-ctrl-btn vod-clip-active" onClick={endClip} title={t(lang, 'setClipEnd')}>
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--pink)" strokeWidth="2">
+                        <circle cx="6" cy="6" r="3" />
+                        <circle cx="6" cy="18" r="3" />
+                        <line x1="20" y1="4" x2="8.12" y2="15.88" />
+                        <line x1="14.47" y1="14.48" x2="20" y2="20" />
+                        <line x1="8.12" y1="8.12" x2="12" y2="12" />
+                      </svg>
+                      {clipEnd === null && <span className="clip-pulse" />}
+                    </button>
+                  ) : (
+                    <button className="vod-ctrl-btn" onClick={startClip} title={t(lang, 'createClip')}>
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <circle cx="6" cy="6" r="3" />
+                        <circle cx="6" cy="18" r="3" />
+                        <line x1="20" y1="4" x2="8.12" y2="15.88" />
+                        <line x1="14.47" y1="14.48" x2="20" y2="20" />
+                        <line x1="8.12" y1="8.12" x2="12" y2="12" />
+                      </svg>
+                    </button>
+                  )}
+
+                  {clipStart !== null && clipEnd !== null && (
+                    <button className="vod-ctrl-btn vod-clip-save" onClick={createClip} title={t(lang, 'saveClip')}>
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--green)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
+                        <polyline points="17 21 17 13 7 13 7 21" />
+                        <polyline points="7 3 7 8 15 8" />
+                      </svg>
+                    </button>
+                  )}
+
+                  {(clipStart !== null || clipEnd !== null) && (
+                    <button className="vod-ctrl-btn" onClick={clearClip} title={t(lang, 'clearClip')}>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--red)" strokeWidth="2">
+                        <line x1="18" y1="6" x2="6" y2="18" />
+                        <line x1="6" y1="6" x2="18" y2="18" />
+                      </svg>
+                    </button>
+                  )}
+
+                  <button className="vod-ctrl-btn" onClick={(e) => { e.stopPropagation(); toggleFullscreen() }} title={t(lang, 'fullscreen')}>
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
             )}
           </div>
         </div>
@@ -424,37 +610,14 @@ export default function VODPlayer({ vod, lang, onBack }) {
         )}
       </div>
 
-      <div className="vod-events-bar">
-        <div className="vod-events-filters">
-          {eventTypes.map(ev => (
-            <button
-              key={ev}
-              className={`vod-event-filter ${eventFilter === ev ? 'active' : ''}`}
-              onClick={() => setEventFilter(ev)}
-              style={ev !== 'all' ? { borderColor: EVENT_COLORS[ev] } : undefined}
-            >
-              {EVENT_LABELS[ev] || ev}
-            </button>
-          ))}
-        </div>
-        <div className="vod-events-list">
-          {filteredEvents.length === 0 && (
-            <span className="vod-events-empty">{t(lang, 'evEmpty')}</span>
-          )}
-          {filteredEvents.map((ev, i) => (
-            <button
-              key={i}
-              className="vod-event-chip"
-              style={{ borderColor: EVENT_COLORS[ev.type] || 'var(--muted)' }}
-              onClick={() => seek(ev.time)}
-            >
-              <span className="vod-event-dot" style={{ backgroundColor: EVENT_COLORS[ev.type] || 'var(--muted)' }} />
-              <span className="vod-event-time">{formatTime(ev.time)}</span>
-              <span className="vod-event-label">{ev.label || ev.type}</span>
-            </button>
-          ))}
-        </div>
-      </div>
+      <NeonTimeline
+        matchId={vod.matchId}
+        puuid={puuid}
+        lang={lang}
+        duration={duration}
+        current={currentTime}
+        onSeek={seek}
+      />
     </div>
   )
 }
