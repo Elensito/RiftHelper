@@ -6317,34 +6317,6 @@ button.p-name:hover {
   letter-spacing: 0.5px;
 }
 
-.rt-card-delete {
-  position: absolute;
-  top: 6px;
-  right: 6px;
-  width: 24px;
-  height: 24px;
-  border: none;
-  border-radius: 6px;
-  background: rgba(0, 0, 0, 0.6);
-  color: var(--muted);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  opacity: 0;
-  transition: all 0.2s;
-  z-index: 2;
-}
-
-.rt-card:hover .rt-card-delete {
-  opacity: 1;
-}
-
-.rt-card-delete:hover {
-  background: rgba(255, 61, 94, 0.3);
-  color: var(--red);
-}
-
 .rt-context-menu {
   position: fixed;
   z-index: 3000;
@@ -6848,30 +6820,6 @@ body.sidebar-expanded .vod-player-view {
   flex-direction: column;
   min-width: 0;
   position: relative;
-}
-
-.vod-show-teams-btn {
-  position: absolute;
-  top: 10px;
-  right: 10px;
-  z-index: 10;
-  width: 32px;
-  height: 32px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: rgba(0, 0, 0, 0.6);
-  color: var(--cyan);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  backdrop-filter: blur(4px);
-  transition: background 0.15s, border-color 0.15s;
-}
-
-.vod-show-teams-btn:hover {
-  background: rgba(0, 229, 255, 0.15);
-  border-color: var(--cyan);
 }
 
 .vod-video-container {

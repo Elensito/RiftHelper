@@ -84,7 +84,9 @@ function fmt(sec) {
 /* ── Neon match timeline ───────────────────────────────────── */
 
 function NeonTimeline({ matchId, puuid, lang, duration, current, onSeek }) {
-  const CACHE_PREFIX = 'rh-vtl-'
+  /* v2 prefix: older caches were fetched without a puuid, so every event had
+     is_player=false and personal kill/death markers never rendered */
+  const CACHE_PREFIX = 'rh-vtl2-'
   const trackRef = useRef(null)
   const [data, setData] = useState(null)
   const [status, setStatus] = useState(matchId ? 'loading' : 'empty')
@@ -96,9 +98,14 @@ function NeonTimeline({ matchId, puuid, lang, duration, current, onSeek }) {
     try {
       const cached = sessionStorage.getItem(CACHE_PREFIX + matchId)
       if (cached) {
-        setData(JSON.parse(cached))
-        setStatus('ok')
-        return
+        const parsed = JSON.parse(cached)
+        /* only trust the cache when it was fetched for the same puuid —
+           otherwise personal markers would be missing forever */
+        if (parsed && parsed.puuid === (puuid || '')) {
+          setData(parsed.data)
+          setStatus('ok')
+          return
+        }
       }
     } catch {}
     setStatus('loading')
@@ -107,7 +114,7 @@ function NeonTimeline({ matchId, puuid, lang, duration, current, onSeek }) {
         if (cancelled) return
         setData(d)
         setStatus('ok')
-        try { sessionStorage.setItem(CACHE_PREFIX + matchId, JSON.stringify(d)) } catch {}
+        try { sessionStorage.setItem(CACHE_PREFIX + matchId, JSON.stringify({ puuid: puuid || '', data: d })) } catch {}
       })
       .catch(() => !cancelled && setStatus('error'))
     return () => { cancelled = true }
@@ -320,6 +327,9 @@ function PlayerTeamPanel({ team, teamLabel, isWinner, lang }) {
 /* ── Player ────────────────────────────────────────────────── */
 
 export default function VODPlayer({ vod, lang, onBack, puuid }) {
+  /* personal events need the puuid the backend used to flag is_player;
+     fall back to the puuid stored in the VOD when no profile is loaded */
+  const evPuuid = puuid || vod.puuid || ''
   const videoRef = useRef(null)
   const seekRef = useRef(null)
 
@@ -563,6 +573,16 @@ export default function VODPlayer({ vod, lang, onBack, puuid }) {
               <line x1="12" y1="15" x2="12" y2="3" />
             </svg>
           </button>
+          {!showTeams && (
+            <button className="rt-btn rt-btn-ghost rt-btn-sm" onClick={() => setShowTeams(true)} title={t(lang, 'toggleTeams')}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                <circle cx="9" cy="7" r="4" />
+                <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+                <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+              </svg>
+            </button>
+          )}
         </div>
       </div>
 
@@ -572,17 +592,6 @@ export default function VODPlayer({ vod, lang, onBack, puuid }) {
           onMouseMove={() => { if (playing) bumpUi() }}
           onMouseLeave={() => { if (playing) hideUiNow() }}
         >
-          {!showTeams && (
-            <button className="vod-show-teams-btn" onClick={() => setShowTeams(true)} title={t(lang, 'toggleTeams')}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-                <circle cx="9" cy="7" r="4" />
-                <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
-                <path d="M16 3.13a4 4 0 0 1 0 7.75" />
-              </svg>
-            </button>
-          )}
-
           <div ref={containerRef} className="vod-video-container" onClick={(e) => { if (hasVideo) togglePlay(e) }}>
             {hasVideo ? (
               <video ref={videoRef} className="vod-video" src={videoUrl} preload="metadata" onError={() => setVideoError(true)} />
@@ -778,7 +787,7 @@ export default function VODPlayer({ vod, lang, onBack, puuid }) {
 
       <NeonTimeline
         matchId={vod.matchId}
-        puuid={puuid}
+        puuid={evPuuid}
         lang={lang}
         duration={duration}
         current={currentTime}

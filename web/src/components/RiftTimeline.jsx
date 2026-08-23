@@ -175,11 +175,7 @@ export default function RiftTimeline({ lang, onOpenVod, profile }) {
                 {vod.thumbnail ? (
                   <img src={vod.thumbnail} alt="" />
                 ) : (
-                  <div className="rt-card-thumb-placeholder">
-                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" strokeWidth="1.5">
-                      <polygon points="5 3 19 12 5 21 5 3" />
-                    </svg>
-                  </div>
+                  <div className="rt-card-thumb-placeholder" />
                 )}
                 <span className="rt-card-duration">{formatDuration(vod.duration)}</span>
                 {vod.hasVideo && <span className="rt-card-badge video" title="Video recorded">▶</span>}
@@ -197,16 +193,6 @@ export default function RiftTimeline({ lang, onOpenVod, profile }) {
                 </div>
                 <div className="rt-card-queue">{vod.queue || ''}</div>
               </div>
-              <button
-                className="rt-card-delete"
-                onClick={(e) => { e.stopPropagation(); deleteVod(vod.id) }}
-                title={t(lang, 'deleteVod')}
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <line x1="18" y1="6" x2="6" y2="18" />
-                  <line x1="6" y1="6" x2="18" y2="18" />
-                </svg>
-              </button>
             </div>
           ))}
         </div>

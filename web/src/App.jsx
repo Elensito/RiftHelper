@@ -309,6 +309,7 @@ export default function App() {
               kda,
               queue: queueName(queue),
               matchId: latestMatchId,
+              puuid: profile.summoner.puuid || '',
               thumbnail: '',
               events: [],
               team1,
