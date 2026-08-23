@@ -32,6 +32,7 @@ const QUEUE_NAMES = {
   430: '5v5 Blind Pick',
   440: '5v5 Ranked Flex',
   450: 'ARAM',
+  2400: 'ARAM: MAYHEM',
   900: 'URF',
   1020: 'One for All',
   1300: 'Nexus Blitz',

@@ -6757,6 +6757,21 @@ button.p-name:hover {
   height: 100vh;
   width: 100%;
   background: var(--bg);
+  /* Reserve exactly the collapsed sidebar width so it never overlaps the VOD */
+  margin-left: 64px;
+  transition: margin-left 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* While the sidebar is expanded, reserve its full open width instead */
+body.sidebar-expanded .vod-player-view {
+  margin-left: 260px;
+}
+
+@media (max-width: 920px) {
+  .vod-player-view,
+  body.sidebar-expanded .vod-player-view {
+    margin-left: 0;
+  }
 }
 
 .vod-player-view:fullscreen {
