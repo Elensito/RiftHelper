@@ -493,10 +493,13 @@ enum GameStartWait {
 }
 
 /// Polls Riot's Live Client Data API (port 2999, served by the game client)
-/// until the in-game clock is actually running, so recordings skip champ
-/// select and the loading screen. The clock "starts" when a sample is higher
-/// than the previous one (frozen loading-screen values never advance), so we
-/// roll within ~0.7s of 00:00. A large first sample means we joined mid-game.
+/// until the in-game session is reachable, so recordings skip champ select.
+/// Port 2999 only answers once the game process is up, so the FIRST valid
+/// sample means the session has begun and we roll immediately. Requiring the
+/// clock to advance broke ARAM Mayhem: its intro freezes gameTime at 0 and it
+/// later jumps straight to ~00:30, which made recordings start late. An
+/// ambiguous first sample (mid-range time, port opened late) gets a short
+/// grace window, then we record anyway — early beats missing content.
 /// If the window disappears the game was cancelled/dodged.
 fn wait_for_game_start(max_secs: u64) -> GameStartWait {
     let client = match reqwest::blocking::Client::builder()
@@ -510,6 +513,7 @@ fn wait_for_game_start(max_secs: u64) -> GameStartWait {
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(max_secs);
     let mut last_t: Option<f64> = None;
     let mut missing = 0u32;
+    let mut grace = 0u32;
     while std::time::Instant::now() < deadline {
         let sample = client
             .get(url)
@@ -520,8 +524,18 @@ fn wait_for_game_start(max_secs: u64) -> GameStartWait {
             .and_then(|v| v.get("gameTime").and_then(|t| t.as_f64()));
         match sample {
             Some(t) => {
-                let advancing = matches!(last_t, Some(prev) if t > prev + 0.4);
-                if advancing || t >= 30.0 {
+                let roll = match last_t {
+                    // First contact: near 00:00 or clearly a mid-game join.
+                    None => t <= 5.0 || t >= 90.0,
+                    // Later samples: any sign of the clock moving.
+                    Some(prev) => t > prev + 0.4,
+                };
+                if roll {
+                    return GameStartWait::Started;
+                }
+                // Ambiguous frozen time: don't wait forever on it.
+                grace += 1;
+                if grace >= 4 {
                     return GameStartWait::Started;
                 }
                 last_t = Some(t);
