@@ -494,9 +494,10 @@ enum GameStartWait {
 
 /// Polls Riot's Live Client Data API (port 2999, served by the game client)
 /// until the in-game clock is actually running, so recordings skip champ
-/// select and the loading screen. Two consecutive valid samples with
-/// gameTime >= 1.5s are required. If the window disappears the game was
-/// cancelled/dodged and we report WindowClosed instead.
+/// select and the loading screen. The clock "starts" when a sample is higher
+/// than the previous one (frozen loading-screen values never advance), so we
+/// roll within ~0.7s of 00:00. A large first sample means we joined mid-game.
+/// If the window disappears the game was cancelled/dodged.
 fn wait_for_game_start(max_secs: u64) -> GameStartWait {
     let client = match reqwest::blocking::Client::builder()
         .danger_accept_invalid_certs(true)
@@ -507,30 +508,30 @@ fn wait_for_game_start(max_secs: u64) -> GameStartWait {
     };
     let url = "https://127.0.0.1:2999/liveclientdata/gamestats";
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(max_secs);
-    let mut consecutive = 0u32;
+    let mut last_t: Option<f64> = None;
     let mut missing = 0u32;
     while std::time::Instant::now() < deadline {
         let sample = client
             .get(url)
-            .timeout(std::time::Duration::from_millis(1200))
+            .timeout(std::time::Duration::from_millis(600))
             .send()
             .ok()
             .and_then(|r| r.json::<serde_json::Value>().ok())
             .and_then(|v| v.get("gameTime").and_then(|t| t.as_f64()));
         match sample {
-            Some(t) if t >= 1.5 => {
-                consecutive += 1;
-                if consecutive >= 2 {
+            Some(t) => {
+                let advancing = matches!(last_t, Some(prev) if t > prev + 0.4);
+                if advancing || t >= 30.0 {
                     return GameStartWait::Started;
                 }
+                last_t = Some(t);
             }
-            Some(_) => consecutive = 0,
             None => {
-                consecutive = 0;
+                last_t = None;
                 // A vanished window means the lobby was dodged/cancelled.
                 if find_lol_window_rect().is_none() {
                     missing += 1;
-                    if missing >= 3 {
+                    if missing >= 6 {
                         return GameStartWait::WindowClosed;
                     }
                 } else {
@@ -538,7 +539,7 @@ fn wait_for_game_start(max_secs: u64) -> GameStartWait {
                 }
             }
         }
-        std::thread::sleep(std::time::Duration::from_millis(1000));
+        std::thread::sleep(std::time::Duration::from_millis(300));
     }
     GameStartWait::Timeout
 }

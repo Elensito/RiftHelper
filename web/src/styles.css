@@ -6755,27 +6755,32 @@ button.p-name:hover {
   display: flex;
   flex-direction: column;
   height: 100vh;
-  width: 100%;
+  /* margin-left shifts the box right; width must shrink accordingly or the
+     right edge (teams sidebar close button) overflows past the window */
+  width: calc(100% - 64px);
   background: var(--bg);
-  /* Reserve exactly the collapsed sidebar width so it never overlaps the VOD */
   margin-left: 64px;
   transition: margin-left 0.3s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 /* While the sidebar is expanded, reserve its full open width instead */
 body.sidebar-expanded .vod-player-view {
+  width: calc(100% - 260px);
   margin-left: 260px;
 }
 
 @media (max-width: 920px) {
   .vod-player-view,
   body.sidebar-expanded .vod-player-view {
+    width: 100%;
     margin-left: 0;
   }
 }
 
 .vod-player-view:fullscreen {
   background: #000;
+  width: 100%;
+  margin-left: 0;
 }
 
 .vod-player-view:fullscreen .vod-topbar {
@@ -6911,6 +6916,12 @@ body.sidebar-expanded .vod-player-view {
   width: 100%;
   height: 100%;
   object-fit: contain;
+  /* CRITICAL: a plain <video> gets promoted to a Windows hardware overlay
+     plane (MPO) by WebView2 once playback starts, painting it ABOVE the whole
+     UI regardless of z-index. Forcing our own compositor layer prevents that,
+     keeping the control deck visible. */
+  transform: translateZ(0);
+  backface-visibility: hidden;
 }
 
 .vod-video-placeholder {
@@ -7014,6 +7025,7 @@ body.sidebar-expanded .vod-player-view {
   /* explicit stacking: a playing <video> gets promoted to its own composite
      layer and would otherwise paint above these overlays */
   z-index: 20;
+  will-change: transform;
 }
 
 .vod-play-btn-big {
@@ -7369,6 +7381,8 @@ body.sidebar-expanded .vod-player-view {
   transition: opacity 0.22s ease, transform 0.25s cubic-bezier(0.22, 1, 0.36, 1);
   /* must sit above the composited <video> layer while playing */
   z-index: 30;
+  /* keep promoted on its own layer so it never fights the video plane */
+  will-change: transform, opacity;
 }
 .vod-video-container:hover .vod-deck,
 .vod-deck.visible,
