@@ -115,6 +115,17 @@ function NeonTimeline({ matchId, puuid, lang, duration, current, onSeek }) {
 
   const tlDuration = Math.max(1, duration || (data ? (data.duration_min || 0) * 60 : 0))
 
+  /* The track domain is VIDEO time, but event seconds are GAME-clock time.
+     Since recordings start at ~00:00 they mostly line up, yet the victory /
+     defeat screen makes videos run longer than the match. Scale markers by
+     the video/game duration ratio (only when both are plausible). */
+  const gameDur = data ? Math.max(0, (data.duration_min || 0) * 60) : 0
+  const scale = useMemo(() => {
+    if (!duration || gameDur < 300 || duration < 300) return 1
+    const s = duration / gameDur
+    return s >= 0.6 && s <= 1.5 ? s : 1
+  }, [duration, gameDur])
+
   const events = useMemo(() => {
     if (!data || !data.events) return []
 
@@ -133,7 +144,8 @@ function NeonTimeline({ matchId, puuid, lang, duration, current, onSeek }) {
         kind = 'baron'
       }
       if (!kind) continue
-      out.push({ kind, sec, time: ev.time, team: ev.team === 200 ? 200 : 100, ally: ev.team === 100 })
+      const vsec = sec * scale
+      out.push({ kind, sec, vsec, time: ev.time, team: ev.team === 200 ? 200 : 100, ally: ev.team === 100 })
     }
 
     // Team alignment relative to MY team
@@ -147,13 +159,13 @@ function NeonTimeline({ matchId, puuid, lang, duration, current, onSeek }) {
     const minGap = Math.max(8, tlDuration * 0.022)
     const laneEnds = [-Infinity]
     for (const o of out) {
-      let lane = laneEnds.findIndex(end => o.sec - end >= minGap)
+      let lane = laneEnds.findIndex(end => o.vsec - end >= minGap)
       if (lane === -1) lane = laneEnds.length < 4 ? laneEnds.length : 0
-      laneEnds[lane] = o.sec
+      laneEnds[lane] = o.vsec
       o.lane = lane
     }
     return out.slice(0, 120)
-  }, [data, tlDuration])
+  }, [data, tlDuration, scale])
 
   const pct = (sec) => Math.min(100, Math.max(0, (sec / tlDuration) * 100))
   const stepMin = tlDuration <= 20 * 60 ? 2 : tlDuration <= 35 * 60 ? 5 : 10
@@ -248,13 +260,13 @@ function NeonTimeline({ matchId, puuid, lang, duration, current, onSeek }) {
             <button
               key={i}
               className={`vtl-ev ${meta.cls} ${ev.ally ? 'ally' : 'enemy'} lane-${ev.lane % 4}`}
-              style={{ left: `${pct(ev.sec)}%` }}
+              style={{ left: `${pct(ev.vsec)}%` }}
               data-tip={labelFor(ev)}
               aria-label={labelFor(ev)}
               onMouseEnter={() => setCursor(null)}
               onClick={(e) => {
                 e.stopPropagation()
-                onSeek(Math.max(0, ev.sec - 5))
+                onSeek(Math.max(0, ev.vsec - 5))
               }}
             >
               <Icon />

@@ -7613,9 +7613,10 @@ body.sidebar-expanded .vod-player-view {
 /* ── Right sidebar ── */
 
 .vod-sidebar-right {
-  width: 300px;
-  border-left: 1px solid var(--border);
+  width: 340px;
+  border-left: 1px solid rgba(0, 229, 255, 0.16);
   background: var(--bg-2);
+  box-shadow: inset 14px 0 28px -20px rgba(0, 229, 255, 0.3);
   flex-shrink: 0;
   overflow: hidden;
   display: flex;
@@ -7709,10 +7710,10 @@ body.sidebar-expanded .vod-player-view {
 
 .vod-player-row {
   display: grid;
-  grid-template-columns: 30px 1fr 32px;
-  gap: 3px 8px;
+  grid-template-columns: 32px 1fr 36px;
+  gap: 3px 9px;
   align-items: center;
-  padding: 7px 10px;
+  padding: 8px 12px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.02);
   transition: background 0.15s;
 }
@@ -7727,8 +7728,8 @@ body.sidebar-expanded .vod-player-view {
 
 .vod-player-icon {
   grid-row: 1 / span 2;
-  width: 30px;
-  height: 30px;
+  width: 32px;
+  height: 32px;
   border-radius: 6px;
   border: 1px solid var(--border);
 }
@@ -7769,9 +7770,9 @@ body.sidebar-expanded .vod-player-view {
 }
 
 .vod-player-item {
-  width: 18px;
-  height: 18px;
-  border-radius: 3px;
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
   border: 1px solid rgba(0, 229, 255, 0.1);
 }
 
@@ -7786,6 +7787,9 @@ body.sidebar-expanded .vod-player-view {
   color: var(--neon-purple);
   text-align: right;
 }
+
+.vod-player-name { font-size: 12px; }
+.vod-player-kda { font-size: 10.5px; }
 
 .vod-no-teams {
   padding: 30px 16px;
@@ -7812,7 +7816,7 @@ body.sidebar-expanded .vod-player-view {
   }
 
   .vod-sidebar-right {
-    width: 270px;
+    width: 300px;
   }
 }
 
