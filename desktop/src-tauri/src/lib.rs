@@ -485,6 +485,64 @@ fn find_dshow_audio_device(ffmpeg_path: &str) -> Option<String> {
     preferred.or(first)
 }
 
+/// Outcome of waiting for the in-game clock.
+enum GameStartWait {
+    Started,
+    Timeout,
+    WindowClosed,
+}
+
+/// Polls Riot's Live Client Data API (port 2999, served by the game client)
+/// until the in-game clock is actually running, so recordings skip champ
+/// select and the loading screen. Two consecutive valid samples with
+/// gameTime >= 1.5s are required. If the window disappears the game was
+/// cancelled/dodged and we report WindowClosed instead.
+fn wait_for_game_start(max_secs: u64) -> GameStartWait {
+    let client = match reqwest::blocking::Client::builder()
+        .danger_accept_invalid_certs(true)
+        .build()
+    {
+        Ok(c) => c,
+        Err(_) => return GameStartWait::Timeout,
+    };
+    let url = "https://127.0.0.1:2999/liveclientdata/gamestats";
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(max_secs);
+    let mut consecutive = 0u32;
+    let mut missing = 0u32;
+    while std::time::Instant::now() < deadline {
+        let sample = client
+            .get(url)
+            .timeout(std::time::Duration::from_millis(1200))
+            .send()
+            .ok()
+            .and_then(|r| r.json::<serde_json::Value>().ok())
+            .and_then(|v| v.get("gameTime").and_then(|t| t.as_f64()));
+        match sample {
+            Some(t) if t >= 1.5 => {
+                consecutive += 1;
+                if consecutive >= 2 {
+                    return GameStartWait::Started;
+                }
+            }
+            Some(_) => consecutive = 0,
+            None => {
+                consecutive = 0;
+                // A vanished window means the lobby was dodged/cancelled.
+                if find_lol_window_rect().is_none() {
+                    missing += 1;
+                    if missing >= 3 {
+                        return GameStartWait::WindowClosed;
+                    }
+                } else {
+                    missing = 0;
+                }
+            }
+        }
+        std::thread::sleep(std::time::Duration::from_millis(1000));
+    }
+    GameStartWait::Timeout
+}
+
 #[tauri::command]
 async fn start_recording(app: tauri::AppHandle) -> Result<String, String> {    {
         let guard = FFMPEG_PROC.lock().map_err(|e| e.to_string())?;
@@ -530,6 +588,16 @@ async fn start_recording(app: tauri::AppHandle) -> Result<String, String> {    {
     .await
     .map_err(|e| e.to_string())?
     .ok_or_else(|| "League of Legends window not found".to_string())?;
+
+    // Wait for the in-game clock (00:00) before rolling: skips champ select
+    // and the loading screen. Falls back to recording anyway if the Live
+    // Client Data API never comes up; aborts if the window disappears.
+    match tauri::async_runtime::spawn_blocking(|| wait_for_game_start(420)).await {
+        Ok(GameStartWait::WindowClosed) => {
+            return Err("League of Legends window closed before the game started".to_string());
+        }
+        _ => {}
+    }
 
     let mut ffmpeg_args = vec![
         "-f".to_string(), "gdigrab".to_string(),
