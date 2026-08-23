@@ -565,10 +565,13 @@ async fn show_overlay(app: tauri::AppHandle, lang: String) -> Result<(), String>
         "ko" => "녹화 중",
         _ => "Recording",
     };
-    let js = format!("document.getElementById('title').textContent='{}';", title_text);
+    let js = format!(
+        "document.getElementById('title').textContent='{}'; if (window.__rhEnter) window.__rhEnter();",
+        title_text
+    );
 
     if let Some(win) = app.get_webview_window("overlay") {
-        let _ = win.eval(&js);
+        let _ = win.set_always_on_top(true);
         if let Some((x, y, w, h)) = find_lol_window_rect() {
             let overlay_x = x + w - 360;
             let overlay_y = y + (h / 2) - 45;
@@ -578,12 +581,17 @@ async fn show_overlay(app: tauri::AppHandle, lang: String) -> Result<(), String>
             }));
         }
         let _ = win.show();
-        let _ = win.set_always_on_top(true);
+        let _ = win.eval(&js);
         let handle = app.clone();
         std::thread::spawn(move || {
+            // Keep the card on screen for 5s, then slide it out before hiding.
             std::thread::sleep(std::time::Duration::from_secs(5));
             if let Some(w) = handle.get_webview_window("overlay") {
-                let _ = w.hide();
+                let _ = w.eval("if (window.__rhExit) window.__rhExit();");
+                std::thread::sleep(std::time::Duration::from_millis(750));
+                if let Some(w) = handle.get_webview_window("overlay") {
+                    let _ = w.hide();
+                }
             }
         });
     }

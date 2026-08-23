@@ -8,90 +8,206 @@
     width: 100%; height: 100%;
     background: transparent;
     overflow: hidden;
-    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    font-family: 'Segoe UI Variable Display', 'Segoe UI', system-ui, -apple-system, sans-serif;
+    -webkit-font-smoothing: antialiased;
   }
-  .overlay-card {
+  .card {
     position: absolute;
-    right: 0; top: 0;
+    right: 8px; top: 50%;
+    margin-top: -31px;
     display: flex;
     align-items: center;
-    gap: 12px;
-    padding: 12px 20px 12px 14px;
+    gap: 13px;
+    padding: 15px 20px 15px 17px;
     border-radius: 14px;
-    background: linear-gradient(135deg, rgba(10, 8, 22, 0.95) 0%, rgba(15, 12, 30, 0.92) 100%);
-    border: 1px solid rgba(0, 229, 255, 0.4);
-    backdrop-filter: blur(20px);
+    background:
+      linear-gradient(160deg, rgba(23, 20, 42, 0.92) 0%, rgba(11, 9, 24, 0.96) 55%, rgba(16, 10, 26, 0.94) 100%);
+    border: 1px solid rgba(255, 84, 104, 0.28);
     box-shadow:
-      0 0 24px rgba(0, 229, 255, 0.25),
-      0 0 48px rgba(120, 90, 255, 0.12),
-      inset 0 1px 0 rgba(255, 255, 255, 0.05),
-      0 8px 24px rgba(0, 0, 0, 0.6);
-    animation: slideIn 0.5s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+      inset 0 1px 0 rgba(255, 255, 255, 0.07),
+      inset 0 0 0 1px rgba(255, 255, 255, 0.02),
+      0 4px 14px rgba(0, 0, 0, 0.55),
+      0 0 30px rgba(255, 71, 87, 0.13);
+    backdrop-filter: blur(18px) saturate(140%);
     opacity: 0;
-    transform: translateX(30px);
+    will-change: transform, opacity;
+    overflow: hidden;
   }
-  @keyframes slideIn {
-    to { opacity: 1; transform: translateX(0); }
+  .card.enter { animation: recIn 0.65s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+  .card.exit  { animation: recOut 0.6s cubic-bezier(0.55, 0, 0.85, 0.36) forwards; }
+
+  @keyframes recIn {
+    from { opacity: 0; transform: translateX(calc(100% + 48px)); }
+    60%  { opacity: 1; }
+    to   { opacity: 1; transform: translateX(0); }
   }
-  .overlay-icon {
-    width: 38px; height: 38px;
-    object-fit: contain;
-    border-radius: 10px;
-    padding: 3px;
-    background: linear-gradient(135deg, rgba(120, 90, 255, 0.2), rgba(0, 229, 255, 0.15));
-    border: 1px solid rgba(120, 90, 255, 0.35);
-    filter: drop-shadow(0 0 8px rgba(120, 90, 255, 0.5));
+  @keyframes recOut {
+    from { opacity: 1; transform: translateX(0); }
+    to   { opacity: 0; transform: translateX(calc(100% + 48px)); }
+  }
+
+  /* shine sweep */
+  .card::after {
+    content: '';
+    position: absolute;
+    top: -40%;
+    left: -80%;
+    width: 40%;
+    height: 180%;
+    background: linear-gradient(100deg, transparent, rgba(255, 255, 255, 0.09), transparent);
+    transform: skewX(-18deg);
+    pointer-events: none;
+  }
+  .card.enter::after { animation: sweep 2.8s ease-in-out 0.7s infinite; }
+  @keyframes sweep {
+    0%   { left: -80%; }
+    45%  { left: 160%; }
+    100% { left: 160%; }
+  }
+
+  /* top progress line: depletes over the 5s the card stays on screen */
+  .progress {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%;
+    height: 2px;
+    background: linear-gradient(90deg, var(--p-c, #ff5468), #ff8a5c);
+    border-radius: 0 2px 2px 0;
+    transform-origin: left;
+    box-shadow: 0 0 8px rgba(255, 84, 104, 0.55);
+  }
+  .card.enter .progress { animation: drain 5s linear forwards; }
+  @keyframes drain {
+    from { transform: scaleX(1); }
+    to   { transform: scaleX(0); }
+  }
+
+  .ring {
+    position: relative;
+    width: 34px; height: 34px;
     flex-shrink: 0;
+    display: grid;
+    place-items: center;
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 30%, rgba(255, 84, 104, 0.22), rgba(255, 71, 87, 0.06));
+    border: 1px solid rgba(255, 84, 104, 0.4);
+    box-shadow: 0 0 14px rgba(255, 71, 87, 0.25), inset 0 0 8px rgba(255, 71, 87, 0.15);
   }
-  .overlay-text {
+  .ring::before {
+    content: '';
+    position: absolute;
+    inset: -1px;
+    border-radius: 50%;
+    border: 1px solid rgba(255, 84, 104, 0.45);
+    animation: ripple 1.6s ease-out infinite;
+  }
+  @keyframes ripple {
+    0%   { transform: scale(1);    opacity: 0.8; }
+    100% { transform: scale(1.45); opacity: 0; }
+  }
+  .dot {
+    width: 12px; height: 12px;
+    border-radius: 50%;
+    background: linear-gradient(145deg, #ff6b7d, #e6273c);
+    box-shadow: 0 0 10px rgba(255, 71, 87, 0.9), 0 0 22px rgba(255, 71, 87, 0.4);
+    animation: heartbeat 1.2s ease-in-out infinite;
+  }
+  @keyframes heartbeat {
+    0%, 100% { transform: scale(1);    opacity: 1; }
+    50%      { transform: scale(0.82); opacity: 0.75; }
+  }
+
+  .txt {
     display: flex;
     flex-direction: column;
-    gap: 3px;
+    gap: 4px;
+    min-width: 0;
   }
-  .overlay-title {
-    font-size: 13px;
-    font-weight: 700;
-    color: #ff4757;
-    letter-spacing: 0.08em;
+  .title {
+    font-size: 13.5px;
+    font-weight: 800;
+    color: #ffffff;
+    letter-spacing: 0.14em;
     text-transform: uppercase;
     line-height: 1;
-    text-shadow: 0 0 14px rgba(255, 71, 87, 0.6);
-    animation: pulse 1.5s ease-in-out infinite;
+    text-shadow: 0 1px 0 rgba(0, 0, 0, 0.4);
+    white-space: nowrap;
   }
-  @keyframes pulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.6; }
-  }
-  .overlay-sub {
-    font-size: 11px;
-    font-weight: 500;
-    color: #00e5ff;
-    letter-spacing: 0.04em;
+  .sub {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 9px;
+    font-weight: 700;
+    color: rgba(158, 232, 255, 0.78);
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
     line-height: 1;
+    white-space: nowrap;
   }
-  .rec-dot {
-    width: 10px; height: 10px;
+  .sub .sep {
+    width: 3px; height: 3px;
     border-radius: 50%;
-    background: #ff4757;
-    box-shadow: 0 0 10px rgba(255, 71, 87, 0.7);
-    animation: blink 1s ease-in-out infinite;
-    flex-shrink: 0;
-    margin-left: 4px;
+    background: rgba(0, 229, 255, 0.55);
   }
-  @keyframes blink {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.3; }
+
+  /* live equalizer */
+  .eq {
+    display: flex;
+    align-items: flex-end;
+    gap: 2.5px;
+    height: 18px;
+    margin-left: 2px;
+    flex-shrink: 0;
+    padding-bottom: 1px;
+  }
+  .eq i {
+    width: 3px;
+    border-radius: 2px;
+    background: linear-gradient(180deg, #00e5ff, #7a5cff);
+    box-shadow: 0 0 6px rgba(0, 229, 255, 0.45);
+    transform-origin: bottom;
+    animation: eq 1.05s ease-in-out infinite;
+  }
+  .eq i:nth-child(1) { height: 8px;  animation-delay: 0s;    animation-duration: 0.95s; }
+  .eq i:nth-child(2) { height: 15px; animation-delay: 0.18s; animation-duration: 1.15s; }
+  .eq i:nth-child(3) { height: 11px; animation-delay: 0.36s; animation-duration: 0.85s; }
+  .eq i:nth-child(4) { height: 17px; animation-delay: 0.54s; animation-duration: 1.05s; }
+  @keyframes eq {
+    0%, 100% { transform: scaleY(1);   }
+    50%      { transform: scaleY(0.3); }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .card.enter { animation-duration: 0.01s; }
+    .card.exit  { animation-duration: 0.01s; }
   }
 </style>
 </head>
 <body>
-<div class="overlay-card" id="card">
-  <img src="ai_coach.png" alt="" class="overlay-icon" draggable="false" />
-  <div class="overlay-text">
-    <span class="overlay-title" id="title">RECORDING</span>
-    <span class="overlay-sub">Rift Timeline</span>
+<div class="card" id="card">
+  <div class="progress"></div>
+  <div class="ring"><span class="dot"></span></div>
+  <div class="txt">
+    <span class="title" id="title">RECORDING</span>
+    <span class="sub"><span>RiftHelper</span><span class="sep"></span><span>Rift Timeline</span></span>
   </div>
-  <span class="rec-dot"></span>
+  <div class="eq" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
 </div>
+<script>
+  // Re-triggerable animations (the overlay webview persists between recordings).
+  window.__rhEnter = function () {
+    const c = document.getElementById('card');
+    c.classList.remove('enter', 'exit');
+    void c.offsetWidth;            /* force reflow so the animation restarts */
+    c.classList.add('enter');
+  };
+  window.__rhExit = function () {
+    const c = document.getElementById('card');
+    c.classList.remove('enter');
+    void c.offsetWidth;
+    c.classList.add('exit');
+  };
+</script>
 </body>
 </html>
