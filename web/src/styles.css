@@ -7011,6 +7011,9 @@ body.sidebar-expanded .vod-player-view {
   justify-content: center;
   background: radial-gradient(circle at center, rgba(0, 0, 0, 0.25), rgba(0, 0, 0, 0.05));
   transition: background 0.2s;
+  /* explicit stacking: a playing <video> gets promoted to its own composite
+     layer and would otherwise paint above these overlays */
+  z-index: 20;
 }
 
 .vod-play-btn-big {
@@ -7115,6 +7118,26 @@ body.sidebar-expanded .vod-player-view {
     rgba(8, 10, 20, 0.55);
   border: 1px solid rgba(0, 229, 255, 0.09);
   overflow: visible;
+  cursor: pointer;
+}
+
+/* time bubble following the mouse */
+.vtl-cursor-tip {
+  position: absolute;
+  top: 4px;
+  transform: translateX(-50%);
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: rgba(0, 229, 255, 0.95);
+  color: #001318;
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+  z-index: 15;
+  box-shadow: 0 2px 14px rgba(0, 229, 255, 0.45);
 }
 
 /* base rail across the middle */
@@ -7335,6 +7358,8 @@ body.sidebar-expanded .vod-player-view {
   transform: translateY(10px);
   pointer-events: none;
   transition: opacity 0.22s ease, transform 0.25s cubic-bezier(0.22, 1, 0.36, 1);
+  /* must sit above the composited <video> layer while playing */
+  z-index: 30;
 }
 .vod-video-container:hover .vod-deck,
 .vod-deck.visible,
@@ -7529,8 +7554,34 @@ body.sidebar-expanded .vod-player-view {
   color: var(--cyan);
 }
 
+.vod-volume-wrap {
+  display: flex;
+  align-items: center;
+}
+
+.vod-mute-btn {
+  color: rgba(255, 255, 255, 0.85);
+}
+.vod-mute-btn:hover {
+  color: #fff;
+}
+
+.vod-volume-slider {
+  width: 0;
+  opacity: 0;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  transition: width 0.25s ease, opacity 0.2s ease;
+}
+.vod-volume-wrap:hover .vod-volume-slider,
+.vod-volume-slider:focus-within {
+  width: 78px;
+  opacity: 1;
+}
+
 .vod-volume {
-  width: 80px;
+  width: 70px;
   height: 4px;
   accent-color: var(--cyan);
   cursor: pointer;
@@ -7631,10 +7682,11 @@ body.sidebar-expanded .vod-player-view {
 }
 
 .vod-player-row {
-  display: flex;
+  display: grid;
+  grid-template-columns: 30px 1fr 32px;
+  gap: 3px 8px;
   align-items: center;
-  gap: 8px;
-  padding: 6px 10px;
+  padding: 7px 10px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.02);
   transition: background 0.15s;
 }
@@ -7648,15 +7700,15 @@ body.sidebar-expanded .vod-player-view {
 }
 
 .vod-player-icon {
-  width: 28px;
-  height: 28px;
+  grid-row: 1 / span 2;
+  width: 30px;
+  height: 30px;
   border-radius: 6px;
   border: 1px solid var(--border);
-  flex-shrink: 0;
 }
 
 .vod-player-info {
-  flex: 1;
+  grid-column: 2;
   min-width: 0;
   display: flex;
   flex-direction: column;
@@ -7685,14 +7737,14 @@ body.sidebar-expanded .vod-player-view {
 .vod-player-cs { color: var(--text); margin-left: 2px; }
 
 .vod-player-items {
+  grid-column: 2 / -1;
   display: flex;
-  gap: 2px;
-  flex-shrink: 0;
+  gap: 3px;
 }
 
 .vod-player-item {
-  width: 16px;
-  height: 16px;
+  width: 18px;
+  height: 18px;
   border-radius: 3px;
   border: 1px solid rgba(0, 229, 255, 0.1);
 }
@@ -7702,11 +7754,10 @@ body.sidebar-expanded .vod-player-view {
 }
 
 .vod-player-gold {
+  grid-column: 3;
   font-size: 10px;
   font-weight: 700;
   color: var(--neon-purple);
-  flex-shrink: 0;
-  width: 28px;
   text-align: right;
 }
 

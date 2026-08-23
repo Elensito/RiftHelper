@@ -64,12 +64,21 @@ function parseTimeToSec(ev) {
   return null
 }
 
+function fmt(sec) {
+  if (!sec && sec !== 0) return '0:00'
+  const m = Math.floor(sec / 60)
+  const s = Math.floor(sec % 60)
+  return `${m}:${s.toString().padStart(2, '0')}`
+}
+
 /* ── Neon match timeline ───────────────────────────────────── */
 
 function NeonTimeline({ matchId, puuid, lang, duration, current, onSeek }) {
   const CACHE_PREFIX = 'rh-vtl-'
+  const trackRef = useRef(null)
   const [data, setData] = useState(null)
   const [status, setStatus] = useState(matchId ? 'loading' : 'empty')
+  const [cursor, setCursor] = useState(null)
 
   useEffect(() => {
     if (!matchId) { setStatus('empty'); setData(null); return }
@@ -156,6 +165,14 @@ function NeonTimeline({ matchId, puuid, lang, duration, current, onSeek }) {
     return `${ev.time} · ${base}${side}`
   }, [lang])
 
+  const secAtClientX = useCallback((clientX) => {
+    const el = trackRef.current
+    if (!el || !tlDuration) return null
+    const rect = el.getBoundingClientRect()
+    const p = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width))
+    return { sec: p * tlDuration, x: clientX - rect.left }
+  }, [tlDuration])
+
   const progressPct = pct(current)
 
   return (
@@ -176,7 +193,23 @@ function NeonTimeline({ matchId, puuid, lang, duration, current, onSeek }) {
         </div>
       </div>
 
-      <div className={`vtl-track ${status}`}>
+      <div
+        ref={trackRef}
+        className={`vtl-track ${status}`}
+        onMouseMove={(e) => setCursor(secAtClientX(e.clientX))}
+        onMouseLeave={() => setCursor(null)}
+        onClick={(e) => {
+          const c = secAtClientX(e.clientX)
+          if (c) onSeek(c.sec)
+        }}
+      >
+        {/* hover cursor tooltip */}
+        {cursor && (
+          <div className="vtl-cursor-tip" style={{ left: `${cursor.x}px` }}>
+            {fmt(cursor.sec)}
+          </div>
+        )}
+
         {/* progress */}
         <div className="vtl-progress" style={{ width: `${progressPct}%` }} />
 
@@ -201,7 +234,11 @@ function NeonTimeline({ matchId, puuid, lang, duration, current, onSeek }) {
               style={{ left: `${pct(ev.sec)}%` }}
               data-tip={labelFor(ev)}
               aria-label={labelFor(ev)}
-              onClick={() => onSeek(Math.max(0, ev.sec - 5))}
+              onMouseEnter={() => setCursor(null)}
+              onClick={(e) => {
+                e.stopPropagation()
+                onSeek(Math.max(0, ev.sec - 5))
+              }}
             >
               <Icon />
             </button>
@@ -262,6 +299,7 @@ export default function VODPlayer({ vod, lang, onBack, puuid }) {
   const [currentTime, setCurrent] = useState(0)
   const [duration, setDuration] = useState(vod.duration || 0)
   const [volume, setVolume] = useState(0.8)
+  const [muted, setMuted] = useState(false)
   const [playbackRate, setPlaybackRate] = useState(1)
   const [showSpeed, setShowSpeed] = useState(false)
   const [clipping, setClipping] = useState(false)
@@ -270,6 +308,13 @@ export default function VODPlayer({ vod, lang, onBack, puuid }) {
   const [showTeams, setShowTeams] = useState(true)
   const [videoUrl, setVideoUrl] = useState(null)
   const [videoError, setVideoError] = useState(false)
+
+  const lastVolRef = useRef(0.8)
+  const videoUrlRef = useRef(null)
+  videoUrlRef.current = videoUrl
+  const hasVideoLive = !!videoUrl && !videoError
+  const liveRef = useRef({})
+  liveRef.current = { playing, currentTime }
 
   const team1 = vod.team1 || []
   const team2 = vod.team2 || []
@@ -284,6 +329,14 @@ export default function VODPlayer({ vod, lang, onBack, puuid }) {
   }, [vod.id, vod.hasVideo, vod.videoPath])
 
   useEffect(() => { setVideoError(false) }, [videoUrl])
+
+  /* Sync volume / mute to the video element */
+  useEffect(() => {
+    const vid = videoRef.current
+    if (!vid) return
+    vid.volume = volume
+    vid.muted = muted
+  }, [volume, muted, videoUrl])
 
   /* Video element events */
   useEffect(() => {
@@ -310,17 +363,17 @@ export default function VODPlayer({ vod, lang, onBack, puuid }) {
     }
   }, [playing, hovering])
 
-  const hasVideo = !!videoUrl && !videoError
+  const hasVideo = hasVideoLive
   const showDeck = hasVideo && (!playing || hovering)
 
-  const togglePlay = (e) => {
-    if (e) e.stopPropagation()
+  const togglePlay = useCallback(() => {
     const vid = videoRef.current
     if (!vid) return
-    if (playing) { vid.pause(); setPlaying(false) }
-    else { vid.play().then(() => setPlaying(true)).catch(() => {}) }
-  }
+    if (vid.paused || vid.ended) vid.play().then(() => setPlaying(true)).catch(() => {})
+    else { vid.pause(); setPlaying(false) }
+  }, [])
 
+  /* Keyboard shortcuts: Space = play/pause, ←/→ = ±10s */
   const seek = useCallback((time) => {
     const vid = videoRef.current
     if (!vid || !Number.isFinite(time)) return
@@ -328,6 +381,27 @@ export default function VODPlayer({ vod, lang, onBack, puuid }) {
     vid.currentTime = Math.max(0, Math.min(time, max))
     setCurrent(vid.currentTime)
   }, [])
+
+  /* Keyboard shortcuts: Space = play/pause, ←/→ = ±10s */
+  useEffect(() => {
+    const onKey = (e) => {
+      if (!videoUrlRef.current) return
+      const tgt = e.target
+      if (tgt && (tgt.tagName === 'INPUT' || tgt.tagName === 'TEXTAREA' || tgt.isContentEditable)) return
+      if (e.code === 'Space' || e.key === 'Space') {
+        e.preventDefault()
+        togglePlay()
+      } else if (e.key === 'ArrowLeft') {
+        e.preventDefault()
+        seek(Math.max(0, liveRef.current.currentTime - 10))
+      } else if (e.key === 'ArrowRight') {
+        e.preventDefault()
+        seek(liveRef.current.currentTime + 10)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [togglePlay, seek])
 
   const seekFromEvent = (e) => {
     const el = seekRef.current
@@ -382,12 +456,36 @@ export default function VODPlayer({ vod, lang, onBack, puuid }) {
   }
 
   const speeds = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2]
-  const fmt = (sec) => {
-    if (!sec && sec !== 0) return '0:00'
-    const m = Math.floor(sec / 60)
-    const s = Math.floor(sec % 60)
-    return `${m}:${s.toString().padStart(2, '0')}`
+
+  const toggleMute = () => {
+    if (muted || volume === 0) {
+      const restore = lastVolRef.current > 0 ? lastVolRef.current : 0.8
+      setVolume(restore)
+      setMuted(false)
+    } else {
+      lastVolRef.current = volume
+      setMuted(true)
+    }
   }
+
+  const VolIcon = muted || volume === 0 ? (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" fill="currentColor" stroke="none" />
+      <line x1="23" y1="9" x2="17" y2="15" />
+      <line x1="17" y1="9" x2="23" y2="15" />
+    </svg>
+  ) : volume < 0.5 ? (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" fill="currentColor" stroke="none" />
+      <path d="M15.5 8.5a5 5 0 0 1 0 7" />
+    </svg>
+  ) : (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" fill="currentColor" stroke="none" />
+      <path d="M15.5 8.5a5 5 0 0 1 0 7" />
+      <path d="M18.6 5.4a9.5 9.5 0 0 1 0 13.2" />
+    </svg>
+  )
 
   return (
     <div className="vod-player-view">
@@ -454,7 +552,7 @@ export default function VODPlayer({ vod, lang, onBack, puuid }) {
             )}
 
             {hasVideo && !playing && (
-              <div className="vod-play-overlay" onClick={(e) => togglePlay(e)}>
+              <div className="vod-play-overlay" onClick={(e) => { e.stopPropagation(); togglePlay() }}>
                 <span className="vod-play-btn-big">
                   <svg width="30" height="30" viewBox="0 0 24 24" fill="currentColor">
                     <polygon points="6 3 21 12 6 21 6 3" />
@@ -482,7 +580,7 @@ export default function VODPlayer({ vod, lang, onBack, puuid }) {
                 </div>
 
                 <div className="vod-deck-row">
-                  <button className="vod-ctrl-btn vod-playpause" onClick={(e) => togglePlay(e)} title={playing ? 'Pause' : 'Play'}>
+                  <button className="vod-ctrl-btn vod-playpause" onClick={(e) => { e.stopPropagation(); togglePlay() }} title={playing ? 'Pause' : 'Play'}>
                     {playing ? (
                       <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor">
                         <rect x="6" y="4" width="4" height="16" rx="1" />
@@ -501,18 +599,32 @@ export default function VODPlayer({ vod, lang, onBack, puuid }) {
 
                   <div className="vod-deck-spacer" />
 
-                  <input
-                    type="range"
-                    className="vod-volume"
-                    min="0" max="1" step="0.05"
-                    value={volume}
-                    onChange={(e) => {
-                      const v = parseFloat(e.target.value)
-                      setVolume(v)
-                      if (videoRef.current) videoRef.current.volume = v
-                    }}
-                    title="Volume"
-                  />
+                  <div
+                    className="vod-volume-wrap"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <button
+                      className="vod-ctrl-btn vod-mute-btn"
+                      onClick={(e) => { e.stopPropagation(); toggleMute() }}
+                      title={muted ? t(lang, 'volUnmute') : t(lang, 'volMute')}
+                    >
+                      {VolIcon}
+                    </button>
+                    <div className="vod-volume-slider">
+                      <input
+                        type="range"
+                        className="vod-volume"
+                        min="0" max="1" step="0.05"
+                        value={muted ? 0 : volume}
+                        onChange={(e) => {
+                          const v = parseFloat(e.target.value)
+                          setVolume(v)
+                          if (v > 0) { lastVolRef.current = v; setMuted(false) }
+                        }}
+                        aria-label={t(lang, 'volMute')}
+                      />
+                    </div>
+                  </div>
 
                   <div className="vod-speed-wrap">
                     <button className="vod-ctrl-btn vod-speed-btn" onClick={() => setShowSpeed(!showSpeed)}>

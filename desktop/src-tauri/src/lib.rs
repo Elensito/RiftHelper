@@ -428,9 +428,65 @@ async fn set_auto_record(app: tauri::AppHandle, enabled: bool) -> Result<(), Str
     Ok(())
 }
 
+/// Probe DirectShow audio devices via ffmpeg. Prefers loopback-style devices
+/// (system/game audio) and falls back to the first available one (usually the
+/// microphone). Returns None when no audio input exists.
+fn find_dshow_audio_device(ffmpeg_path: &str) -> Option<String> {
+    let out = Command::new(ffmpeg_path)
+        .args(["-hide_banner", "-list_devices", "true", "-f", "dshow", "-i", "dummy"])
+        .stdin(std::process::Stdio::null())
+        .creation_flags(0x08000000)
+        .output()
+        .ok()?;
+    let text = format!(
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let mut in_audio = false;
+    let mut first: Option<String> = None;
+    let mut preferred: Option<String> = None;
+    for line in text.lines() {
+        if line.contains("DirectShow audio devices") {
+            in_audio = true;
+            continue;
+        }
+        if line.contains("DirectShow video devices") || line.contains("DirectShow alternative name") {
+            continue;
+        }
+        if !in_audio {
+            continue;
+        }
+        let start = match line.find('"') {
+            Some(i) => i + 1,
+            None => continue,
+        };
+        let end = match line[start..].find('"') {
+            Some(i) => start + i,
+            None => continue,
+        };
+        let name = &line[start..end];
+        if name.trim().is_empty() {
+            continue;
+        }
+        let lower = name.to_lowercase();
+        if preferred.is_none()
+            && (lower.contains("stereo mix")
+                || lower.contains("virtual-audio")
+                || lower.contains("loopback")
+                || lower.contains("what u hear"))
+        {
+            preferred = Some(name.to_string());
+        }
+        if first.is_none() {
+            first = Some(name.to_string());
+        }
+    }
+    preferred.or(first)
+}
+
 #[tauri::command]
-async fn start_recording(app: tauri::AppHandle) -> Result<String, String> {
-    {
+async fn start_recording(app: tauri::AppHandle) -> Result<String, String> {    {
         let guard = FFMPEG_PROC.lock().map_err(|e| e.to_string())?;
         if guard.is_some() {
             return Err("Already recording".to_string());
@@ -484,6 +540,34 @@ async fn start_recording(app: tauri::AppHandle) -> Result<String, String> {
         "-video_size".to_string(), format!("{}x{}", w, h),
         "-i".to_string(), "desktop".to_string(),
     ];
+
+    // Best-effort audio capture: probe DirectShow inputs and attach one if any
+    // exists (stereo mix / loopback preferred, otherwise microphone).
+    let ffmpeg_for_probe = ffmpeg_path.clone();
+    let audio_device = tauri::async_runtime::spawn_blocking(move || {
+        find_dshow_audio_device(&ffmpeg_for_probe)
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+
+    if let Some(ref dev) = audio_device {
+        ffmpeg_args.extend([
+            "-f".to_string(), "dshow".to_string(),
+            "-i".to_string(), format!("audio={}", dev),
+        ]);
+    }
+
+    if audio_device.is_some() {
+        ffmpeg_args.extend([
+            "-map".to_string(), "0:v:0".to_string(),
+            "-map".to_string(), "1:a:0".to_string(),
+            "-c:a".to_string(), "aac".to_string(),
+            "-b:a".to_string(), "128k".to_string(),
+            "-ar".to_string(), "44100".to_string(),
+            "-ac".to_string(), "2".to_string(),
+            "-shortest".to_string(),
+        ]);
+    }
 
     ffmpeg_args.extend([
         "-c:v".to_string(), "libx264".to_string(),
