@@ -7104,6 +7104,7 @@ body.sidebar-expanded .vod-player-view {
 }
 .lg.kill  { background: #00e5ff; box-shadow: 0 0 6px rgba(0, 229, 255, 0.9); }
 .lg.death { background: #ff3d5e; box-shadow: 0 0 6px rgba(255, 61, 94, 0.9); }
+.lg.assist{ background: #c084fc; box-shadow: 0 0 6px rgba(192, 132, 252, 0.9); }
 .lg.ally  { background: #00ff9d; box-shadow: 0 0 6px rgba(0, 255, 157, 0.9); }
 .lg.enemy { background: #ff9f45; box-shadow: 0 0 6px rgba(255, 159, 69, 0.9); }
 
@@ -7247,6 +7248,13 @@ body.sidebar-expanded .vod-player-view {
   box-shadow: 0 0 12px rgba(0, 229, 255, 0.28), inset 0 0 8px rgba(0, 229, 255, 0.08);
 }
 
+/* personal assists — violet */
+.vtl-ev.assist {
+  color: #c084fc;
+  border-color: rgba(192, 132, 252, 0.55);
+  box-shadow: 0 0 12px rgba(192, 132, 252, 0.28), inset 0 0 8px rgba(192, 132, 252, 0.08);
+}
+
 /* personal deaths — red, hangs BELOW the rail */
 .vtl-ev.death {
   bottom: auto;
@@ -7286,6 +7294,7 @@ body.sidebar-expanded .vod-player-view {
 }
 .vtl-ev.kill:hover  { box-shadow: 0 0 22px rgba(0, 229, 255, 0.65), inset 0 0 10px rgba(0, 229, 255, 0.15); }
 .vtl-ev.death:hover { box-shadow: 0 0 22px rgba(255, 61, 94, 0.65), inset 0 0 10px rgba(255, 61, 94, 0.15); }
+.vtl-ev.assist:hover{ box-shadow: 0 0 22px rgba(192, 132, 252, 0.65), inset 0 0 10px rgba(192, 132, 252, 0.15); }
 .vtl-ev.ally:hover  { box-shadow: 0 0 22px rgba(0, 255, 157, 0.6), inset 0 0 10px rgba(0, 255, 157, 0.14); }
 .vtl-ev.enemy:hover { box-shadow: 0 0 22px rgba(255, 159, 69, 0.6), inset 0 0 10px rgba(255, 159, 69, 0.14); }
 
@@ -7590,7 +7599,7 @@ body.sidebar-expanded .vod-player-view {
 /* ── Right sidebar ── */
 
 .vod-sidebar-right {
-  width: 260px;
+  width: 300px;
   border-left: 1px solid var(--border);
   background: var(--bg-2);
   flex-shrink: 0;
@@ -7604,7 +7613,8 @@ body.sidebar-expanded .vod-player-view {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 8px 12px;
+  gap: 8px;
+  padding: 10px 14px;
   border-bottom: 1px solid var(--border);
 }
 
@@ -7617,21 +7627,23 @@ body.sidebar-expanded .vod-player-view {
 }
 
 .vod-sidebar-toggle {
-  width: 22px;
-  height: 22px;
-  border: none;
-  border-radius: 6px;
-  background: transparent;
+  width: 26px;
+  height: 26px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.04);
   color: var(--muted);
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: background 0.15s, color 0.15s;
+  flex-shrink: 0;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
 }
 
 .vod-sidebar-toggle:hover {
   background: rgba(255, 61, 94, 0.15);
+  border-color: rgba(255, 61, 94, 0.4);
   color: var(--red);
 }
 
@@ -7786,7 +7798,7 @@ body.sidebar-expanded .vod-player-view {
   }
 
   .vod-sidebar-right {
-    width: 240px;
+    width: 270px;
   }
 }
 

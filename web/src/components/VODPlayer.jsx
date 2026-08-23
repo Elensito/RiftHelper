@@ -48,9 +48,19 @@ const IconBaron = () => (
   </svg>
 )
 
+const IconHand = () => (
+  <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M18 11V6a2 2 0 0 0-4 0v5" />
+    <path d="M14 10V4a2 2 0 0 0-4 0v6" />
+    <path d="M10 10.5V6a2 2 0 0 0-4 0v8" />
+    <path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15" />
+  </svg>
+)
+
 const KIND_META = {
   'kill-me':   { cls: 'kill',   icon: IconSword },
   'death-me':  { cls: 'death',  icon: IconSkull },
+  'assist-me': { cls: 'assist', icon: IconHand },
   'tower':     { cls: 'tower',  icon: IconTower },
   'inhib':     { cls: 'inhib',  icon: IconInhib },
   'baron':     { cls: 'baron',  icon: IconBaron },
@@ -116,6 +126,7 @@ function NeonTimeline({ matchId, puuid, lang, duration, current, onSeek }) {
       if (ev.type === 'kill') {
         if (ev.killer?.is_player) kind = 'kill-me'
         else if (ev.victim?.is_player) kind = 'death-me'
+        else if ((ev.assisters || []).some(a => a?.is_player)) kind = 'assist-me'
       } else if (ev.type === 'building') {
         kind = ev.building === 'INHIBITOR' ? 'inhib' : 'tower'
       } else if (ev.type === 'objective' && /BARON/i.test(ev.monster || '')) {
@@ -153,24 +164,29 @@ function NeonTimeline({ matchId, puuid, lang, duration, current, onSeek }) {
   }, [tlDuration, stepMin])
 
   const labelFor = useCallback((ev) => {
-    const side = ev.kind === 'kill-me' || ev.kind === 'death-me'
+    const side = ev.kind === 'kill-me' || ev.kind === 'death-me' || ev.kind === 'assist-me'
       ? ''
       : ` · ${t(lang, ev.ally ? 'vtlAlly' : 'vtlEnemy')}`
     const base =
       ev.kind === 'kill-me' ? t(lang, 'vtlKills') :
       ev.kind === 'death-me' ? t(lang, 'vtlDeaths') :
+      ev.kind === 'assist-me' ? t(lang, 'vtlAssists') :
       ev.kind === 'tower' ? t(lang, 'evTower') :
       ev.kind === 'inhib' ? t(lang, 'evInhibitor') :
       t(lang, 'evBaron')
     return `${ev.time} · ${base}${side}`
   }, [lang])
 
-  const secAtClientX = useCallback((clientX) => {
+  const secAtClientX = useCallback((clientX, clientY) => {
     const el = trackRef.current
     if (!el || !tlDuration) return null
     const rect = el.getBoundingClientRect()
     const p = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width))
-    return { sec: p * tlDuration, x: clientX - rect.left }
+    // time bubble only when hovering close to the rail (small hitbox),
+    // while the whole track stays clickable for seeking
+    const nearRail = clientY == null ||
+      Math.abs(clientY - rect.top - rect.height / 2) <= rect.height * 0.22
+    return { sec: p * tlDuration, x: clientX - rect.left, nearRail }
   }, [tlDuration])
 
   const progressPct = pct(current)
@@ -188,6 +204,7 @@ function NeonTimeline({ matchId, puuid, lang, duration, current, onSeek }) {
         <div className="vtl-legend">
           <span className="vtl-lg"><i className="lg kill" />{t(lang, 'vtlKills')}</span>
           <span className="vtl-lg"><i className="lg death" />{t(lang, 'vtlDeaths')}</span>
+          <span className="vtl-lg"><i className="lg assist" />{t(lang, 'vtlAssists')}</span>
           <span className="vtl-lg"><i className="lg ally" />{t(lang, 'vtlAlly')}</span>
           <span className="vtl-lg"><i className="lg enemy" />{t(lang, 'vtlEnemy')}</span>
         </div>
@@ -196,15 +213,15 @@ function NeonTimeline({ matchId, puuid, lang, duration, current, onSeek }) {
       <div
         ref={trackRef}
         className={`vtl-track ${status}`}
-        onMouseMove={(e) => setCursor(secAtClientX(e.clientX))}
+        onMouseMove={(e) => setCursor(secAtClientX(e.clientX, e.clientY))}
         onMouseLeave={() => setCursor(null)}
         onClick={(e) => {
           const c = secAtClientX(e.clientX)
           if (c) onSeek(c.sec)
         }}
       >
-        {/* hover cursor tooltip */}
-        {cursor && (
+        {/* hover cursor tooltip (only near the rail) */}
+        {cursor && cursor.nearRail && (
           <div className="vtl-cursor-tip" style={{ left: `${cursor.x}px` }}>
             {fmt(cursor.sec)}
           </div>
@@ -295,7 +312,6 @@ export default function VODPlayer({ vod, lang, onBack, puuid }) {
   const seekRef = useRef(null)
 
   const [playing, setPlaying] = useState(false)
-  const [hovering, setHovering] = useState(false)
   const [currentTime, setCurrent] = useState(0)
   const [duration, setDuration] = useState(vod.duration || 0)
   const [volume, setVolume] = useState(0.8)
@@ -315,6 +331,31 @@ export default function VODPlayer({ vod, lang, onBack, puuid }) {
   const hasVideoLive = !!videoUrl && !videoError
   const liveRef = useRef({})
   liveRef.current = { playing, currentTime }
+
+  /* Deck auto-hide: visible while paused or on mouse activity; hides after
+     5s without mouse movement while playing (YouTube-style) */
+  const [uiActive, setUiActive] = useState(true)
+  const uiTimerRef = useRef(null)
+  const bumpUi = useCallback(() => {
+    setUiActive(true)
+    if (uiTimerRef.current) clearTimeout(uiTimerRef.current)
+    uiTimerRef.current = setTimeout(() => setUiActive(false), 5000)
+  }, [])
+  const hideUiNow = useCallback(() => {
+    if (uiTimerRef.current) clearTimeout(uiTimerRef.current)
+    setUiActive(false)
+  }, [])
+
+  useEffect(() => {
+    if (!hasVideoLive || !playing) {
+      if (uiTimerRef.current) clearTimeout(uiTimerRef.current)
+      setUiActive(true)
+      return
+    }
+    bumpUi()
+  }, [playing, hasVideoLive, bumpUi])
+
+  useEffect(() => () => { if (uiTimerRef.current) clearTimeout(uiTimerRef.current) }, [])
 
   const team1 = vod.team1 || []
   const team2 = vod.team2 || []
@@ -359,12 +400,12 @@ export default function VODPlayer({ vod, lang, onBack, puuid }) {
   const containerRef = useRef(null)
   useEffect(() => {
     if (containerRef.current) {
-      containerRef.current.style.cursor = playing && !hovering ? 'none' : 'pointer'
+      containerRef.current.style.cursor = playing && !uiActive ? 'none' : 'pointer'
     }
-  }, [playing, hovering])
+  }, [playing, uiActive])
 
   const hasVideo = hasVideoLive
-  const showDeck = hasVideo && (!playing || hovering)
+  const showDeck = hasVideo && uiActive
 
   const togglePlay = useCallback(() => {
     const vid = videoRef.current
@@ -515,8 +556,9 @@ export default function VODPlayer({ vod, lang, onBack, puuid }) {
 
       <div className="vod-main">
         <div className="vod-video-area"
-          onMouseEnter={() => setHovering(true)}
-          onMouseLeave={() => setHovering(false)}
+          onMouseEnter={() => { if (playing) bumpUi() }}
+          onMouseMove={() => { if (playing) bumpUi() }}
+          onMouseLeave={() => { if (playing) hideUiNow() }}
         >
           {!showTeams && (
             <button className="vod-show-teams-btn" onClick={() => setShowTeams(true)} title={t(lang, 'toggleTeams')}>
@@ -565,7 +607,7 @@ export default function VODPlayer({ vod, lang, onBack, puuid }) {
               <div
                 className={`vod-deck ${showDeck ? 'visible' : ''}`}
                 onClick={(e) => e.stopPropagation()}
-                onMouseEnter={() => setHovering(true)}
+                onMouseEnter={() => bumpUi()}
               >
                 <div className="vod-seek" ref={seekRef} onClick={seekFromEvent}>
                   <div className="vod-seek-rail" />

@@ -65,6 +65,7 @@ export default function App() {
   const [mastery, setMastery] = useState(null)
   const [masteryLoading, setMasteryLoading] = useState(false)
   const [view, setView] = useState('profile')
+  const [ownProfile, setOwnProfile] = useState(false)
 
   const [activeVod, setActiveVod] = useState(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
@@ -449,6 +450,7 @@ export default function App() {
   const openPlayer = (name, tag) => {
     if (!name) return
     setSearchText(`${name}#${tag}`)
+    setOwnProfile(false)
     window.history.pushState(null, '', `/?name=${encodeURIComponent(name)}&tag=${encodeURIComponent(tag)}`)
     load(name, tag)
   }
@@ -509,6 +511,7 @@ export default function App() {
           const sName = s.game_name
           const sTag = s.game_tag || 'EUW'
           setSearchText(`${sName}#${sTag}`)
+          setOwnProfile(true)
           load(sName, sTag)
         }
       }).catch(() => {})
@@ -563,7 +566,7 @@ export default function App() {
           <header className="topbar topbar-icon-rail">
             <div className="topbar-left">
               <SearchBar
-                onSearch={(n, t) => load(n, t)}
+                onSearch={(n, t) => { setOwnProfile(false); load(n, t) }}
                 loading={loading}
                 lang={lang}
                 searchText={searchText}
@@ -746,7 +749,9 @@ export default function App() {
         </footer>
       )}
 
-      <AICoach matches={profile ? profile.matches : []} lang={lang} puuid={profile ? profile.summoner.puuid : null} summonerName={profile ? profile.summoner.name : null} onLangChange={setLang} />
+      {view === 'profile' && ownProfile && profile && (
+        <AICoach matches={profile.matches} lang={lang} puuid={profile.summoner.puuid} summonerName={profile.summoner.name} onLangChange={setLang} />
+      )}
 
       {isTauri() && (isRecording || recordingExiting) && (
         <div className={`recording-overlay ${recordingExiting ? 'exiting' : ''}`}>
