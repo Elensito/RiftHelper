@@ -43,6 +43,15 @@ export async function retryPendingMatches(summoner, excludeIds = []) {
   const pending = vods.filter(v => v.pendingMatch)
   if (!pending.length || !summoner) return pending.length
 
+  /* A match can only ever back ONE VOD: claim ids already used by resolved
+     VODs up-front, and add each new binding as it happens. Without this,
+     several stale pendings (crashed sessions) all bound the same recent
+     match, producing duplicate cards. */
+  const claimed = new Set(
+    vods.filter(v => !v.pendingMatch).map(v => v.matchId).filter(Boolean)
+  )
+  const now = Date.now()
+
   let fresh = null
   try {
     /* Each poll only needs the most recent matches — one per pending VOD
@@ -58,14 +67,25 @@ export async function retryPendingMatches(summoner, excludeIds = []) {
 
   let changed = false
   for (const vod of pending) {
+    /* Pendings older than 2h will almost never resolve cleanly (app crashed
+       mid-game, or a custom/practice game Riot never indexed): stop polling
+       instead of risking a wrong bind on some future match. */
+    if (vod.pendingAt && now - vod.pendingAt > 2 * 60 * 60 * 1000) {
+      vod.pendingMatch = false
+      vod.bindFailed = true
+      changed = true
+      continue
+    }
     const champ = vod.pendingChampion || vod.champion || ''
     const cand = fresh.find(m =>
       m.match_id &&
+      !claimed.has(m.match_id) &&
       m.match_id !== vod.matchId &&
       !excludeIds.includes(m.match_id) &&
       (!champ || !m.champion || String(m.champion).toLowerCase() === String(champ).toLowerCase())
     )
     if (!cand) continue
+    claimed.add(cand.match_id)
     const t = buildTeamsFromMatch(cand)
     vod.matchId = cand.match_id
     vod.duration = t.durationSec || vod.duration

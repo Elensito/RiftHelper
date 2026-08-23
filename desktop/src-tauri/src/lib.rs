@@ -23,6 +23,12 @@ struct EventCaptureHandle {
 
 static EVENT_CAPTURE: Mutex<Option<EventCaptureHandle>> = Mutex::new(None);
 
+/* Raw "gameMode\tgameType" of the most recently recorded game, read from the
+   Live Client Data API while capturing. Used by the frontend to detect
+   practice/custom games, which Riot never indexes in Match-V5 (so those VODs
+   must not be created as "pending"). Cleared at every start_recording. */
+static LAST_GAME_MODE: Mutex<Option<String>> = Mutex::new(None);
+
 /* ── Live Client Data API event capture ─────────────────────────────
    The Riot match timeline endpoint can take minutes (or hours) to be
    indexed after a game ends. The in-game Live Client Data API on
@@ -126,9 +132,28 @@ fn run_event_capture(output_path: String, stop: Arc<std::sync::atomic::AtomicBoo
                     }));
                 }
             }
-            if !players_json.is_empty() {
-                break;
+        }
+        // Grab the game mode early (same retry cadence as the roster) so the
+        // frontend can tell practice/custom games apart from indexed ones.
+        {
+            let known = LAST_GAME_MODE
+                .lock()
+                .map(|g| g.is_some())
+                .unwrap_or(true);
+            if !known {
+                if let Some(gs) = lcd_get_json(&client, "/liveclientdata/gamestats") {
+                    let mode = gs.get("gameMode").and_then(|v| v.as_str()).unwrap_or("");
+                    let gtype = gs.get("gameType").and_then(|v| v.as_str()).unwrap_or("");
+                    if !mode.is_empty() || !gtype.is_empty() {
+                        if let Ok(mut g) = LAST_GAME_MODE.lock() {
+                            *g = Some(format!("{}\t{}", mode, gtype));
+                        }
+                    }
+                }
             }
+        }
+        if !players_json.is_empty() {
+            break;
         }
         std::thread::sleep(std::time::Duration::from_millis(
             if attempt < 3 { 500 } else { 1500 },
@@ -139,31 +164,45 @@ fn run_event_capture(output_path: String, stop: Arc<std::sync::atomic::AtomicBoo
         return; // never got a roster; frontend falls back to the backend
     }
 
-    if let Some(ap) = lcd_get_json(&client, "/liveclientdata/activeplayer") {
-        let summoner = ap
-            .get("summonerName")
-            .and_then(|v| v.as_str())
-            .unwrap_or("");
-        let riot = ap
-            .get("riotId")
-            .map(|r| {
-                r.get("gameName")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("")
-            })
-            .unwrap_or("");
-        me_name = if !riot.is_empty() { riot.to_string() } else { summoner.to_string() };
-        let me_key = me_name.to_lowercase();
-        for p in players_json.iter_mut() {
-            let is_me = p
-                .get("name")
+    /* The local player name needs retries: right after champ select the
+       endpoint can 404 briefly. NOTE: the LCD API returns Riot IDs with the
+       tag ("name#TAG") while roster/event names carry only the game name —
+       strip the tag or every is_player check fails. */
+    for _ in 0..8u32 {
+        if stop.load(std::sync::atomic::Ordering::SeqCst) {
+            break;
+        }
+        if let Some(ap) = lcd_get_json(&client, "/liveclientdata/activeplayer") {
+            let summoner = ap
+                .get("summonerName")
                 .and_then(|v| v.as_str())
-                .map(|n| n.to_lowercase() == me_key)
-                .unwrap_or(false);
-            if let Some(obj) = p.as_object_mut() {
-                obj.insert("is_player".into(), serde_json::json!(is_me));
+                .unwrap_or("");
+            let riot = ap
+                .get("riotId")
+                .map(|r| {
+                    r.get("gameName")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                })
+                .unwrap_or("");
+            let raw = if !riot.is_empty() { riot } else { summoner };
+            me_name = raw.split('#').next().unwrap_or("").trim().to_string();
+            if !me_name.is_empty() {
+                let me_key = me_name.to_lowercase();
+                for p in players_json.iter_mut() {
+                    let is_me = p
+                        .get("name")
+                        .and_then(|v| v.as_str())
+                        .map(|n| n.to_lowercase() == me_key)
+                        .unwrap_or(false);
+                    if let Some(obj) = p.as_object_mut() {
+                        obj.insert("is_player".into(), serde_json::json!(is_me));
+                    }
+                }
+                break;
             }
         }
+        std::thread::sleep(std::time::Duration::from_millis(700));
     }
 
     /* Phase 2: poll events until the flag drops or the game ends. */
@@ -1595,6 +1634,9 @@ async fn start_recording(app: tauri::AppHandle) -> Result<String, String> {
         }
     }
     AUDIO_CAPTURE_STOP.store(false, std::sync::atomic::Ordering::SeqCst);
+    if let Ok(mut g) = LAST_GAME_MODE.lock() {
+        *g = None;
+    }
 
     let cfg = read_config(&app);
     let ffmpeg_path = cfg.get("ffmpegPath")
@@ -1794,6 +1836,14 @@ fn read_vod_events(video_path: String) -> Option<String> {
     let mut p = std::path::PathBuf::from(&video_path);
     p.set_extension("events.json");
     std::fs::read_to_string(&p).ok().filter(|s| !s.trim().is_empty())
+}
+
+/// Raw "gameMode\tgameType" of the last recorded game (from the LCD API).
+/// Practice/custom games never appear in Riot's Match-V5 index, so the
+/// frontend uses this to skip the pending-resolution flow for them.
+#[tauri::command]
+fn get_last_game_mode() -> Option<String> {
+    LAST_GAME_MODE.lock().ok()?.clone()
 }
 
 #[tauri::command]
@@ -2006,6 +2056,7 @@ pub fn run() {
             is_recording,
             is_lol_window_open,
             read_vod_events,
+            get_last_game_mode,
             show_overlay,
             hide_overlay,
             download_and_setup_ffmpeg,

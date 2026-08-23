@@ -19,7 +19,7 @@ import VODPlayer from './components/VODPlayer.jsx'
 import AppSettings from './components/AppSettings.jsx'
 import { fetchSummoner, fetchLatestMatch, fetchLiveGame, fetchMastery, fetchChampions, fetchChampion } from './api.js'
 import { retryPendingMatches, loadVodsRaw, saveVodsRaw } from './match-resolver.js'
-import { isTauri, getRiotClientSession, notifyGameEnded, startRecordingTauri, stopRecordingTauri, getAutoRecord, isLolWindowOpen, showOverlay, hideOverlay } from './tauri.js'
+import { isTauri, getRiotClientSession, notifyGameEnded, startRecordingTauri, stopRecordingTauri, getAutoRecord, isLolWindowOpen, showOverlay, hideOverlay, getLastGameMode } from './tauri.js'
 import { matchGroup, t } from './i18n.js'
 
 const PAGE_SIZE = 20
@@ -225,6 +225,14 @@ export default function App() {
       }
       const gd = recordingGameDataRef.current || {}
       const preGameId = preGameMatchIdRef.current || ''
+
+      /* Practice tool and custom games never appear in Riot's Match-V5
+         index: creating them as "pending" would poll forever and risk
+         binding some unrelated future match. Detect the mode from the
+         LCD capture and mark those VODs as final from the start. */
+      let gameModeRaw = ''
+      try { gameModeRaw = (await getLastGameMode()) || '' } catch {}
+      const unindexed = /practice|custom/i.test(gameModeRaw)
       /* Champion snapshot from the live-game data captured at record time */
       let champion = ''
       let championIcon = ''
@@ -259,7 +267,7 @@ export default function App() {
         winner: 0,
         hasVideo: !!videoPath,
         videoPath: videoPath || '',
-        pendingMatch: true,
+        pendingMatch: !unindexed,
         pendingChampion: champion,
         pendingAt: Date.now(),
       })

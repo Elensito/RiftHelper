@@ -177,6 +177,12 @@ export async function readVodEvents(videoPath) {
   try { return await invoke('read_vod_events', { videoPath }) } catch { return null }
 }
 
+export async function getLastGameMode() {
+  if (!isTauri()) return null
+  const { invoke } = await import('@tauri-apps/api/core')
+  try { return await invoke('get_last_game_mode') } catch { return null }
+}
+
 export async function showOverlay(lang) {
   if (!isTauri()) return
   const { invoke } = await import('@tauri-apps/api/core')
