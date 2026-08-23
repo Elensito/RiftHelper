@@ -80,29 +80,43 @@ fn stop_event_capture() {
 }
 
 /* Extracts a thumbnail frame from the still-being-written mp4 a few seconds
-   in (the file is fragmented, so it is readable while ffmpeg runs). Runs
-   detached: failures are silently ignored and the VOD keeps its placeholder. */
+   in. The file is fragmented while ffmpeg runs, so seeking by index is
+   impossible: we seek from the END of the decode chain (-i before -ss) and
+   retry a few times until enough video data has been written. Failures are
+   silently ignored and the VOD keeps its placeholder. */
 fn start_thumbnail_worker(output_path: String, ffmpeg_path: String) {
     let spawned = std::thread::Builder::new().name("vod-thumb".into()).spawn(move || {
-        std::thread::sleep(std::time::Duration::from_secs(7));
         let mut thumb = std::path::PathBuf::from(&output_path);
         thumb.set_extension("thumb.jpg");
-        if thumb.exists() {
-            return;
+        for delay in [7u64, 6, 9] {
+            std::thread::sleep(std::time::Duration::from_secs(delay));
+            if thumb.exists() {
+                return;
+            }
+            if std::fs::metadata(&output_path).map(|m| m.len()).unwrap_or(0) < 400 * 1024 {
+                continue;
+            }
+            let status = Command::new(&ffmpeg_path)
+                .args([
+                    "-y".to_string(),
+                    "-i".to_string(), output_path.clone(),
+                    "-ss".to_string(), "4".to_string(),
+                    "-frames:v".to_string(), "1".to_string(),
+                    "-q:v".to_string(), "4".to_string(),
+                ])
+                .arg(&thumb)
+                .creation_flags(0x08000000)
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .status();
+            if thumb.exists() {
+                return;
+            }
+            if status.map(|s| !s.success()).unwrap_or(true) {
+                // ffmpeg itself failed: the recording is likely gone, stop retrying.
+                return;
+            }
         }
-        let _ = Command::new(&ffmpeg_path)
-            .args([
-                "-ss".to_string(), "4".to_string(),
-                "-y".to_string(),
-                "-i".to_string(), output_path.clone(),
-                "-frames:v".to_string(), "1".to_string(),
-                "-q:v".to_string(), "4".to_string(),
-            ])
-            .arg(&thumb)
-            .creation_flags(0x08000000)
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .spawn();
     });
     if let Ok(handle) = spawned {
         std::mem::forget(handle);
@@ -1693,7 +1707,7 @@ async fn start_recording(app: tauri::AppHandle) -> Result<String, String> {
 
     // The in-game detection can fire during champ select, before the LoL
     // window exists: poll for it instead of failing permanently.
-    let (x, y, w, h) = tauri::async_runtime::spawn_blocking(|| {
+    tauri::async_runtime::spawn_blocking(|| {
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(180);
         let mut rect = find_lol_window_rect();
         while rect.is_none() && std::time::Instant::now() < deadline {
@@ -1716,14 +1730,15 @@ async fn start_recording(app: tauri::AppHandle) -> Result<String, String> {
         _ => {}
     }
 
+    // Capture the game window directly by title instead of a screen region:
+    // no CAPTUREBLT full-screen scan (that flag is what made the mouse
+    // flicker and cost CPU at game start), it follows window moves, and
+    // when the player tabs out nothing but the game ever shows on the VOD.
     let mut ffmpeg_args = vec![
         "-f".to_string(), "gdigrab".to_string(),
         "-framerate".to_string(), "30".to_string(),
         "-draw_mouse".to_string(), "1".to_string(),
-        "-offset_x".to_string(), x.to_string(),
-        "-offset_y".to_string(), y.to_string(),
-        "-video_size".to_string(), format!("{}x{}", w, h),
-        "-i".to_string(), "desktop".to_string(),
+        "-i".to_string(), "title=League of Legends (TM) Client".to_string(),
     ];
 
     // Audio per user setting (default: game-only via process loopback).

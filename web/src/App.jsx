@@ -225,6 +225,9 @@ export default function App() {
         try { videoPath = await stopRecordingTauri() } catch {}
         recordingActiveRef.current = false
       }
+      /* Nothing was actually captured (backend never started): don't save
+         a ghost pending entry for an aborted attempt */
+      if (!videoPath && duration < 15) return
       const gd = recordingGameDataRef.current || {}
       const preGameId = preGameMatchIdRef.current || ''
 
@@ -329,9 +332,17 @@ export default function App() {
               setIsRecording(true)
               recordingActiveRef.current = true
               showOverlay(lang)
+              /* On failure every ref must be cleared, otherwise the next poll
+                 finalizes this aborted attempt as a zero-length ghost VOD */
+              const abort = () => {
+                recordingActiveRef.current = false
+                recordingStartRef.current = null
+                setIsRecording(false)
+                hideOverlay()
+              }
               startRecordingTauri().then(path => {
-                if (!path) recordingActiveRef.current = false
-              }).catch(() => { recordingActiveRef.current = false })
+                if (!path) abort()
+              }).catch(abort)
             }
             tryRecord()
           }

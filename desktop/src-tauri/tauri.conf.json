@@ -1,59 +1,67 @@
 {
-  "$schema": "https://schema.tauri.app/config/2",
-  "productName": "RiftHelper",
-  "version": "1.5.53",
-  "identifier": "com.rifthelper.desktop",
-  "build": {
-    "frontendDist": "../dist"
-  },
-  "app": {
-    "windows": [
-      {
-        "title": "RiftHelper",
-        "label": "main",
-        "width": 1280,
-        "height": 820,
-        "minWidth": 900,
-        "minHeight": 600,
-        "url": "index.html",
-        "resizable": true,
-        "fullscreen": false,
-        "center": true
-      },
-      {
-        "title": "Overlay",
-        "label": "overlay",
-        "url": "overlay.html",
-        "width": 340,
-        "height": 90,
-        "decorations": false,
-        "transparent": true,
-        "alwaysOnTop": true,
-        "skipTaskbar": true,
-        "visible": false,
-        "resizable": false,
-        "shadow": false
-      }
-    ],
-    "trayIcon": {
-      "iconPath": "icons/icon.png",
-      "iconAsTemplate": false,
-      "tooltip": "RiftHelper"
-    },
-    "security": {
-      "csp": null,
-      "assetProtocol": {
-        "enable": true,
-        "scope": ["**"]
-      }
-    }
-  },
-  "bundle": {
-    "active": true,
-    "targets": ["nsis", "msi"],
-    "icon": ["icons/icon.ico", "icons/icon.png"],
-    "publisher": "RiftHelper Apps",
-    "shortDescription": "RiftHelper desktop app",
-    "longDescription": "RiftHelper: perfil y analisis de partidas de League of Legends."
-  }
+    "$schema":  "https://schema.tauri.app/config/2",
+    "productName":  "RiftHelper",
+    "version":  "1.5.54",
+    "identifier":  "com.rifthelper.desktop",
+    "build":  {
+                  "frontendDist":  "../dist"
+              },
+    "app":  {
+                "windows":  [
+                                {
+                                    "title":  "RiftHelper",
+                                    "label":  "main",
+                                    "width":  1280,
+                                    "height":  820,
+                                    "minWidth":  900,
+                                    "minHeight":  600,
+                                    "url":  "index.html",
+                                    "resizable":  true,
+                                    "fullscreen":  false,
+                                    "center":  true
+                                },
+                                {
+                                    "title":  "Overlay",
+                                    "label":  "overlay",
+                                    "url":  "overlay.html",
+                                    "width":  340,
+                                    "height":  90,
+                                    "decorations":  false,
+                                    "transparent":  true,
+                                    "alwaysOnTop":  true,
+                                    "skipTaskbar":  true,
+                                    "visible":  false,
+                                    "resizable":  false,
+                                    "shadow":  false
+                                }
+                            ],
+                "trayIcon":  {
+                                 "iconPath":  "icons/icon.png",
+                                 "iconAsTemplate":  false,
+                                 "tooltip":  "RiftHelper"
+                             },
+                "security":  {
+                                 "csp":  null,
+                                 "assetProtocol":  {
+                                                       "enable":  true,
+                                                       "scope":  [
+                                                                     "**"
+                                                                 ]
+                                                   }
+                             }
+            },
+    "bundle":  {
+                   "active":  true,
+                   "targets":  [
+                                   "nsis",
+                                   "msi"
+                               ],
+                   "icon":  [
+                                "icons/icon.ico",
+                                "icons/icon.png"
+                            ],
+                   "publisher":  "RiftHelper Apps",
+                   "shortDescription":  "RiftHelper desktop app",
+                   "longDescription":  "RiftHelper: perfil y analisis de partidas de League of Legends."
+               }
 }
