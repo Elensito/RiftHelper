@@ -221,8 +221,19 @@ export default function App() {
         setRecordingExiting(false)
       }, 600)
       let videoPath = null
+      let realDuration = 0
       if (recordingActiveRef.current) {
-        try { videoPath = await stopRecordingTauri() } catch {}
+        /* Backend returns { path, duration } — duration is the exact file
+           length probed with ffprobe, immune to start/stop wall-clock drift */
+        try {
+          const r = await stopRecordingTauri()
+          if (r && typeof r === 'object') {
+            videoPath = r.path || null
+            realDuration = Math.round(r.duration || 0)
+          } else if (typeof r === 'string') {
+            videoPath = r
+          }
+        } catch {}
         recordingActiveRef.current = false
       }
       /* Nothing was actually captured (backend never started): don't save
@@ -257,7 +268,7 @@ export default function App() {
       vods.unshift({
         id: vodId,
         date: Date.now(),
-        duration,
+        duration: realDuration || duration,
         champion,
         championIcon,
         result: '',

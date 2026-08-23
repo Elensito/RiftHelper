@@ -4,9 +4,26 @@ use tauri::Manager;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::process::{Command, Child};
+
 use std::io::Write;
-#[cfg(target_os = "windows")]
+
 use std::os::windows::process::CommandExt;
+
+use windows::core::Interface;
+use windows::Win32::Foundation::HMODULE;
+use windows::Win32::Graphics::Direct3D::{
+    D3D_DRIVER_TYPE_UNKNOWN, D3D_FEATURE_LEVEL_10_1, D3D_FEATURE_LEVEL_11_0,
+};
+use windows::Win32::Graphics::Direct3D11::{
+    D3D11CreateDevice, ID3D11Device, ID3D11DeviceContext, ID3D11Texture2D,
+    D3D11_CPU_ACCESS_READ, D3D11_CREATE_DEVICE_BGRA_SUPPORT, D3D11_MAP_READ,
+    D3D11_MAPPED_SUBRESOURCE, D3D11_TEXTURE2D_DESC, D3D11_USAGE_STAGING,
+};
+use windows::Win32::Graphics::Dxgi::{
+    CreateDXGIFactory1, IDXGIFactory1, IDXGIOutput1, IDXGIOutputDuplication, IDXGIResource,
+    DXGI_OUTDUPL_FRAME_INFO,
+};
+use windows::Win32::Graphics::Dxgi::Common::{DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_SAMPLE_DESC};
 
 struct FFmpegProcess {
     child: Child,
@@ -1669,6 +1686,353 @@ fn spawn_named_capture_thread(
     spawn_capture_source(source, pipe_name)
 }
 
+/* ==================== Desktop Duplication video capture ====================
+   gdigrab cannot read DirectX flip-model swapchains (it returns black frames
+   for the LoL client) and its BitBlt uses CAPTUREBLT, which forces Windows to
+   repaint layered windows + cursor on every frame — that flag is what made
+   the mouse flicker system-wide and cost CPU at game start. DXGI Desktop
+   Duplication grabs the already-composited desktop straight from the GPU:
+   works with the game's presentation mode, costs almost no CPU and never
+   touches CAPTUREBLT. Every frame is cropped to the game client rect; black
+   frames are emitted while the window is minimized or unfocused so nothing
+   else ever shows up in the VOD. */
+
+static VIDEO_CAPTURE_STOP: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+static VIDEO_MODE_DDA: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
+fn find_lol_hwnd() -> isize {
+    use std::ffi::c_void;
+    type HWND = *mut c_void;
+    type BOOL = i32;
+    type LPARAM = isize;
+    type WNDENUMPROC = Option<unsafe extern "system" fn(HWND, LPARAM) -> BOOL>;
+
+    extern "system" {
+        fn EnumWindows(lpEnumFunc: WNDENUMPROC, lParam: LPARAM) -> BOOL;
+        fn GetWindowTextW(hWnd: HWND, lpString: *mut u16, nMaxCount: i32) -> i32;
+        fn IsWindowVisible(hWnd: HWND) -> BOOL;
+    }
+
+    unsafe extern "system" fn callback(hwnd: HWND, lparam: LPARAM) -> BOOL {
+        let mut buf = [0u16; 256];
+        let len = GetWindowTextW(hwnd, buf.as_mut_ptr(), 256);
+        if len > 0 && IsWindowVisible(hwnd) != 0 {
+            let title = String::from_utf16_lossy(&buf[..len as usize]);
+            if title.contains("League of Legends (TM) Client") {
+                let slot = &*(lparam as *const Mutex<Option<isize>>);
+                if let Ok(mut guard) = slot.lock() {
+                    *guard = Some(hwnd as isize);
+                }
+                return 0;
+            }
+        }
+        1
+    }
+
+    let result: Mutex<Option<isize>> = Mutex::new(None);
+    let ptr = &result as *const Mutex<Option<isize>> as LPARAM;
+    unsafe {
+        let _ = EnumWindows(Some(callback), ptr);
+    }
+    result.lock().ok().and_then(|mut g| g.take()).unwrap_or(0)
+}
+
+fn lol_window_alive(hwnd: isize) -> bool {
+    use std::ffi::c_void;
+    type HWND = *mut c_void;
+    type BOOL = i32;
+    extern "system" {
+        fn IsWindow(hWnd: HWND) -> BOOL;
+        fn IsWindowVisible(hWnd: HWND) -> BOOL;
+    }
+    unsafe {
+        let h = hwnd as HWND;
+        IsWindow(h) != 0 && IsWindowVisible(h) != 0
+    }
+}
+
+/// Client area of the window in screen coordinates (excludes borders/titlebar).
+fn lol_client_rect(hwnd: isize) -> Option<(i32, i32, u32, u32)> {
+    use std::ffi::c_void;
+    type HWND = *mut c_void;
+    type BOOL = i32;
+
+    #[repr(C)]
+    struct RECT { left: i32, top: i32, right: i32, bottom: i32 }
+    #[repr(C)]
+    struct POINT { x: i32, y: i32 }
+
+    extern "system" {
+        fn GetClientRect(hWnd: HWND, lpRect: *mut RECT) -> BOOL;
+        fn ClientToScreen(hWnd: HWND, lpPoint: *mut POINT) -> BOOL;
+    }
+
+    unsafe {
+        let h = hwnd as HWND;
+        let mut r = RECT { left: 0, top: 0, right: 0, bottom: 0 };
+        let mut o = POINT { x: 0, y: 0 };
+        if GetClientRect(h, &mut r) == 0 || ClientToScreen(h, &mut o) == 0 {
+            return None;
+        }
+        let w = (r.right - r.left).max(0) as u32;
+        let hgt = (r.bottom - r.top).max(0) as u32;
+        if w == 0 || hgt == 0 {
+            return None;
+        }
+        Some((o.x, o.y, w, hgt))
+    }
+}
+
+fn lol_window_foreground(hwnd: isize) -> bool {
+    use std::ffi::c_void;
+    type HWND = *mut c_void;
+    type BOOL = i32;
+    extern "system" {
+        fn GetForegroundWindow() -> HWND;
+        fn IsIconic(hWnd: HWND) -> BOOL;
+    }
+    unsafe {
+        GetForegroundWindow() == hwnd as HWND && IsIconic(hwnd as HWND) == 0
+    }
+}
+
+struct DdaPipeline {
+    ctx: ID3D11DeviceContext,
+    dup: IDXGIOutputDuplication,
+    staging: ID3D11Texture2D,
+    out_left: i32,
+    out_top: i32,
+    out_w: i32,
+    out_h: i32,
+}
+
+/// Builds a duplication pipeline on the adapter/output that currently holds
+/// the game window. Returns None when DDA is unavailable (RDP, HDR formats,
+/// driver issues) so the caller can fall back to legacy gdigrab capture.
+unsafe fn dda_setup(hwnd: isize) -> Option<DdaPipeline> {
+    let (cx, cy, _w, _h) = lol_client_rect(hwnd)?;
+
+    let factory: IDXGIFactory1 = CreateDXGIFactory1().ok()?;
+    for ai in 0..8u32 {
+        let Ok(adapter) = factory.EnumAdapters1(ai) else { break };
+        for oi in 0..16u32 {
+            let Ok(output) = adapter.EnumOutputs(oi) else { break };
+            let Ok(desc) = output.GetDesc() else { continue };
+            let r = desc.DesktopCoordinates;
+            if cx < r.left || cx >= r.right || cy < r.top || cy >= r.bottom {
+                continue;
+            }
+
+            let mut device: Option<ID3D11Device> = None;
+            let mut ctx: Option<ID3D11DeviceContext> = None;
+            let mut fl = D3D_FEATURE_LEVEL_11_0;
+            D3D11CreateDevice(
+                &adapter,
+                D3D_DRIVER_TYPE_UNKNOWN,
+                HMODULE::default(),
+                D3D11_CREATE_DEVICE_BGRA_SUPPORT,
+                Some(&[D3D_FEATURE_LEVEL_11_0, D3D_FEATURE_LEVEL_10_1]),
+                7,
+                Some(&mut device),
+                Some(&mut fl),
+                Some(&mut ctx),
+            ).ok()?;
+            let device = device?;
+            let ctx = ctx?;
+
+            let dup = output.cast::<IDXGIOutput1>().ok()?.DuplicateOutput(&device).ok()?;
+
+            // HDR outputs hand us FP16 frames we cannot cheaply convert.
+            let dd = dup.GetDesc();
+            if dd.ModeDesc.Format != DXGI_FORMAT_B8G8R8A8_UNORM {
+                return None;
+            }
+
+            let tdesc = D3D11_TEXTURE2D_DESC {
+                Width: (r.right - r.left).max(1) as u32,
+                Height: (r.bottom - r.top).max(1) as u32,
+                MipLevels: 1,
+                ArraySize: 1,
+                Format: DXGI_FORMAT_B8G8R8A8_UNORM,
+                SampleDesc: DXGI_SAMPLE_DESC { Count: 1, Quality: 0 },
+                Usage: D3D11_USAGE_STAGING,
+                BindFlags: 0,
+                CPUAccessFlags: D3D11_CPU_ACCESS_READ.0 as u32,
+                MiscFlags: 0,
+            };
+            let mut staging: Option<ID3D11Texture2D> = None;
+            device.CreateTexture2D(&tdesc, None, Some(&mut staging)).ok()?;
+            let staging = staging?;
+
+            return Some(DdaPipeline {
+                ctx, dup, staging,
+                out_left: r.left, out_top: r.top,
+                out_w: r.right - r.left, out_h: r.bottom - r.top,
+            });
+        }
+    }
+    None
+}
+
+/// Cheap preflight used by start_recording to decide between the DDA
+/// rawvideo pipeline and the legacy gdigrab fallback before ffmpeg spawns.
+/// Returns the evened client dimensions for the rawvideo stream.
+fn dda_validate(hwnd: isize) -> Option<(u32, u32)> {
+    let (_x, _y, w, h) = lol_client_rect(hwnd)?;
+    if unsafe { dda_setup(hwnd) }.is_some() {
+        Some((w & !1, h & !1))
+    } else {
+        None
+    }
+}
+
+/// Copies the game client rect from the mapped full-output frame into the
+/// canvas. Everything outside stays zeroed (black).
+unsafe fn blit_client(
+    pipe: &DdaPipeline,
+    mapped: &D3D11_MAPPED_SUBRESOURCE,
+    rx: i32, ry: i32, rw: u32, rh: u32,
+    canvas: &mut [u8],
+    cw: u32,
+) {
+    let sx = (rx - pipe.out_left).max(0);
+    let sy = (ry - pipe.out_top).max(0);
+    let sw = ((rw as i32).min(pipe.out_w - sx)).max(0) as u32;
+    let sh = ((rh as i32).min(pipe.out_h - sy)).max(0) as u32;
+    if sw == 0 || sh == 0 {
+        return;
+    }
+    // Crop to the canvas if the window grew beyond the initial size.
+    let copy_w = sw.min(cw);
+    let copy_h = sh.min((canvas.len() / (cw as usize * 4)) as u32);
+    let src = mapped.pData as *const u8;
+    let pitch = mapped.RowPitch as usize;
+    for row in 0..copy_h as usize {
+        let sp = src.add((sy as usize + row) * pitch + sx as usize * 4);
+        let dp = row * cw as usize * 4;
+        std::ptr::copy_nonoverlapping(sp, canvas[dp..].as_mut_ptr(), copy_w as usize * 4);
+    }
+}
+
+/// Streams BGRA frames of the game client into ffmpeg's stdin as a rawvideo
+/// feed at ~30fps until VIDEO_CAPTURE_STOP fires. Dropping stdin closes the
+/// pipe: ffmpeg sees video EOF and finalizes the file cleanly.
+fn run_video_capture(mut stdin: std::process::ChildStdin, hwnd_hint: isize, cw: u32, ch: u32) {
+    let mut canvas = vec![0u8; cw as usize * ch as usize * 4];
+    let frame_dur = std::time::Duration::from_millis(33);
+    let mut next_tick = std::time::Instant::now();
+    let mut missing_since: Option<std::time::Instant> = None;
+
+    'outer: while !VIDEO_CAPTURE_STOP.load(std::sync::atomic::Ordering::SeqCst) {
+        let hwnd = if hwnd_hint != 0 && lol_window_alive(hwnd_hint) {
+            hwnd_hint
+        } else {
+            find_lol_hwnd()
+        };
+        if hwnd == 0 {
+            // Window gone: keep feeding black briefly, then bail so the
+            // recording ends instead of running forever headless.
+            if missing_since.map(|t| t.elapsed()).unwrap_or_default()
+                > std::time::Duration::from_secs(20)
+            {
+                break 'outer;
+            }
+            if missing_since.is_none() {
+                missing_since = Some(std::time::Instant::now());
+            }
+            canvas.fill(0);
+            let _ = stdin.write_all(&canvas);
+            next_tick += frame_dur;
+            let now = std::time::Instant::now();
+            if next_tick > now { std::thread::sleep(next_tick - now); } else { next_tick = now; }
+            continue;
+        }
+        missing_since = None;
+
+        let pipe = match unsafe { dda_setup(hwnd) } {
+            Some(p) => p,
+            None => {
+                std::thread::sleep(std::time::Duration::from_millis(300));
+                continue;
+            }
+        };
+
+        loop {
+            if VIDEO_CAPTURE_STOP.load(std::sync::atomic::Ordering::SeqCst) {
+                break 'outer;
+            }
+            let show = match lol_client_rect(hwnd) {
+                Some((rx, ry, rw, rh)) => {
+                    lol_window_foreground(hwnd) && blit_ready(&pipe, rx, ry, rw, rh)
+                }
+                None => false,
+            };
+            canvas.fill(0);
+
+            unsafe {
+                let mut info = DXGI_OUTDUPL_FRAME_INFO::default();
+                let mut resource: Option<IDXGIResource> = None;
+                if pipe.dup.AcquireNextFrame(0, &mut info, &mut resource).is_ok() {
+                    if let Ok(tex) = resource.unwrap().cast::<ID3D11Texture2D>() {
+                        pipe.ctx.CopyResource(&pipe.staging, &tex);
+                        let mut mapped = D3D11_MAPPED_SUBRESOURCE::default();
+                        if pipe.ctx.Map(&pipe.staging, 0, D3D11_MAP_READ, 0, Some(&mut mapped)).is_ok() {
+                            if show {
+                                if let Some((rx, ry, rw, rh)) = lol_client_rect(hwnd) {
+                                    blit_client(&pipe, &mapped, rx, ry, rw, rh, &mut canvas, cw);
+                                }
+                            }
+                            pipe.ctx.Unmap(&pipe.staging, 0);
+                        }
+                    }
+                    let _ = pipe.dup.ReleaseFrame();
+                }
+                let _ = stdin.write_all(&canvas);
+            }
+
+            next_tick += frame_dur;
+            let now = std::time::Instant::now();
+            if next_tick > now { std::thread::sleep(next_tick - now); } else { next_tick = now; }
+        }
+    }
+}
+
+/// The blit needs the pipeline's output origin; when the game jumps to a
+/// monitor this thread does not duplicate, drop the stale pipeline instead
+/// of cropping garbage coordinates.
+fn blit_ready(pipe: &DdaPipeline, _rx: i32, _ry: i32, _rw: u32, _rh: u32) -> bool {
+    pipe.out_w > 0 && pipe.out_h > 0
+}
+
+#[derive(Serialize)]
+struct VodFile {
+    path: String,
+    duration: f64,
+}
+
+/// Exact duration of a finished recording via ffprobe (ships next to the
+/// bundled ffmpeg). Wall-clock estimates drift by several seconds because
+/// ffmpeg starts after the game-start wait and stops a few seconds late.
+fn probe_media_duration(app: &tauri::AppHandle, video_path: &str) -> Option<f64> {
+    let cfg = read_config(app);
+    let ffmpeg = cfg.get("ffmpegPath")?.as_str()?;
+    let ffprobe = std::path::Path::new(ffmpeg).parent()?.join("ffprobe.exe");
+    let out = Command::new(ffprobe)
+        .args([
+            "-v".to_string(), "error".to_string(),
+            "-show_entries".to_string(), "format=duration".to_string(),
+            "-of".to_string(), "default=noprint_wrappers=1:nokey=1".to_string(),
+            video_path.to_string(),
+        ])
+        .creation_flags(0x08000000)
+        .output()
+        .ok()?;
+    let s = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    s.parse::<f64>().ok().filter(|d| d.is_finite() && *d > 1.0)
+}
+
 #[tauri::command]
 async fn start_recording(app: tauri::AppHandle) -> Result<String, String> {
     {
@@ -1730,16 +2094,40 @@ async fn start_recording(app: tauri::AppHandle) -> Result<String, String> {
         _ => {}
     }
 
-    // Capture the game window directly by title instead of a screen region:
-    // no CAPTUREBLT full-screen scan (that flag is what made the mouse
-    // flicker and cost CPU at game start), it follows window moves, and
-    // when the player tabs out nothing but the game ever shows on the VOD.
-    let mut ffmpeg_args = vec![
-        "-f".to_string(), "gdigrab".to_string(),
-        "-framerate".to_string(), "30".to_string(),
-        "-draw_mouse".to_string(), "1".to_string(),
-        "-i".to_string(), "title=League of Legends (TM) Client".to_string(),
-    ];
+    // Capture the game client via DXGI Desktop Duplication (GPU-composited:
+    // works with DirectX, no CAPTUREBLT cursor flicker, near-zero CPU, black
+    // when the window is minimized or unfocused). Fall back to the legacy
+    // gdigrab desktop-region capture when DDA is unavailable.
+    VIDEO_CAPTURE_STOP.store(false, std::sync::atomic::Ordering::SeqCst);
+    let hwnd = find_lol_hwnd();
+    let video_plan = if hwnd != 0 {
+        dda_validate(hwnd)
+    } else {
+        None
+    };
+    VIDEO_MODE_DDA.store(video_plan.is_some(), std::sync::atomic::Ordering::SeqCst);
+
+    let mut ffmpeg_args = if let Some((cw, ch)) = video_plan {
+        vec![
+            "-f".to_string(), "rawvideo".to_string(),
+            "-pixel_format".to_string(), "bgra".to_string(),
+            "-video_size".to_string(), format!("{}x{}", cw, ch),
+            "-framerate".to_string(), "30".to_string(),
+            "-i".to_string(), "pipe:0".to_string(),
+        ]
+    } else {
+        let (x, y, w, h) = find_lol_window_rect()
+            .ok_or_else(|| "League of Legends window not found".to_string())?;
+        vec![
+            "-f".to_string(), "gdigrab".to_string(),
+            "-framerate".to_string(), "30".to_string(),
+            "-draw_mouse".to_string(), "1".to_string(),
+            "-offset_x".to_string(), x.to_string(),
+            "-offset_y".to_string(), y.to_string(),
+            "-video_size".to_string(), format!("{}x{}", w, h),
+            "-i".to_string(), "desktop".to_string(),
+        ]
+    };
 
     // Audio per user setting (default: game-only via process loopback).
     let mode = audio_mode_from_cfg(&cfg);
@@ -1815,9 +2203,25 @@ async fn start_recording(app: tauri::AppHandle) -> Result<String, String> {
         g.open();
     }
 
+    // In DDA mode ffmpeg's stdin IS the video feed: hand it to the capture
+    // thread (stop_recording ends the recording by closing it). Legacy
+    // gdigrab keeps stdin stored so stop can send 'q'.
+    let mut proc_stdin = None;
+    if VIDEO_MODE_DDA.load(std::sync::atomic::Ordering::SeqCst) {
+        let (cw_dda, ch_dda) = video_plan.unwrap_or((0, 0));
+        if let Some(si) = stdin {
+            let plan_hwnd = hwnd;
+            tauri::async_runtime::spawn_blocking(move || {
+                run_video_capture(si, plan_hwnd, cw_dda, ch_dda)
+            });
+        }
+    } else {
+        proc_stdin = stdin;
+    }
+
     {
         let mut guard = FFMPEG_PROC.lock().map_err(|e| e.to_string())?;
-        *guard = Some(FFmpegProcess { child, stdin });
+        *guard = Some(FFmpegProcess { child, stdin: proc_stdin });
     }
     {
         let mut guard = FFMPEG_OUTPUT.lock().map_err(|e| e.to_string())?;
@@ -1834,24 +2238,30 @@ async fn start_recording(app: tauri::AppHandle) -> Result<String, String> {
 }
 
 #[tauri::command]
-async fn stop_recording() -> Result<Option<String>, String> {
+async fn stop_recording(app: tauri::AppHandle) -> Result<Option<VodFile>, String> {
     stop_event_capture();
+    // DDA mode: the capturer thread owns ffmpeg's stdin — flag it to stop
+    // (~100ms) so dropping stdin delivers video EOF and ffmpeg finalizes.
+    VIDEO_CAPTURE_STOP.store(true, std::sync::atomic::Ordering::SeqCst);
+    let dda_mode = VIDEO_MODE_DDA.swap(false, std::sync::atomic::Ordering::SeqCst);
     let output_path = {
         let mut guard = FFMPEG_PROC.lock().map_err(|e| e.to_string())?;
         if let Some(ref mut proc) = *guard {
-            // Try graceful shutdown: send 'q' to FFmpeg stdin
             let mut gracefully_closed = false;
-            if let Some(ref mut stdin) = proc.stdin {
-                let _ = stdin.write_all(b"q\n");
-                let _ = stdin.flush();
-                // Wait up to 5 seconds for FFmpeg to finalize the file
-                let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
-                while std::time::Instant::now() < deadline {
-                    match proc.child.try_wait() {
-                        Ok(Some(_)) => { gracefully_closed = true; break; }
-                        Ok(None) => { std::thread::sleep(std::time::Duration::from_millis(100)); }
-                        Err(_) => break,
-                    }
+            if !dda_mode {
+                // Legacy path: try graceful shutdown via 'q' on stdin
+                if let Some(ref mut stdin) = proc.stdin {
+                    let _ = stdin.write_all(b"q\n");
+                    let _ = stdin.flush();
+                }
+            }
+            // Wait for FFmpeg to finalize the file (EOF already delivered in DDA mode)
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(8);
+            while std::time::Instant::now() < deadline {
+                match proc.child.try_wait() {
+                    Ok(Some(_)) => { gracefully_closed = true; break; }
+                    Ok(None) => { std::thread::sleep(std::time::Duration::from_millis(100)); }
+                    Err(_) => break,
                 }
             }
             // Force kill only if graceful shutdown failed
@@ -1866,7 +2276,11 @@ async fn stop_recording() -> Result<Option<String>, String> {
     };
     // Small delay to let the file system flush
     std::thread::sleep(std::time::Duration::from_millis(200));
-    Ok(output_path)
+    let duration = output_path
+        .as_deref()
+        .and_then(|p| probe_media_duration(&app, p))
+        .unwrap_or(0.0);
+    Ok(output_path.map(|path| VodFile { path, duration }))
 }
 
 /// Cheap WinAPI check used by the frontend watchdog to detect the end of a
