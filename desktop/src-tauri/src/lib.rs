@@ -478,7 +478,7 @@ async fn start_recording(app: tauri::AppHandle) -> Result<String, String> {
     let mut ffmpeg_args = vec![
         "-f".to_string(), "gdigrab".to_string(),
         "-framerate".to_string(), "30".to_string(),
-        "-draw_mouse".to_string(), "0".to_string(),
+        "-draw_mouse".to_string(), "1".to_string(),
         "-offset_x".to_string(), x.to_string(),
         "-offset_y".to_string(), y.to_string(),
         "-video_size".to_string(), format!("{}x{}", w, h),
