@@ -386,6 +386,12 @@ export default function VODPlayer({ vod, lang, onBack, puuid, summoner }) {
     if (!pending || !summoner) return
     let alive = true
     let timer = null
+    const startedAt = mv.pendingAt || Date.now()
+    /* Riot indexes match details in well under a minute most of the time:
+       poll aggressively during the first 3 minutes after the game ended,
+       then back off to 45s to save API calls. */
+    const nextDelay = () =>
+      Date.now() - startedAt < 3 * 60 * 1000 ? 13000 : 45000
     const tick = async () => {
       try {
         await retryPendingMatches(summoner)
@@ -395,7 +401,7 @@ export default function VODPlayer({ vod, lang, onBack, puuid, summoner }) {
       if (fresh && !fresh.pendingMatch) {
         setVodPatch({ ...fresh })
       } else {
-        timer = setTimeout(tick, 45000)
+        timer = setTimeout(tick, nextDelay())
       }
     }
     timer = setTimeout(tick, 8000)
