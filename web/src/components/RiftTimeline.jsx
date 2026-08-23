@@ -1,6 +1,6 @@
 ﻿import { useState, useEffect, useCallback, useRef } from 'react'
 import { t } from '../i18n.js'
-import { isTauri, showInFolder, getAudioMode } from '../tauri.js'
+import { isTauri, showInFolder, getAudioMode, vodThumbUrl } from '../tauri.js'
 import { deleteRecordingBlob } from '../video-recorder.js'
 
 const VOD_STORAGE_KEY = 'rh-vods'
@@ -37,6 +37,41 @@ function formatDate(ts) {
   if (!ts) return ''
   const d = new Date(ts)
   return d.toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' })
+}
+
+function relTime(lang, ts) {
+  if (!ts) return ''
+  const s = Math.max(0, (Date.now() - ts) / 1000)
+  if (s < 90) return t(lang, 'relNow')
+  const m = s / 60
+  if (m < 60) return t(lang, 'relMinAgo').replace('{n}', Math.floor(m))
+  const h = m / 60
+  if (h < 24) return t(lang, 'relHourAgo').replace('{n}', Math.floor(h))
+  const d = h / 24
+  return t(lang, 'relDayAgo').replace('{n}', Math.floor(d))
+}
+
+/* Thumbnail extracted from the recording a few seconds in (generated
+   natively while the video is being written); falls back to placeholder. */
+function VodThumb({ vod }) {
+  const [src, setSrc] = useState(null)
+  useEffect(() => {
+    let dead = false
+    setSrc(null)
+    if (!vod.videoPath || !isTauri()) return undefined
+    vodThumbUrl(vod.videoPath)
+      .then((u) => { if (!dead && u) setSrc(u) })
+      .catch(() => {})
+    /* Retry shortly after: the thumb may still be being extracted */
+    const retry = setTimeout(() => {
+      vodThumbUrl(vod.videoPath)
+        .then((u) => { if (!dead && u) setSrc(u) })
+        .catch(() => {})
+    }, 6000)
+    return () => { dead = true; clearTimeout(retry) }
+  }, [vod.id, vod.videoPath])
+  if (!src) return <div className="rt-card-thumb-placeholder" />
+  return <img src={src} alt="" />
 }
 
 export { loadVods, saveVods, loadSettings, saveSettings, VOD_STORAGE_KEY, VOD_SETTINGS_KEY }
@@ -176,21 +211,20 @@ export default function RiftTimeline({ lang, onOpenVod, profile }) {
                 {vod.thumbnail ? (
                   <img src={vod.thumbnail} alt="" />
                 ) : (
-                  <div className="rt-card-thumb-placeholder" />
+                  <VodThumb vod={vod} />
                 )}
                 <span className="rt-card-duration">{formatDuration(vod.duration)}</span>
                 {vod.pendingMatch && <span className="rt-card-badge pending">{t(lang, 'pendingBadge')}</span>}
-                {vod.hasVideo && <span className="rt-card-badge video" title="Video recorded">â–¶</span>}
                 {vod.result === 'win' && <span className="rt-card-badge win">W</span>}
                 {vod.result === 'loss' && <span className="rt-card-badge loss">L</span>}
               </div>
               <div className="rt-card-info">
                 <div className="rt-card-champ">
                   {vod.championIcon && <img className="rt-card-champ-icon" src={vod.championIcon} alt="" />}
-                  <span className="rt-card-champ-name">{vod.champion || 'â€”'}</span>
+                  <span className="rt-card-champ-name">{vod.champion || '—'}</span>
                 </div>
                 <div className="rt-card-meta">
-                  <span className="rt-card-kda">{vod.kda || 'â€”'}</span>
+                  <span className="rt-card-kda">{relTime(lang, vod.date)}</span>
                   <span className="rt-card-date">{formatDate(vod.date)}</span>
                 </div>
                 <div className="rt-card-queue">{vod.queue || ''}</div>

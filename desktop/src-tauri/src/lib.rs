@@ -79,6 +79,36 @@ fn stop_event_capture() {
     }
 }
 
+/* Extracts a thumbnail frame from the still-being-written mp4 a few seconds
+   in (the file is fragmented, so it is readable while ffmpeg runs). Runs
+   detached: failures are silently ignored and the VOD keeps its placeholder. */
+fn start_thumbnail_worker(output_path: String, ffmpeg_path: String) {
+    let spawned = std::thread::Builder::new().name("vod-thumb".into()).spawn(move || {
+        std::thread::sleep(std::time::Duration::from_secs(7));
+        let mut thumb = std::path::PathBuf::from(&output_path);
+        thumb.set_extension("thumb.jpg");
+        if thumb.exists() {
+            return;
+        }
+        let _ = Command::new(&ffmpeg_path)
+            .args([
+                "-ss".to_string(), "4".to_string(),
+                "-y".to_string(),
+                "-i".to_string(), output_path.clone(),
+                "-frames:v".to_string(), "1".to_string(),
+                "-q:v".to_string(), "4".to_string(),
+            ])
+            .arg(&thumb)
+            .creation_flags(0x08000000)
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn();
+    });
+    if let Ok(handle) = spawned {
+        std::mem::forget(handle);
+    }
+}
+
 fn run_event_capture(output_path: String, stop: Arc<std::sync::atomic::AtomicBool>) {
     let client = match lcd_client() {
         Some(c) => c,
@@ -1782,6 +1812,8 @@ async fn start_recording(app: tauri::AppHandle) -> Result<String, String> {
     // Instant-timeline source: poll the Live Client Data API while the
     // recording runs and dump sibling .events.json when it ends.
     start_event_capture(output_str.clone());
+    // Thumbnail frame a few seconds into the recording.
+    start_thumbnail_worker(output_str.clone(), ffmpeg_path.clone());
 
     Ok(output_str)
 }
@@ -1844,6 +1876,18 @@ fn read_vod_events(video_path: String) -> Option<String> {
 #[tauri::command]
 fn get_last_game_mode() -> Option<String> {
     LAST_GAME_MODE.lock().ok()?.clone()
+}
+
+/// Path of the extracted thumbnail for a recording, when it already exists.
+#[tauri::command]
+fn get_vod_thumb(video_path: String) -> Option<String> {
+    let mut p = std::path::PathBuf::from(&video_path);
+    p.set_extension("thumb.jpg");
+    if p.is_file() {
+        Some(p.to_string_lossy().to_string())
+    } else {
+        None
+    }
 }
 
 #[tauri::command]
@@ -2057,6 +2101,7 @@ pub fn run() {
             is_lol_window_open,
             read_vod_events,
             get_last_game_mode,
+            get_vod_thumb,
             show_overlay,
             hide_overlay,
             download_and_setup_ffmpeg,

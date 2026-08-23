@@ -3,7 +3,7 @@ import { t } from '../i18n.js'
 import Img from './Img.jsx'
 import { isTauri, readVodEvents } from '../tauri.js'
 import { fetchMatchEvents } from '../api.js'
-import { retryPendingMatches, loadVodsRaw } from '../match-resolver.js'
+import { retryPendingMatches, loadVodsRaw, saveVodsRaw } from '../match-resolver.js'
 
 /* ── Event icons (neon line style) ─────────────────────────── */
 
@@ -375,6 +375,16 @@ export default function VODPlayer({ vod, lang, onBack, puuid, summoner }) {
           const parsed = JSON.parse(raw)
           if (parsed && Array.isArray(parsed.events) && parsed.events.length) {
             setLocalEvents(parsed)
+            /* Unindexed games (practice/custom) never get a Riot duration:
+               use the exact game length captured by the LCD API instead of
+               the wall-clock recording time. */
+            const gdur = Number(parsed.duration_min || 0)
+            const cur = loadVodsRaw()
+            const idx = cur.findIndex(x => x.id === vod.id)
+            if (idx >= 0 && gdur > 0.2 && Math.abs((cur[idx].duration || 0) - gdur * 60) > 15) {
+              cur[idx].duration = Math.round(gdur * 60)
+              saveVodsRaw(cur)
+            }
           }
         } catch {}
       })

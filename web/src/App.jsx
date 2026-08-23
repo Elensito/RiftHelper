@@ -28,6 +28,8 @@ const QUEUE_NAMES = {
   0: 'Custom',
   2: '5v5 Blind Pick',
   4: '5v5 Draft Pick',
+  310: 'Custom game',
+  3100: 'Custom game',
   400: '5v5 Draft Pick',
   420: '5v5 Ranked Solo/Duo',
   430: '5v5 Blind Pick',
