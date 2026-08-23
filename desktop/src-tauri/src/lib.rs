@@ -1153,27 +1153,14 @@ impl StartGate {
 const VIRTUAL_AUDIO_DEVICE_PROCESS_LOOPBACK: &str =
     "{4E851656-72BA-46E9-BB12-27BCD95BD16B}";
 
-/* Flat ABI mirrors of AUDIOCLIENT_ACTIVATION_PARAMS / PROPVARIANT so we don't
-   depend on generated union field names — layouts are fixed by WinABI. */
+/* Flat ABI mirror of AUDIOCLIENT_ACTIVATION_PARAMS (layout fixed by WinABI:
+   ActivationType u32 @0 + union{ ProcessLoopbackTarget{ u32 pid @4, i32 mode @8 } }). */
 #[repr(C)]
 struct AudioActivationParamsRaw {
     activation_type: i32, // 1 = AUDIOCLIENT_ACTIVATION_TYPE_PROCESS_LOOPBACK
     target_process_id: u32,
     loopback_mode: i32, // 1 = PROCESS_LOOPBACK_MODE_INCLUDE_TARGET_PROCESS_TREE
 }
-#[repr(C)]
-struct RawBlob {
-    size: u32,
-    data: *mut u8,
-}
-#[repr(C)]
-struct RawPropVariant {
-    vt: u16,
-    reserved: [u16; 3],
-    pad: u32,
-    blob: RawBlob, // VT_BLOB
-}
-const VT_BLOB_U16: u16 = 65;
 
 #[windows::core::implement(
     windows::Win32::Media::Audio::IActivateAudioInterfaceCompletionHandler,
@@ -1219,41 +1206,35 @@ impl windows::Win32::System::Com::IAgileObject_Impl for ActivationSignal_Impl {}
 unsafe fn activate_process_loopback_client(
     pid: u32,
 ) -> Result<windows::Win32::Media::Audio::IAudioClient, String> {
-    use windows::core::{HSTRING, Interface, PCWSTR, PROPVARIANT};
+    use windows::core::{HSTRING, Interface, PCWSTR};
     use windows::Win32::Foundation::{CloseHandle, WAIT_OBJECT_0};
     use windows::Win32::Media::Audio::{
         ActivateAudioInterfaceAsync, IActivateAudioInterfaceCompletionHandler, IAudioClient,
     };
     use windows::Win32::System::Com::CoInitializeEx;
+    use windows::Win32::System::Com::StructuredStorage::PropVariantClear;
     use windows::Win32::System::Threading::{CreateEventW, WaitForSingleObject};
 
     let _ = CoInitializeEx(None, windows::Win32::System::Com::COINIT_MULTITHREADED);
 
     // Build the activation PROPVARIANT (VT_BLOB wrapping the params struct).
+    // Built via the official helper: hand-rolling the variant previously put
+    // cbSize at the wrong struct offset, sending a size-0 blob through
+    // mmdevapi's marshaling and corrupting the heap (0xc0000374 crash a few
+    // seconds into every recording).
+    const _: () =
+        assert!(std::mem::size_of::<AudioActivationParamsRaw>() == 12);
     let params = AudioActivationParamsRaw {
         activation_type: 1,
         target_process_id: pid,
         loopback_mode: 1,
     };
-    let raw = RawPropVariant {
-        vt: VT_BLOB_U16,
-        reserved: [0u16; 3],
-        pad: 0u32,
-        blob: RawBlob {
-            size: std::mem::size_of::<AudioActivationParamsRaw>() as u32,
-            data: &params as *const AudioActivationParamsRaw as *mut u8,
-        },
-    };
-    debug_assert_eq!(
-        std::mem::size_of::<RawPropVariant>(),
-        std::mem::size_of::<PROPVARIANT>()
-    );
-    let mut propvar: PROPVARIANT = std::mem::zeroed();
-    std::ptr::copy_nonoverlapping(
-        &raw as *const RawPropVariant as *const u8,
-        &mut propvar as *mut PROPVARIANT as *mut u8,
-        std::mem::size_of::<RawPropVariant>(),
-    );
+    let params_ptr = &params as *const AudioActivationParamsRaw as *const core::ffi::c_void;
+    let mut propvar = windows::Win32::System::Com::StructuredStorage::InitPropVariantFromBuffer(
+        params_ptr,
+        std::mem::size_of::<AudioActivationParamsRaw>() as u32,
+    )
+    .map_err(|e| format!("propvariant: {e}"))?;
 
     let event = CreateEventW(None, false, false, None).map_err(|e| e.to_string())?;
     let result_flag = std::sync::Arc::new(std::sync::atomic::AtomicI32::new(-1));
@@ -1281,6 +1262,7 @@ unsafe fn activate_process_loopback_client(
     let client = client_slot.lock().ok().and_then(|mut g| g.take());
     let _ = CloseHandle(event);
     drop(operation);
+    PropVariantClear(&mut propvar).ok();
     if waited != WAIT_OBJECT_0 {
         return Err("audio activation timed out".to_string());
     }

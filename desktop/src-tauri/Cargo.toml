@@ -46,7 +46,6 @@ windows = { version = "0.58", features = [
 windows-core = "0.58"
 
 [profile.release]
-panic = "abort"
 codegen-units = 1
 lto = true
 opt-level = "s"
