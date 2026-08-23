@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react'
 import { t } from '../i18n.js'
 import Img from './Img.jsx'
-import { isTauri } from '../tauri.js'
+import { isTauri, readVodEvents } from '../tauri.js'
 import { fetchMatchEvents } from '../api.js'
 import { retryPendingMatches, loadVodsRaw } from '../match-resolver.js'
 
@@ -84,7 +84,7 @@ function fmt(sec) {
 
 /* ── Neon match timeline ───────────────────────────────────── */
 
-function NeonTimeline({ matchId, puuid, lang, duration, current, onSeek }) {
+function NeonTimeline({ matchId, puuid, lang, duration, current, onSeek, localData }) {
   /* v2 prefix: older caches were fetched without a puuid, so every event had
      is_player=false and personal kill/death markers never rendered */
   const CACHE_PREFIX = 'rh-vtl2-'
@@ -94,6 +94,13 @@ function NeonTimeline({ matchId, puuid, lang, duration, current, onSeek }) {
   const [cursor, setCursor] = useState(null)
 
   useEffect(() => {
+    /* Locally captured LCD events (instant timeline): use them as-is and
+       skip the backend entirely. */
+    if (localData) {
+      setData(localData)
+      setStatus('ok')
+      return
+    }
     if (!matchId) { setStatus('empty'); setData(null); return }
     let cancelled = false
     try {
@@ -119,7 +126,7 @@ function NeonTimeline({ matchId, puuid, lang, duration, current, onSeek }) {
       })
       .catch(() => !cancelled && setStatus('error'))
     return () => { cancelled = true }
-  }, [matchId, puuid])
+  }, [matchId, puuid, localData])
 
   const tlDuration = Math.max(1, duration || (data ? (data.duration_min || 0) * 60 : 0))
 
@@ -353,6 +360,27 @@ export default function VODPlayer({ vod, lang, onBack, puuid, summoner }) {
   const [vodPatch, setVodPatch] = useState(null)
   const mv = useMemo(() => ({ ...vod, ...(vodPatch || {}) }), [vod, vodPatch])
   const pending = !!mv.pendingMatch
+
+  /* Locally captured timeline events (Live Client Data API): available
+     immediately after a recording ends, no Riot indexing required. */
+  const [localEvents, setLocalEvents] = useState(null)
+  useEffect(() => {
+    let dead = false
+    setLocalEvents(null)
+    if (!vod.videoPath || !isTauri()) return
+    readVodEvents(vod.videoPath)
+      .then((raw) => {
+        if (dead || !raw) return
+        try {
+          const parsed = JSON.parse(raw)
+          if (parsed && Array.isArray(parsed.events) && parsed.events.length) {
+            setLocalEvents(parsed)
+          }
+        } catch {}
+      })
+      .catch(() => {})
+    return () => { dead = true }
+  }, [vod.id, vod.videoPath])
 
   useEffect(() => {
     if (!pending || !summoner) return
@@ -835,6 +863,7 @@ export default function VODPlayer({ vod, lang, onBack, puuid, summoner }) {
         duration={duration}
         current={currentTime}
         onSeek={seek}
+        localData={localEvents}
       />
     </div>
   )

@@ -171,6 +171,12 @@ export async function isLolWindowOpen() {
   try { return await invoke('is_lol_window_open') } catch { return true }
 }
 
+export async function readVodEvents(videoPath) {
+  if (!isTauri() || !videoPath) return null
+  const { invoke } = await import('@tauri-apps/api/core')
+  try { return await invoke('read_vod_events', { videoPath }) } catch { return null }
+}
+
 export async function showOverlay(lang) {
   if (!isTauri()) return
   const { invoke } = await import('@tauri-apps/api/core')

@@ -17,6 +17,309 @@ static FFMPEG_PROC: Mutex<Option<FFmpegProcess>> = Mutex::new(None);
 static FFMPEG_OUTPUT: Mutex<Option<String>> = Mutex::new(None);
 static AUDIO_CAPTURE_STOP: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
+struct EventCaptureHandle {
+    stop: Arc<std::sync::atomic::AtomicBool>,
+}
+
+static EVENT_CAPTURE: Mutex<Option<EventCaptureHandle>> = Mutex::new(None);
+
+/* ── Live Client Data API event capture ─────────────────────────────
+   The Riot match timeline endpoint can take minutes (or hours) to be
+   indexed after a game ends. The in-game Live Client Data API on
+   127.0.0.1:2999 exposes the same kill/objective events in real time,
+   so we poll it while recording and dump a sibling `.events.json`
+   next to the video. The frontend prefers this file for an instant
+   timeline and only falls back to the backend when it is missing. */
+
+fn lcd_client() -> Option<reqwest::blocking::Client> {
+    reqwest::blocking::Client::builder()
+        .danger_accept_invalid_certs(true)
+        .timeout(std::time::Duration::from_secs(2))
+        .build()
+        .ok()
+}
+
+fn lcd_get_json(client: &reqwest::blocking::Client, path: &str) -> Option<serde_json::Value> {
+    let url = format!("https://127.0.0.1:2999{}", path);
+    let resp = client.get(&url).send().ok()?;
+    if !resp.status().is_success() {
+        return None;
+    }
+    resp.json::<serde_json::Value>().ok()
+}
+
+fn fmt_mmss(sec: f64) -> String {
+    let total = sec.max(0.0).floor() as u64;
+    format!("{}:{:02}", total / 60, total % 60)
+}
+
+fn start_event_capture(output_path: String) {
+    let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let handle_stop = Arc::clone(&stop);
+    let builder = std::thread::Builder::new().name("lcd-events".into());
+    let spawned = builder.spawn(move || run_event_capture(output_path, handle_stop));
+    if let Ok(handle) = spawned {
+        let mut guard = EVENT_CAPTURE.lock().unwrap_or_else(|e| e.into_inner());
+        *guard = Some(EventCaptureHandle { stop });
+        std::mem::forget(handle);
+    }
+}
+
+fn stop_event_capture() {
+    if let Ok(guard) = EVENT_CAPTURE.lock() {
+        if let Some(ref handle) = *guard {
+            handle.stop.store(true, std::sync::atomic::Ordering::SeqCst);
+        }
+    }
+}
+
+fn run_event_capture(output_path: String, stop: Arc<std::sync::atomic::AtomicBool>) {
+    let client = match lcd_client() {
+        Some(c) => c,
+        None => return,
+    };
+
+    /* Phase 1: roster + local player. Retries because the LCD port comes
+       up slightly after the recording starts. */
+    let mut players_json: Vec<serde_json::Value> = Vec::new();
+    let mut name_team: std::collections::HashMap<String, i64> =
+        std::collections::HashMap::new();
+    let mut me_name = String::new();
+
+    for attempt in 0..25u32 {
+        if stop.load(std::sync::atomic::Ordering::SeqCst) {
+            return;
+        }
+        if let Some(list) = lcd_get_json(&client, "/liveclientdata/playerlist") {
+            if let Some(arr) = list.as_array() {
+                for p in arr {
+                    let team = match p.get("team").and_then(|v| v.as_str()) {
+                        Some("ORDER") => 100i64,
+                        Some("CHAOS") => 200i64,
+                        _ => continue,
+                    };
+                    let champion = p
+                        .get("championName")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    let summoner = p
+                        .get("summonerName")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    let riot_name = p
+                        .get("riotIdGameName")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    for key in [summoner.to_lowercase(), riot_name.to_lowercase()] {
+                        if !key.is_empty() {
+                            name_team.insert(key, team);
+                        }
+                    }
+                    players_json.push(serde_json::json!({
+                        "name": if riot_name.is_empty() { summoner.clone() } else { riot_name.clone() },
+                        "champion": champion,
+                        "team": team,
+                        "is_player": false,
+                    }));
+                }
+            }
+            if !players_json.is_empty() {
+                break;
+            }
+        }
+        std::thread::sleep(std::time::Duration::from_millis(
+            if attempt < 3 { 500 } else { 1500 },
+        ));
+    }
+
+    if players_json.is_empty() {
+        return; // never got a roster; frontend falls back to the backend
+    }
+
+    if let Some(ap) = lcd_get_json(&client, "/liveclientdata/activeplayer") {
+        let summoner = ap
+            .get("summonerName")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        let riot = ap
+            .get("riotId")
+            .map(|r| {
+                r.get("gameName")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+            })
+            .unwrap_or("");
+        me_name = if !riot.is_empty() { riot.to_string() } else { summoner.to_string() };
+        let me_key = me_name.to_lowercase();
+        for p in players_json.iter_mut() {
+            let is_me = p
+                .get("name")
+                .and_then(|v| v.as_str())
+                .map(|n| n.to_lowercase() == me_key)
+                .unwrap_or(false);
+            if let Some(obj) = p.as_object_mut() {
+                obj.insert("is_player".into(), serde_json::json!(is_me));
+            }
+        }
+    }
+
+    /* Phase 2: poll events until the flag drops or the game ends. */
+    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut events_json: Vec<serde_json::Value> = Vec::new();
+    let mut max_time = 0.0f64;
+    let mut game_ended = false;
+
+    while !stop.load(std::sync::atomic::Ordering::SeqCst) && !game_ended {
+        if let Some(data) = lcd_get_json(&client, "/liveclientdata/eventdata") {
+            if let Some(arr) = data.get("Events").and_then(|v| v.as_array()) {
+                for ev in arr {
+                    let id = ev
+                        .get("EventID")
+                        .map(|v| v.to_string())
+                        .unwrap_or_default();
+                    let name = ev
+                        .get("EventName")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("");
+                    let time = ev
+                        .get("EventTime")
+                        .and_then(|v| v.as_f64())
+                        .unwrap_or(0.0);
+                    let key = if id.is_empty() {
+                        format!("{}@{}", name, time)
+                    } else {
+                        id
+                    };
+                    if !seen.insert(key) {
+                        continue;
+                    }
+                    max_time = max_time.max(time);
+                    if name == "GameEnd" {
+                        game_ended = true;
+                        break;
+                    }
+
+                    let killer = ev
+                        .get("KillerName")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    let victim = ev
+                        .get("VictimName")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("");
+
+                    let kteam = name_team
+                        .get(&killer.to_lowercase())
+                        .copied();
+                    let vteam = name_team
+                        .get(&victim.to_lowercase())
+                        .copied();
+                    // Team of the actor: the killer's side, or the opposite
+                    // tower/inhibitor's owner when only the victim is known.
+                    let team = kteam.or_else(|| vteam.map(|t| if t == 100 { 200 } else { 100 }));
+
+                    let mapped = match name {
+                        "ChampionKill" => {
+                            if team.is_none() {
+                                continue;
+                            }
+                            let assists = ev
+                                .get("Assisters")
+                                .and_then(|v| v.as_array())
+                                .map(|a| {
+                                    a.iter()
+                                        .filter_map(|n| n.as_str())
+                                        .map(|n| serde_json::json!({
+                                            "name": n,
+                                            "is_player": !me_name.is_empty()
+                                                && n.to_lowercase() == me_name.to_lowercase(),
+                                        }))
+                                        .collect::<Vec<_>>()
+                                })
+                                .unwrap_or_default();
+                            serde_json::json!({
+                                "type": "kill",
+                                "time": fmt_mmss(time),
+                                "team": team.unwrap_or(0),
+                                "killer": {
+                                    "name": killer,
+                                    "is_player": !me_name.is_empty()
+                                        && killer.to_lowercase() == me_name.to_lowercase(),
+                                },
+                                "victim": {
+                                    "name": victim,
+                                    "is_player": !me_name.is_empty()
+                                        && victim.to_lowercase() == me_name.to_lowercase(),
+                                },
+                                "assisters": assists,
+                            })
+                        }
+                        "TurretKilled" | "InhibKilled" => {
+                            if team.is_none() {
+                                continue;
+                            }
+                            serde_json::json!({
+                                "type": "building",
+                                "time": fmt_mmss(time),
+                                "team": team.unwrap_or(0),
+                                "building": if name == "InhibKilled" { "INHIBITOR" } else { "TOWER" },
+                            })
+                        }
+                        "DragonKill" | "HeraldKill" | "BaronKill" | "AtakhanKill" => {
+                            if team.is_none() {
+                                continue;
+                            }
+                            let monster = match name {
+                                "BaronKill" => "BARON_NASHOR",
+                                "DragonKill" => "DRAGON",
+                                "HeraldKill" => "RIFTHERALD",
+                                _ => "ATAKHAN",
+                            };
+                            serde_json::json!({
+                                "type": "objective",
+                                "time": fmt_mmss(time),
+                                "team": team.unwrap_or(0),
+                                "monster": monster,
+                            })
+                        }
+                        _ => continue,
+                    };
+                    events_json.push(mapped);
+                }
+            }
+        }
+        let mut slept = 0u64;
+        while slept < 1500
+            && !stop.load(std::sync::atomic::Ordering::SeqCst)
+        {
+            std::thread::sleep(std::time::Duration::from_millis(250));
+            slept += 250;
+        }
+    }
+
+    if events_json.is_empty() {
+        return;
+    }
+
+    let payload = serde_json::json!({
+        "version": 1,
+        "duration_min": (max_time / 60.0 * 10.0).round() / 10.0,
+        "me": me_name,
+        "players": players_json,
+        "events": events_json,
+    });
+
+    let mut events_file = std::path::PathBuf::from(&output_path);
+    events_file.set_extension("events.json");
+    if let Ok(json) = serde_json::to_string_pretty(&payload) {
+        let _ = std::fs::write(&events_file, json);
+    }
+}
+
 fn find_lol_window_rect() -> Option<(i32, i32, i32, i32)> {
     use std::ffi::c_void;
     type HWND = *mut c_void;
@@ -1452,11 +1755,16 @@ async fn start_recording(app: tauri::AppHandle) -> Result<String, String> {
         *guard = Some(output_str.clone());
     }
 
+    // Instant-timeline source: poll the Live Client Data API while the
+    // recording runs and dump sibling .events.json when it ends.
+    start_event_capture(output_str.clone());
+
     Ok(output_str)
 }
 
 #[tauri::command]
 async fn stop_recording() -> Result<Option<String>, String> {
+    stop_event_capture();
     let output_path = {
         let mut guard = FFMPEG_PROC.lock().map_err(|e| e.to_string())?;
         if let Some(ref mut proc) = *guard {
@@ -1495,6 +1803,15 @@ async fn stop_recording() -> Result<Option<String>, String> {
 #[tauri::command]
 fn is_lol_window_open() -> bool {
     find_lol_window_rect().is_some()
+}
+
+/// Returns the locally captured LCD events for a recording (instant
+/// timeline), or None when the capture file does not exist.
+#[tauri::command]
+fn read_vod_events(video_path: String) -> Option<String> {
+    let mut p = std::path::PathBuf::from(&video_path);
+    p.set_extension("events.json");
+    std::fs::read_to_string(&p).ok().filter(|s| !s.trim().is_empty())
 }
 
 #[tauri::command]
@@ -1706,6 +2023,7 @@ pub fn run() {
             stop_recording,
             is_recording,
             is_lol_window_open,
+            read_vod_events,
             show_overlay,
             hide_overlay,
             download_and_setup_ffmpeg,
