@@ -18,6 +18,7 @@ import RiftTimeline from './components/RiftTimeline.jsx'
 import VODPlayer from './components/VODPlayer.jsx'
 import AppSettings from './components/AppSettings.jsx'
 import { fetchSummoner, fetchLatestMatch, fetchLiveGame, fetchMastery, fetchChampions, fetchChampion } from './api.js'
+import { retryPendingMatches, loadVodsRaw, saveVodsRaw } from './match-resolver.js'
 import { isTauri, getRiotClientSession, notifyGameEnded, startRecordingTauri, stopRecordingTauri, getAutoRecord, isLolWindowOpen, showOverlay, hideOverlay } from './tauri.js'
 import { matchGroup, t } from './i18n.js'
 
@@ -234,118 +235,50 @@ export default function App() {
       }
       const queue = gd.queue || ''
 
-      /* Riot takes 1–5 min to index a finished match, so /check still returns
-         the PREVIOUS game right after the end (wrong teams, KDA and timeline).
-         Only accept a match we had NOT seen before this game started. */
-      const findNewMatch = (matches) =>
-        (matches || []).find(m => m.match_id && m.match_id !== preGameId &&
-          (!champion || !m.champion || String(m.champion).toLowerCase() === champion.toLowerCase()))
-      const fetchFreshMatches = () =>
-        fetchSummoner(profile.summoner.name, profile.summoner.tag, 5, 0, true)
-          .then(d => d.matches || [])
-          .catch(() => [])
-
-      const buildTeamsFrom = (match) => {
-        const bluePlayers = (match.players || []).filter(p => p.team === 100)
-        const redPlayers = (match.players || []).filter(p => p.team === 200)
-        const blueWins = bluePlayers.length > 0 ? bluePlayers[0].win : false
-        const mapPlayer = (p) => ({
-          name: p.player_name || '',
-          champion: p.champion || '',
-          championIcon: p.champion_icon || '',
-          kills: p.kills || 0,
-          deaths: p.deaths || 0,
-          assists: p.assists || 0,
-          cs: p.cs || 0,
-          gold: p.gold || 0,
-          items: (p.items || []).map(it => it ? (it.src || '') : '').filter(Boolean),
-          isPlayer: p.is_player || false,
-        })
-        return {
-          team1: bluePlayers.map(mapPlayer),
-          team2: redPlayers.map(mapPlayer),
-          winner: blueWins ? 1 : 2,
-          durationSec: match.duration_sec || 0,
-        }
-      }
-
-      /* One immediate attempt — sometimes Riot indexes fast */
-      let match = null
-      try { match = findNewMatch(await fetchFreshMatches()) || null } catch {}
-      let teams = match
-        ? buildTeamsFrom(match)
-        : { team1: [], team2: [], winner: 0, durationSec: 0 }
-      let result = ''
-      let kda = ''
-      if (match) {
-        const me = (match.players || []).find(p => p.puuid === profile.summoner.puuid)
-        if (me) {
-          result = me.win ? 'win' : 'loss'
-          kda = `${me.kills || 0}/${me.deaths || 0}/${me.assists || 0}`
-        }
-      }
-
-      const vods = JSON.parse(localStorage.getItem('rh-vods') || '[]')
+      /* Riot takes 1–5 min to index a finished match, so the latest-match
+         endpoint still returns the PREVIOUS game right after the end. The VOD
+         is saved immediately as "pending" and patched with real data by
+         retryPendingMatches() as soon as Riot indexes it. */
+      const vods = loadVodsRaw()
       const vodId = `vod-${Date.now()}`
       vods.unshift({
         id: vodId,
         date: Date.now(),
-        duration: teams.durationSec || duration,
+        duration,
         champion,
         championIcon,
-        result,
-        kda,
+        result: '',
+        kda: '',
         queue: queueName(queue),
-        matchId: match ? match.match_id : '',
+        matchId: '',
         puuid: profile.summoner.puuid || '',
         thumbnail: '',
         events: [],
-        team1: teams.team1,
-        team2: teams.team2,
-        winner: teams.winner,
+        team1: [],
+        team2: [],
+        winner: 0,
         hasVideo: !!videoPath,
         videoPath: videoPath || '',
-        pendingMatch: !match,
+        pendingMatch: true,
+        pendingChampion: champion,
+        pendingAt: Date.now(),
       })
-      localStorage.setItem('rh-vods', JSON.stringify(vods))
-      window.dispatchEvent(new Event('rh-vods-changed'))
+      saveVodsRaw(vods)
 
-      /* Not indexed yet: retry in the background (~5 min) and patch the VOD
-         entry in place once the correct match shows up */
-      if (!match) {
-        let attempts = 0
-        const tick = async () => {
-          attempts += 1
-          try {
-            const m = findNewMatch(await fetchFreshMatches())
-            if (m) {
-              const allVods = JSON.parse(localStorage.getItem('rh-vods') || '[]')
-              const vod = allVods.find(v => v.id === vodId)
-              if (vod) {
-                const t2 = buildTeamsFrom(m)
-                vod.matchId = m.match_id
-                vod.duration = t2.durationSec || vod.duration
-                vod.winner = t2.winner
-                vod.team1 = t2.team1
-                vod.team2 = t2.team2
-                const me = (m.players || []).find(p => p.puuid === profile.summoner.puuid)
-                if (me) {
-                  vod.result = me.win ? 'win' : 'loss'
-                  vod.kda = `${me.kills || 0}/${me.deaths || 0}/${me.assists || 0}`
-                  vod.champion = vod.champion || me.champion || ''
-                  vod.championIcon = vod.championIcon || me.champion_icon || ''
-                }
-                vod.pendingMatch = false
-                localStorage.setItem('rh-vods', JSON.stringify(allVods))
-                window.dispatchEvent(new Event('rh-vods-changed'))
-              }
-              return
-            }
-          } catch (e) {}
-          if (attempts < 15) setTimeout(tick, 20000)
-        }
-        setTimeout(tick, 20000)
+      /* Immediate attempt (sometimes Riot indexes fast), then background
+         retries for ~5 min. preGameId rejects stale results pointing at the
+         game BEFORE this one. */
+      retryPendingMatches(profile.summoner, [preGameId]).catch(() => {})
+      let attempts = 0
+      const tick = async () => {
+        attempts += 1
+        try {
+          const left = await retryPendingMatches(profile.summoner, [preGameId])
+          if (left === 0) return
+        } catch {}
+        if (attempts < 15) setTimeout(tick, 20000)
       }
+      setTimeout(tick, 20000)
 
       recordingGameDataRef.current = null
     }
@@ -424,6 +357,17 @@ export default function App() {
 
     return () => { clearInterval(id); clearInterval(wd) }
   }, [profile, tab, lang])
+
+  useEffect(() => {
+    if (!profile) return
+    /* Resume pending VODs (app may have been closed before Riot indexed the
+       match): patch them with real data every 25s while any remain pending. */
+    const id = setInterval(() => {
+      if (!loadVodsRaw().some(v => v.pendingMatch)) return
+      retryPendingMatches(profile.summoner).catch(() => {})
+    }, 25000)
+    return () => clearInterval(id)
+  }, [profile])
 
   useEffect(() => {
     if (!profile) return
@@ -534,7 +478,7 @@ export default function App() {
       />
 
       {view === 'rift-timeline' && activeVod ? (
-        <VODPlayer vod={activeVod} lang={lang} puuid={profile?.summoner?.puuid} onBack={() => setActiveVod(null)} />
+        <VODPlayer vod={activeVod} lang={lang} puuid={profile?.summoner?.puuid} summoner={profile?.summoner} onBack={() => setActiveVod(null)} />
       ) : view === 'rift-timeline' ? (
         <>
           <header className="topbar topbar-icon-rail">

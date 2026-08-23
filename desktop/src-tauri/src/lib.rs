@@ -1,6 +1,7 @@
 use serde::Serialize;
 use tauri::Emitter;
 use tauri::Manager;
+use std::sync::Arc;
 use std::sync::Mutex;
 use std::process::{Command, Child};
 use std::io::Write;
@@ -14,6 +15,7 @@ struct FFmpegProcess {
 
 static FFMPEG_PROC: Mutex<Option<FFmpegProcess>> = Mutex::new(None);
 static FFMPEG_OUTPUT: Mutex<Option<String>> = Mutex::new(None);
+static AUDIO_CAPTURE_STOP: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 fn find_lol_window_rect() -> Option<(i32, i32, i32, i32)> {
     use std::ffi::c_void;
@@ -428,61 +430,64 @@ async fn set_auto_record(app: tauri::AppHandle, enabled: bool) -> Result<(), Str
     Ok(())
 }
 
-/// Probe DirectShow audio devices via ffmpeg. Prefers loopback-style devices
-/// (system/game audio) and falls back to the first available one (usually the
-/// microphone). Returns None when no audio input exists.
-fn find_dshow_audio_device(ffmpeg_path: &str) -> Option<String> {
-    let out = Command::new(ffmpeg_path)
-        .args(["-hide_banner", "-list_devices", "true", "-f", "dshow", "-i", "dummy"])
-        .stdin(std::process::Stdio::null())
-        .creation_flags(0x08000000)
-        .output()
-        .ok()?;
-    let text = format!(
-        "{}{}",
-        String::from_utf8_lossy(&out.stdout),
-        String::from_utf8_lossy(&out.stderr)
-    );
-    let mut in_audio = false;
-    let mut first: Option<String> = None;
-    let mut preferred: Option<String> = None;
-    for line in text.lines() {
-        if line.contains("DirectShow audio devices") {
-            in_audio = true;
-            continue;
-        }
-        if line.contains("DirectShow video devices") || line.contains("DirectShow alternative name") {
-            continue;
-        }
-        if !in_audio {
-            continue;
-        }
-        let start = match line.find('"') {
-            Some(i) => i + 1,
-            None => continue,
-        };
-        let end = match line[start..].find('"') {
-            Some(i) => start + i,
-            None => continue,
-        };
-        let name = &line[start..end];
-        if name.trim().is_empty() {
-            continue;
-        }
-        let lower = name.to_lowercase();
-        if preferred.is_none()
-            && (lower.contains("stereo mix")
-                || lower.contains("virtual-audio")
-                || lower.contains("loopback")
-                || lower.contains("what u hear"))
-        {
-            preferred = Some(name.to_string());
-        }
-        if first.is_none() {
-            first = Some(name.to_string());
+#[tauri::command]
+async fn get_audio_mode(app: tauri::AppHandle) -> Result<String, String> {
+    let cfg = read_config(&app);
+    Ok(cfg.get("audioMode")
+        .and_then(|v| v.as_str())
+        .unwrap_or("game")
+        .to_string())
+}
+
+#[tauri::command]
+async fn set_audio_mode(app: tauri::AppHandle, mode: String) -> Result<(), String> {
+    let normalized = match mode.as_str() {
+        "system" => "system",
+        "game_discord" => "game_discord",
+        _ => "game",
+    };
+    let mut cfg = read_config(&app);
+    cfg["audioMode"] = serde_json::json!(normalized);
+    write_config(&app, &cfg);
+    Ok(())
+}
+
+#[tauri::command]
+async fn list_audio_output_devices() -> Result<Vec<serde_json::Value>, String> {
+    let devices = unsafe { list_render_endpoints() }?;
+    Ok(devices
+        .into_iter()
+        .map(|(id, name, is_default)| {
+            serde_json::json!({ "id": id, "name": name, "isDefault": is_default })
+        })
+        .collect())
+}
+
+#[tauri::command]
+async fn get_audio_output_device(app: tauri::AppHandle) -> Result<String, String> {
+    let cfg = read_config(&app);
+    Ok(cfg.get("audioOutputDevice")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string())
+}
+
+#[tauri::command]
+async fn set_audio_output_device(app: tauri::AppHandle, device_id: String) -> Result<(), String> {
+    // Empty string means "follow the system default".
+    let normalized = device_id.trim().to_string();
+    if !normalized.is_empty() {
+        let known = unsafe { list_render_endpoints() }?
+            .into_iter()
+            .any(|(id, _, _)| id == normalized);
+        if !known {
+            return Err("Unknown audio output device".to_string());
         }
     }
-    preferred.or(first)
+    let mut cfg = read_config(&app);
+    cfg["audioOutputDevice"] = serde_json::json!(normalized);
+    write_config(&app, &cfg);
+    Ok(())
 }
 
 /// Outcome of waiting for the in-game clock.
@@ -558,13 +563,753 @@ fn wait_for_game_start(max_secs: u64) -> GameStartWait {
     GameStartWait::Timeout
 }
 
+/* ── Audio capture ────────────────────────────────────────────
+   Modes:
+   - "game"         : WASAPI process loopback of the LoL game process only
+   - "game_discord" : process loopback of game + Discord trees, mixed by ffmpeg
+   - "system"       : WASAPI loopback of a render output device (default or
+                      user-picked), captured natively
+   All PCM is streamed into ffmpeg through Windows named pipes so no audio
+   indev support is required and stop is instant (pipe close). */
+
+#[derive(Clone, Copy, PartialEq)]
+enum AudioMode {
+    Game,
+    System,
+    GameDiscord,
+}
+
+fn audio_mode_from_cfg(cfg: &serde_json::Value) -> AudioMode {
+    match cfg.get("audioMode").and_then(|v| v.as_str()) {
+        Some("system") => AudioMode::System,
+        Some("game_discord") => AudioMode::GameDiscord,
+        _ => AudioMode::Game,
+    }
+}
+
+/// Where a loopback capture pulls audio from.
+enum CaptureSource {
+    /// WASAPI process-loopback of a single PID tree.
+    Process(u32),
+    /// Render-endpoint loopback (None = whatever the system default is now).
+    Endpoint(Option<String>),
+}
+
+fn pcwstr_to_string(p: windows::core::PCWSTR) -> String {
+    if p.0.is_null() {
+        return String::new();
+    }
+    let mut len = 0usize;
+    unsafe {
+        while *p.0.add(len) != 0 {
+            len += 1;
+        }
+    }
+    String::from_utf16_lossy(unsafe { std::slice::from_raw_parts(p.0, len) })
+}
+
+/// All active render endpoints, with the current default flagged. Used by the
+/// settings UI dropdown and to resolve a stored endpoint id at record time.
+unsafe fn list_render_endpoints() -> Result<Vec<(String, String, bool)>, String> {
+    use windows::Win32::Media::Audio::{
+        DEVICE_STATE_ACTIVE, IMMDeviceEnumerator, MMDeviceEnumerator, eConsole, eRender,
+    };
+    use windows::Win32::System::Com::{
+        CoCreateInstance, CoInitializeEx, CLSCTX_ALL, COINIT_MULTITHREADED,
+    };
+
+    let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
+    let enumerator: IMMDeviceEnumerator =
+        CoCreateInstance(&MMDeviceEnumerator, None, CLSCTX_ALL).map_err(|e| format!("mmdev: {e}"))?;
+    let default_id = enumerator
+        .GetDefaultAudioEndpoint(eRender, eConsole)
+        .ok()
+        .and_then(|d| d.GetId().ok())
+        .map(|v| pcwstr_to_string(windows::core::PCWSTR(v.0)));
+
+    let coll = enumerator
+        .EnumAudioEndpoints(eRender, DEVICE_STATE_ACTIVE)
+        .map_err(|e| format!("enum: {e}"))?;
+    let count = coll.GetCount().map_err(|e| e.to_string())?;
+    let mut out = Vec::new();
+    for i in 0..count {
+        let dev = match coll.Item(i) {
+            Ok(d) => d,
+            Err(_) => continue,
+        };
+        let id = match dev.GetId() {
+            Ok(v) => pcwstr_to_string(windows::core::PCWSTR(v.0)),
+            Err(_) => continue,
+        };
+        let name = device_friendly_name(&dev).unwrap_or_else(|| id.clone());
+        let is_default = default_id.as_deref() == Some(id.as_str());
+        out.push((id, name, is_default));
+    }
+    out.sort_by(|a, b| b.2.cmp(&a.2).then_with(|| a.1.to_lowercase().cmp(&b.1.to_lowercase())));
+    Ok(out)
+}
+
+/// VT_LPWSTR reader that avoids generated union field names.
+#[repr(C)]
+struct RawLpwstrVariant {
+    vt: u16,
+    reserved: [u16; 3],
+    pad: u32,
+    pwsz: *mut u16,
+}
+const VT_LPWSTR_U16: u16 = 31;
+
+fn device_friendly_name(
+    dev: &windows::Win32::Media::Audio::IMMDevice,
+) -> Option<String> {
+    use windows::Win32::Devices::FunctionDiscovery::PKEY_Device_FriendlyName;
+    use windows::Win32::System::Com::STGM_READ;
+
+    unsafe {
+        let store = dev.OpenPropertyStore(STGM_READ).ok()?;
+        let pv: windows::core::PROPVARIANT = store.GetValue(&PKEY_Device_FriendlyName).ok()?;
+        debug_assert_eq!(
+            std::mem::size_of::<RawLpwstrVariant>(),
+            std::mem::size_of::<windows::core::PROPVARIANT>()
+        );
+        let mut raw = RawLpwstrVariant {
+            vt: 0,
+            reserved: [0u16; 3],
+            pad: 0,
+            pwsz: std::ptr::null_mut(),
+        };
+        std::ptr::copy_nonoverlapping(
+            &pv as *const windows::core::PROPVARIANT as *const u8,
+            &mut raw as *mut RawLpwstrVariant as *mut u8,
+            std::mem::size_of::<RawLpwstrVariant>(),
+        );
+        std::mem::forget(pv);
+        if raw.vt != VT_LPWSTR_U16 || raw.pwsz.is_null() {
+            return None;
+        }
+        Some(pcwstr_to_string(windows::core::PCWSTR(raw.pwsz)))
+    }
+}
+
+/// Open a loopback IAudioClient on a render endpoint (system-wide capture).
+unsafe fn open_endpoint_loopback_client(
+    endpoint_id: Option<String>,
+) -> Result<windows::Win32::Media::Audio::IAudioClient, String> {
+    use windows::Win32::Media::Audio::{
+        DEVICE_STATE_ACTIVE, IMMDeviceEnumerator, MMDeviceEnumerator, eConsole, eRender,
+    };
+    use windows::Win32::System::Com::{
+        CoCreateInstance, CoInitializeEx, CLSCTX_ALL, COINIT_MULTITHREADED,
+    };
+
+    let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
+    let enumerator: IMMDeviceEnumerator =
+        CoCreateInstance(&MMDeviceEnumerator, None, CLSCTX_ALL).map_err(|e| format!("mmdev: {e}"))?;
+
+    let device = match endpoint_id {
+        Some(id) => {
+            // Resolve the stored id; silently fall back to the current
+            // default when the saved device no longer exists.
+            let mut found = None;
+            if let Ok(coll) = enumerator.EnumAudioEndpoints(eRender, DEVICE_STATE_ACTIVE) {
+                if let Ok(count) = coll.GetCount() {
+                    for i in 0..count {
+                        if let Ok(d) = coll.Item(i) {
+                            if let Ok(did) = d.GetId() {
+                                if pcwstr_to_string(windows::core::PCWSTR(did.0)) == id {
+                                    found = Some(d);
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            match found {
+                Some(d) => d,
+                None => enumerator
+                    .GetDefaultAudioEndpoint(eRender, eConsole)
+                    .map_err(|e| format!("default endpoint: {e}"))?,
+            }
+        }
+        None => enumerator
+            .GetDefaultAudioEndpoint(eRender, eConsole)
+            .map_err(|e| format!("default endpoint: {e}"))?,
+    };
+
+    device
+        .Activate::<windows::Win32::Media::Audio::IAudioClient>(CLSCTX_ALL, None)
+        .map_err(|e| format!("activate endpoint: {e}"))
+}
+
+/// PID of the visible "League of Legends (TM) Client" window (the actual game).
+fn find_lol_window_pid() -> Option<u32> {
+    use std::ffi::c_void;
+    type HWND = *mut c_void;
+    type BOOL = i32;
+    type LPARAM = isize;
+    type WNDENUMPROC = Option<unsafe extern "system" fn(HWND, LPARAM) -> BOOL>;
+
+    extern "system" {
+        fn EnumWindows(lpEnumFunc: WNDENUMPROC, lParam: LPARAM) -> BOOL;
+        fn GetWindowTextW(hWnd: HWND, lpString: *mut u16, nMaxCount: i32) -> i32;
+        fn IsWindowVisible(hWnd: HWND) -> BOOL;
+        fn GetWindowThreadProcessId(hWnd: HWND, lpdwProcessId: *mut u32) -> u32;
+    }
+
+    unsafe extern "system" fn callback(hwnd: HWND, lparam: LPARAM) -> BOOL {
+        let mut buf = [0u16; 256];
+        let len = GetWindowTextW(hwnd, buf.as_mut_ptr(), 256);
+        if len > 0 && IsWindowVisible(hwnd) != 0 {
+            let title = String::from_utf16_lossy(&buf[..len as usize]);
+            if title.contains("League of Legends (TM) Client") {
+                let mut pid: u32 = 0;
+                GetWindowThreadProcessId(hwnd, &mut pid);
+                let slot = &*(lparam as *const Mutex<Option<u32>>);
+                if let Ok(mut guard) = slot.lock() {
+                    *guard = Some(pid);
+                }
+                return 0;
+            }
+        }
+        1
+    }
+
+    let result: Mutex<Option<u32>> = Mutex::new(None);
+    let ptr = &result as *const Mutex<Option<u32>> as LPARAM;
+    unsafe {
+        let _ = EnumWindows(Some(callback), ptr);
+    }
+    result.lock().ok().and_then(|mut g| g.take())
+}
+
+/// PIDs whose image name contains `needle` (case-insensitive), skipping updaters.
+fn find_process_pids_by_image(needle_lower: &str, max: usize) -> Vec<u32> {
+    use windows::Win32::Foundation::CloseHandle;
+    use windows::Win32::System::Diagnostics::ToolHelp::{
+        CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W,
+        TH32CS_SNAPPROCESS,
+    };
+    let mut out = Vec::new();
+    unsafe {
+        let snap = match CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) {
+            Ok(h) => h,
+            Err(_) => return out,
+        };
+        let mut entry = PROCESSENTRY32W::default();
+        entry.dwSize = std::mem::size_of::<PROCESSENTRY32W>() as u32;
+        let mut ok = Process32FirstW(snap, &mut entry).is_ok();
+        while ok && out.len() < max {
+            let name = String::from_utf16_lossy(&entry.szExeFile)
+                .trim_end_matches('\0')
+                .to_lowercase();
+            if !name.is_empty() && name.contains(needle_lower) && !name.contains("updater") {
+                out.push(entry.th32ProcessID);
+            }
+            entry.dwSize = std::mem::size_of::<PROCESSENTRY32W>() as u32;
+            ok = Process32NextW(snap, &mut entry).is_ok();
+        }
+        let _ = CloseHandle(snap);
+    }
+    out
+}
+
+struct StartGate {
+    done: Mutex<bool>,
+    cv: std::sync::Condvar,
+}
+
+impl StartGate {
+    fn new() -> Self {
+        StartGate { done: Mutex::new(false), cv: std::sync::Condvar::new() }
+    }
+    /// Blocks until opened; returns false early if cancelled.
+    fn wait_with_cancel(&self, cancel: &std::sync::atomic::AtomicBool) -> bool {
+        let mut g = self.done.lock().unwrap();
+        while !*g {
+            if cancel.load(std::sync::atomic::Ordering::Relaxed) {
+                return false;
+            }
+            let (ng, to) = self
+                .cv
+                .wait_timeout(g, std::time::Duration::from_millis(200))
+                .unwrap();
+            g = ng;
+            if !to.timed_out() {
+                return *g || cancel.load(std::sync::atomic::Ordering::Relaxed);
+            }
+        }
+        true
+    }
+    fn open(&self) {
+        *self.done.lock().unwrap() = true;
+        self.cv.notify_all();
+    }
+}
+
+const VIRTUAL_AUDIO_DEVICE_PROCESS_LOOPBACK: &str =
+    "{4E851656-72BA-46E9-BB12-27BCD95BD16B}";
+
+/* Flat ABI mirrors of AUDIOCLIENT_ACTIVATION_PARAMS / PROPVARIANT so we don't
+   depend on generated union field names — layouts are fixed by WinABI. */
+#[repr(C)]
+struct AudioActivationParamsRaw {
+    activation_type: i32, // 1 = AUDIOCLIENT_ACTIVATION_TYPE_PROCESS_LOOPBACK
+    target_process_id: u32,
+    loopback_mode: i32, // 1 = PROCESS_LOOPBACK_MODE_INCLUDE_TARGET_PROCESS_TREE
+}
+#[repr(C)]
+struct RawBlob {
+    size: u32,
+    data: *mut u8,
+}
+#[repr(C)]
+struct RawPropVariant {
+    vt: u16,
+    reserved: [u16; 3],
+    pad: u32,
+    blob: RawBlob, // VT_BLOB
+}
+const VT_BLOB_U16: u16 = 65;
+
+#[windows::core::implement(
+    windows::Win32::Media::Audio::IActivateAudioInterfaceCompletionHandler,
+    windows::Win32::System::Com::IAgileObject
+)]
+struct ActivationSignal {
+    event: windows::Win32::Foundation::HANDLE,
+    result_code: std::sync::Arc<std::sync::atomic::AtomicI32>,
+    client: std::sync::Arc<std::sync::Mutex<Option<windows::Win32::Media::Audio::IAudioClient>>>,
+}
+
+impl windows::Win32::Media::Audio::IActivateAudioInterfaceCompletionHandler_Impl
+    for ActivationSignal_Impl
+{
+    fn ActivateCompleted(
+        &self,
+        activateoperation: Option<
+            &windows::Win32::Media::Audio::IActivateAudioInterfaceAsyncOperation,
+        >,
+    ) -> windows::core::Result<()> {
+        unsafe {
+            if let Some(op) = activateoperation {
+                let mut hr = windows::core::HRESULT(0);
+                let mut unk: Option<windows::core::IUnknown> = None;
+                if op.GetActivateResult(&mut hr, &mut unk).is_ok() {
+                    self.result_code
+                        .store(hr.0, std::sync::atomic::Ordering::SeqCst);
+                    if let Ok(mut guard) = self.client.lock() {
+                        *guard = unk.and_then(|u| {
+                            windows::core::Interface::cast::<windows::Win32::Media::Audio::IAudioClient>(&u).ok()
+                        });
+                    }
+                }
+            }
+            let _ = windows::Win32::System::Threading::SetEvent(self.event);
+        }
+        Ok(())
+    }
+}
+
+impl windows::Win32::System::Com::IAgileObject_Impl for ActivationSignal_Impl {}
+
+unsafe fn activate_process_loopback_client(
+    pid: u32,
+) -> Result<windows::Win32::Media::Audio::IAudioClient, String> {
+    use windows::core::{HSTRING, Interface, PCWSTR, PROPVARIANT};
+    use windows::Win32::Foundation::{CloseHandle, WAIT_OBJECT_0};
+    use windows::Win32::Media::Audio::{
+        ActivateAudioInterfaceAsync, IActivateAudioInterfaceCompletionHandler, IAudioClient,
+    };
+    use windows::Win32::System::Com::CoInitializeEx;
+    use windows::Win32::System::Threading::{CreateEventW, WaitForSingleObject};
+
+    let _ = CoInitializeEx(None, windows::Win32::System::Com::COINIT_MULTITHREADED);
+
+    // Build the activation PROPVARIANT (VT_BLOB wrapping the params struct).
+    let params = AudioActivationParamsRaw {
+        activation_type: 1,
+        target_process_id: pid,
+        loopback_mode: 1,
+    };
+    let raw = RawPropVariant {
+        vt: VT_BLOB_U16,
+        reserved: [0u16; 3],
+        pad: 0u32,
+        blob: RawBlob {
+            size: std::mem::size_of::<AudioActivationParamsRaw>() as u32,
+            data: &params as *const AudioActivationParamsRaw as *mut u8,
+        },
+    };
+    debug_assert_eq!(
+        std::mem::size_of::<RawPropVariant>(),
+        std::mem::size_of::<PROPVARIANT>()
+    );
+    let mut propvar: PROPVARIANT = std::mem::zeroed();
+    std::ptr::copy_nonoverlapping(
+        &raw as *const RawPropVariant as *const u8,
+        &mut propvar as *mut PROPVARIANT as *mut u8,
+        std::mem::size_of::<RawPropVariant>(),
+    );
+
+    let event = CreateEventW(None, false, false, None).map_err(|e| e.to_string())?;
+    let result_flag = std::sync::Arc::new(std::sync::atomic::AtomicI32::new(-1));
+    let client_slot: std::sync::Arc<std::sync::Mutex<Option<IAudioClient>>> =
+        std::sync::Arc::new(std::sync::Mutex::new(None));
+    let signal = ActivationSignal {
+        event,
+        result_code: result_flag.clone(),
+        client: client_slot.clone(),
+    };
+    let handler: IActivateAudioInterfaceCompletionHandler = signal.into();
+
+    let device_path = HSTRING::from(VIRTUAL_AUDIO_DEVICE_PROCESS_LOOPBACK);
+    // Keep the operation alive until the completion event fires.
+    let operation = ActivateAudioInterfaceAsync(
+        PCWSTR::from_raw(device_path.as_ptr()),
+        &IAudioClient::IID,
+        Some(&propvar),
+        &handler,
+    )
+    .map_err(|e| format!("activate: {e}"))?;
+
+    let waited = WaitForSingleObject(event, 4000);
+    let hr = result_flag.load(std::sync::atomic::Ordering::SeqCst);
+    let client = client_slot.lock().ok().and_then(|mut g| g.take());
+    let _ = CloseHandle(event);
+    drop(operation);
+    if waited != WAIT_OBJECT_0 {
+        return Err("audio activation timed out".to_string());
+    }
+    if hr != 0 {
+        return Err(format!("audio activation failed: hr=0x{hr:08X}"));
+    }
+    client.ok_or_else(|| "audio activation returned no client".to_string())
+}
+
+/// One loopback source: captures PCM and writes it into a named pipe
+/// that ffmpeg reads as a raw audio input.
+fn spawn_capture_source(
+    source: CaptureSource,
+    pipe_name: String,
+) -> (
+    std::sync::mpsc::Receiver<Result<(String, u32, u16, u16), String>>,
+    Arc<StartGate>,
+    Arc<std::sync::atomic::AtomicBool>,
+) {
+    let (tx, rx) = std::sync::mpsc::channel();
+    let gate = Arc::new(StartGate::new());
+    let cancel = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let gate2 = gate.clone();
+    let cancel2 = cancel.clone();
+    std::thread::spawn(move || unsafe {
+        use windows::Win32::Foundation::{CloseHandle, WAIT_OBJECT_0};
+        use windows::Win32::Media::Audio::{IAudioCaptureClient, AUDCLNT_SHAREMODE_SHARED, WAVEFORMATEX};
+        use windows::Win32::Storage::FileSystem::{FILE_FLAGS_AND_ATTRIBUTES, FlushFileBuffers};
+        use windows::Win32::System::Com::CoTaskMemFree;
+        use windows::Win32::System::Pipes::{
+            ConnectNamedPipe, CreateNamedPipeW, DisconnectNamedPipe, NAMED_PIPE_MODE,
+        };
+        use windows::Win32::System::Threading::{CreateEventW, SetEvent, WaitForSingleObject};
+
+        const STREAM_FLAGS: u32 = 0x0002_0000 | 0x0004_0000; // LOOPBACK | EVENTCALLBACK
+
+        let fail = |msg: String| {
+            let _ = tx.send(Err(msg));
+        };
+
+        let client = match match source {
+            CaptureSource::Process(pid) => activate_process_loopback_client(pid),
+            CaptureSource::Endpoint(id) => open_endpoint_loopback_client(id),
+        } {
+            Ok(c) => c,
+            Err(e) => return fail(e),
+        };
+
+        let pwfx = match client.GetMixFormat() {
+            Ok(p) if !p.is_null() => p,
+            Ok(_) => return fail("mixformat null".to_string()),
+            Err(e) => return fail(format!("mixformat: {e}")),
+        };
+        let tag = (*pwfx).wFormatTag;
+        let channels = (*pwfx).nChannels.max(1);
+        let rate = (*pwfx).nSamplesPerSec.max(8000);
+        let bits = (*pwfx).wBitsPerSample.max(8);
+        let block_align = ((*pwfx).nBlockAlign as usize).max(1);
+        let extensible = tag == 0xFFFE;
+        let float = tag == 3 || (extensible && bits == 32);
+        let fmt_name = if float { "f32le" } else { "s16le" }.to_string();
+
+        let ev = match CreateEventW(None, false, false, None) {
+            Ok(h) => h,
+            Err(e) => return fail(format!("event: {e}")),
+        };
+
+        if let Err(e) = client.Initialize(
+            AUDCLNT_SHAREMODE_SHARED,
+            STREAM_FLAGS,
+            2_000_000, // ~200ms buffer (100ns units)
+            0,
+            pwfx as *const WAVEFORMATEX,
+            None,
+        ) {
+            return fail(format!("init: {e}"));
+        }
+        if let Err(e) = client.SetEventHandle(ev) {
+            return fail(format!("setevent: {e}"));
+        }
+        let cap: IAudioCaptureClient = match client.GetService() {
+            Ok(c) => c,
+            Err(e) => return fail(format!("service: {e}")),
+        };
+        if let Err(e) = client.Start() {
+            return fail(format!("start: {e}"));
+        }
+
+        // Report format so the caller can assemble ffmpeg args, then wait for
+        // ffmpeg to be spawned before connecting the pipe.
+        let _ = tx.send(Ok((fmt_name.clone(), rate, channels, bits)));
+        if !gate2.wait_with_cancel(&cancel2) {
+            let _ = client.Stop();
+            return;
+        }
+
+        // Connect the server-side pipe handle (client = ffmpeg).
+        let wide: Vec<u16> = pipe_name.encode_utf16().chain(Some(0)).collect();
+        let pname = windows::core::PCWSTR::from_raw(wide.as_ptr());
+        let pipe = CreateNamedPipeW(
+            pname,
+            FILE_FLAGS_AND_ATTRIBUTES(0x0000_0002 | 0x0008_0000), // OUTBOUND | FIRST_PIPE_INSTANCE
+            NAMED_PIPE_MODE(0), // TYPE_BYTE | READMODE_BYTE | WAIT
+            1,
+            65536,
+            65536,
+            0,
+            None,
+        );
+        if pipe.is_invalid() {
+            let _ = client.Stop();
+            return fail("createpipe failed".to_string());
+        }
+        if let Err(e) = ConnectNamedPipe(pipe, None) {
+            // ERROR_PIPE_CONNECTED means ffmpeg already opened it: fine.
+            if (e.code().0 & 0xFFFF) != 536 {
+                let _ = client.Stop();
+                let _ = CloseHandle(pipe);
+                return fail(format!("connect: {e}"));
+            }
+        }
+
+        let mut stopped = false;
+        while !stopped {
+            if AUDIO_CAPTURE_STOP.load(std::sync::atomic::Ordering::Relaxed) {
+                break;
+            }
+            let w = WaitForSingleObject(ev, 200);
+            if w != WAIT_OBJECT_0 {
+                continue;
+            }
+            loop {
+                let packets = match cap.GetNextPacketSize() {
+                    Ok(p) => p,
+                    Err(_) => {
+                        stopped = true;
+                        break;
+                    }
+                };
+                if packets == 0 {
+                    break;
+                }
+                let mut data: *mut u8 = std::ptr::null_mut();
+                let mut frames = 0u32;
+                let mut flags = 0u32;
+                if cap.GetBuffer(&mut data, &mut frames, &mut flags, None, None).is_err() {
+                    stopped = true;
+                    break;
+                }
+                let bytes = frames as usize * block_align;
+                let ok = if flags & 0x2 != 0 || data.is_null() {
+                    let zeros = vec![0u8; bytes];
+                    write_all_pipe(pipe, &zeros)
+                } else {
+                    let slice = std::slice::from_raw_parts(data, bytes);
+                    write_all_pipe(pipe, slice)
+                };
+                let _ = cap.ReleaseBuffer(frames);
+                if !ok {
+                    stopped = true;
+                    break;
+                }
+            }
+        }
+
+        let _ = SetEvent(ev); // unblock any pending wait
+        let _ = client.Stop();
+        let _ = FlushFileBuffers(pipe);
+        let _ = DisconnectNamedPipe(pipe);
+        let _ = CloseHandle(pipe);
+        let _ = CloseHandle(ev);
+        if !pwfx.is_null() {
+            CoTaskMemFree(Some(pwfx as *const core::ffi::c_void));
+        }
+    });
+    (rx, gate, cancel)
+}
+
+fn write_all_pipe(pipe: windows::Win32::Foundation::HANDLE, mut buf: &[u8]) -> bool {
+    while !buf.is_empty() {
+        let end = buf.len().min(60_000);
+        let mut written = 0u32;
+        match unsafe {
+            windows::Win32::Storage::FileSystem::WriteFile(
+                pipe,
+                Some(&buf[..end]),
+                Some(&mut written),
+                None,
+            )
+        } {
+            Ok(_) => {
+                if written == 0 {
+                    return false;
+                }
+                buf = &buf[written as usize..];
+            }
+            Err(_) => return false,
+        }
+    }
+    true
+}
+
+/// One resolved ffmpeg audio input (a named pipe with raw PCM).
+enum AudioInput {
+    /// args already contain -f/-ar/-ac/-i for a named pipe
+    Pipe(Vec<String>),
+}
+
+/// Spawn one capture source on a fresh pipe; returns ffmpeg args + gate when
+/// the capture client came up (format already reported by the thread).
+fn add_capture_source(
+    inputs: &mut Vec<AudioInput>,
+    gates: &mut Vec<Arc<StartGate>>,
+    name: String,
+    source: CaptureSource,
+) -> bool {
+    unsafe {
+        if !create_audio_pipe_checked(&name) {
+            return false;
+        }
+    }
+    let (rx, gate, cancel) = spawn_named_capture_thread(source, name.clone());
+    match rx.recv_timeout(std::time::Duration::from_millis(5000)) {
+        Ok(Ok((fmt, rate, ch, _bits))) => {
+            inputs.push(AudioInput::Pipe(vec![
+                "-f".into(), fmt,
+                "-ar".into(), rate.to_string(),
+                "-ac".into(), ch.to_string(),
+                "-i".into(), name,
+            ]));
+            gates.push(gate);
+            true
+        }
+        other => {
+            cancel.store(true, std::sync::atomic::Ordering::Relaxed);
+            gate.open();
+            let _ = other;
+            false
+        }
+    }
+}
+
+fn setup_audio_sources(
+    mode: AudioMode,
+    output_device_id: String,
+) -> (Vec<AudioInput>, Vec<Arc<StartGate>>) {
+    let mut inputs: Vec<AudioInput> = Vec::new();
+    let mut gates: Vec<Arc<StartGate>> = Vec::new();
+
+    let ts = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis();
+
+    if matches!(mode, AudioMode::Game | AudioMode::GameDiscord) {
+        if let Some(gpid) = find_lol_window_pid() {
+            let name = format!(r"\\.\pipe\rh-audio-game-{ts}");
+            add_capture_source(&mut inputs, &mut gates, name, CaptureSource::Process(gpid));
+        }
+
+        if mode == AudioMode::GameDiscord {
+            for (i, dpid) in find_process_pids_by_image("discord", 2).into_iter().enumerate() {
+                let name = format!(r"\\.\pipe\rh-audio-discord{i}-{ts}");
+                add_capture_source(
+                    &mut inputs,
+                    &mut gates,
+                    name,
+                    CaptureSource::Process(dpid),
+                );
+            }
+        }
+    } else if mode == AudioMode::System {
+        let id = if output_device_id.trim().is_empty() {
+            None
+        } else {
+            Some(output_device_id)
+        };
+        let name = format!(r"\\.\pipe\rh-audio-system-{ts}");
+        add_capture_source(
+            &mut inputs,
+            &mut gates,
+            name,
+            CaptureSource::Endpoint(id),
+        );
+    }
+
+    (inputs, gates)
+}
+
+unsafe fn create_audio_pipe_checked(name: &str) -> bool {
+    let wide: Vec<u16> = name.encode_utf16().chain(Some(0)).collect();
+    let pname = windows::core::PCWSTR::from_raw(wide.as_ptr());
+    let h = windows::Win32::System::Pipes::CreateNamedPipeW(
+        pname,
+        windows::Win32::Storage::FileSystem::FILE_FLAGS_AND_ATTRIBUTES(0x0000_0002 | 0x0008_0000),
+        windows::Win32::System::Pipes::NAMED_PIPE_MODE(0),
+        1,
+        65536,
+        65536,
+        0,
+        None,
+    );
+    if h.is_invalid() {
+        return false;
+    }
+    // Close this placeholder instance; the capture thread re-creates
+    // the same pipe (first-instance flag released on close).
+    let _ = windows::Win32::Foundation::CloseHandle(h);
+    true
+}
+
+// Thin wrapper so all call sites share one signature.
+fn spawn_named_capture_thread(
+    source: CaptureSource,
+    pipe_name: String,
+) -> (
+    std::sync::mpsc::Receiver<Result<(String, u32, u16, u16), String>>,
+    Arc<StartGate>,
+    Arc<std::sync::atomic::AtomicBool>,
+) {
+    spawn_capture_source(source, pipe_name)
+}
+
 #[tauri::command]
-async fn start_recording(app: tauri::AppHandle) -> Result<String, String> {    {
+async fn start_recording(app: tauri::AppHandle) -> Result<String, String> {
+    {
         let guard = FFMPEG_PROC.lock().map_err(|e| e.to_string())?;
         if guard.is_some() {
             return Err("Already recording".to_string());
         }
     }
+    AUDIO_CAPTURE_STOP.store(false, std::sync::atomic::Ordering::SeqCst);
 
     let cfg = read_config(&app);
     let ffmpeg_path = cfg.get("ffmpegPath")
@@ -624,26 +1369,37 @@ async fn start_recording(app: tauri::AppHandle) -> Result<String, String> {    {
         "-i".to_string(), "desktop".to_string(),
     ];
 
-    // Best-effort audio capture: probe DirectShow inputs and attach one if any
-    // exists (stereo mix / loopback preferred, otherwise microphone).
-    let ffmpeg_for_probe = ffmpeg_path.clone();
-    let audio_device = tauri::async_runtime::spawn_blocking(move || {
-        find_dshow_audio_device(&ffmpeg_for_probe)
-    })
-    .await
-    .map_err(|e| e.to_string())?;
+    // Audio per user setting (default: game-only via process loopback).
+    let mode = audio_mode_from_cfg(&cfg);
+    let out_dev = cfg.get("audioOutputDevice")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    let (audio_inputs, audio_gates) =
+        tauri::async_runtime::spawn_blocking(move || setup_audio_sources(mode, out_dev))
+            .await
+            .map_err(|e| e.to_string())?;
 
-    if let Some(ref dev) = audio_device {
-        ffmpeg_args.extend([
-            "-f".to_string(), "dshow".to_string(),
-            "-i".to_string(), format!("audio={}", dev),
-        ]);
+    for AudioInput::Pipe(args) in &audio_inputs {
+        ffmpeg_args.extend(args.iter().cloned());
     }
-
-    if audio_device.is_some() {
+    let has_audio = !audio_inputs.is_empty();
+    if has_audio {
+        if audio_inputs.len() >= 2 {
+            // Mix game + discord trees into one track (normalize=0 keeps level).
+            ffmpeg_args.extend([
+                "-filter_complex".to_string(),
+                "[1:a]aformat=sample_rates=48000:channel_layouts=stereo[a1];[2:a]aformat=sample_rates=48000:channel_layouts=stereo[a2];[a1][a2]amix=inputs=2:duration=longest:normalize=0[aout]".to_string(),
+                "-map".to_string(), "0:v:0".to_string(),
+                "-map".to_string(), "[aout]".to_string(),
+            ]);
+        } else {
+            ffmpeg_args.extend([
+                "-map".to_string(), "0:v:0".to_string(),
+                "-map".to_string(), "1:a:0".to_string(),
+            ]);
+        }
         ffmpeg_args.extend([
-            "-map".to_string(), "0:v:0".to_string(),
-            "-map".to_string(), "1:a:0".to_string(),
             "-c:a".to_string(), "aac".to_string(),
             "-b:a".to_string(), "128k".to_string(),
             "-ar".to_string(), "44100".to_string(),
@@ -662,16 +1418,30 @@ async fn start_recording(app: tauri::AppHandle) -> Result<String, String> {    {
         output_str.clone(),
     ]);
 
-    let mut child = Command::new(&ffmpeg_path)
+    let mut child = match Command::new(&ffmpeg_path)
         .args(&ffmpeg_args)
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
         .creation_flags(0x08000000)
         .spawn()
-        .map_err(|e| e.to_string())?;
+    {
+        Ok(c) => c,
+        Err(e) => {
+            AUDIO_CAPTURE_STOP.store(true, std::sync::atomic::Ordering::SeqCst);
+            for g in &audio_gates {
+                g.open();
+            }
+            return Err(e.to_string());
+        }
+    };
 
     let stdin = child.stdin.take();
+
+    // ffmpeg is up: let the capture threads connect their pipes and roll.
+    for g in &audio_gates {
+        g.open();
+    }
 
     {
         let mut guard = FFMPEG_PROC.lock().map_err(|e| e.to_string())?;
@@ -712,6 +1482,7 @@ async fn stop_recording() -> Result<Option<String>, String> {
             }
         }
         *guard = None;
+        AUDIO_CAPTURE_STOP.store(true, std::sync::atomic::Ordering::SeqCst);
         FFMPEG_OUTPUT.lock().map_err(|e| e.to_string())?.take()
     };
     // Small delay to let the file system flush
@@ -926,6 +1697,11 @@ pub fn run() {
             test_ffmpeg,
             get_auto_record,
             set_auto_record,
+            get_audio_mode,
+            set_audio_mode,
+            list_audio_output_devices,
+            get_audio_output_device,
+            set_audio_output_device,
             start_recording,
             stop_recording,
             is_recording,
@@ -964,10 +1740,10 @@ pub fn run() {
             let tray = app.tray_by_id("main");
 
             if let Some(tray) = tray {
-                tray.set_menu(Some(menu));
+                let _ = tray.set_menu(Some(menu));
 
                 let window_show = window.clone();
-                tray.on_menu_event(move |_app, event| {
+                let _ = tray.on_menu_event(move |_app, event| {
                     match event.id().as_ref() {
                         "show" => {
                             let _ = window_show.show();

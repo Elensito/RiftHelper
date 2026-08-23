@@ -237,3 +237,33 @@ export async function notifyGameEnded(summoner, lang = 'en') {
     new Notification(title, { body })
   }
 }
+
+export async function getAudioMode() {
+  if (!isTauri()) return 'game'
+  const { invoke } = await import('@tauri-apps/api/core')
+  try { return await invoke('get_audio_mode') } catch { return 'game' }
+}
+
+export async function setAudioMode(mode) {
+  if (!isTauri()) return
+  const { invoke } = await import('@tauri-apps/api/core')
+  try { await invoke('set_audio_mode', { mode }) } catch {}
+}
+
+export async function listAudioOutputs() {
+  if (!isTauri()) return []
+  const { invoke } = await import('@tauri-apps/api/core')
+  try { return await invoke('list_audio_output_devices') } catch { return [] }
+}
+
+export async function getAudioOutputDevice() {
+  if (!isTauri()) return ''
+  const { invoke } = await import('@tauri-apps/api/core')
+  try { return await invoke('get_audio_output_device') } catch { return '' }
+}
+
+export async function setAudioOutputDevice(deviceId) {
+  if (!isTauri()) return
+  const { invoke } = await import('@tauri-apps/api/core')
+  try { await invoke('set_audio_output_device', { deviceId }) } catch {}
+}

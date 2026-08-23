@@ -3,6 +3,7 @@ import { t } from '../i18n.js'
 import Img from './Img.jsx'
 import { isTauri } from '../tauri.js'
 import { fetchMatchEvents } from '../api.js'
+import { retryPendingMatches, loadVodsRaw } from '../match-resolver.js'
 
 /* ── Event icons (neon line style) ─────────────────────────── */
 
@@ -326,7 +327,7 @@ function PlayerTeamPanel({ team, teamLabel, isWinner, lang }) {
 
 /* ── Player ────────────────────────────────────────────────── */
 
-export default function VODPlayer({ vod, lang, onBack, puuid }) {
+export default function VODPlayer({ vod, lang, onBack, puuid, summoner }) {
   /* personal events need the puuid the backend used to flag is_player;
      fall back to the puuid stored in the VOD when no profile is loaded */
   const evPuuid = puuid || vod.puuid || ''
@@ -346,6 +347,32 @@ export default function VODPlayer({ vod, lang, onBack, puuid }) {
   const [showTeams, setShowTeams] = useState(true)
   const [videoUrl, setVideoUrl] = useState(null)
   const [videoError, setVideoError] = useState(false)
+
+  /* Matches recorded before Riot finished indexing stay "pending": the
+     timeline/teams unlock as soon as the resolver patches the VOD. */
+  const [vodPatch, setVodPatch] = useState(null)
+  const mv = useMemo(() => ({ ...vod, ...(vodPatch || {}) }), [vod, vodPatch])
+  const pending = !!mv.pendingMatch
+
+  useEffect(() => {
+    if (!pending || !summoner) return
+    let alive = true
+    let timer = null
+    const tick = async () => {
+      try {
+        await retryPendingMatches(summoner)
+      } catch {}
+      if (!alive) return
+      const fresh = loadVodsRaw().find(x => x.id === mv.id)
+      if (fresh && !fresh.pendingMatch) {
+        setVodPatch({ ...fresh })
+      } else {
+        timer = setTimeout(tick, 45000)
+      }
+    }
+    timer = setTimeout(tick, 8000)
+    return () => { alive = false; if (timer) clearTimeout(timer) }
+  }, [pending, summoner, mv.id])
 
   const lastVolRef = useRef(0.8)
   const videoUrlRef = useRef(null)
@@ -379,8 +406,8 @@ export default function VODPlayer({ vod, lang, onBack, puuid }) {
 
   useEffect(() => () => { if (uiTimerRef.current) clearTimeout(uiTimerRef.current) }, [])
 
-  const team1 = vod.team1 || []
-  const team2 = vod.team2 || []
+  const team1 = mv.team1 || []
+  const team2 = mv.team2 || []
 
   useEffect(() => {
     if (videoUrl || !vod.hasVideo) return
@@ -561,9 +588,15 @@ export default function VODPlayer({ vod, lang, onBack, puuid }) {
           {t(lang, 'backToVods')}
         </button>
         <div className="vod-topbar-info">
-          <span className="vod-topbar-champ">{vod.champion || ''}</span>
-          <span className="vod-topbar-queue">{vod.queue || ''}</span>
-          <span className="vod-topbar-date">{vod.date ? new Date(vod.date).toLocaleDateString() : ''}</span>
+          <span className="vod-topbar-champ">{mv.champion || ''}</span>
+          <span className="vod-topbar-queue">{mv.queue || ''}</span>
+          <span className="vod-topbar-date">{mv.date ? new Date(mv.date).toLocaleDateString() : ''}</span>
+          {pending && (
+            <span className="vod-pending-pill" title={t(lang, 'pendingMatchDesc')}>
+              <span className="vod-pending-dot" />
+              {t(lang, 'pendingMatchBadge')}
+            </span>
+          )}
         </div>
         <div className="vod-topbar-actions">
           <button className="rt-btn rt-btn-ghost rt-btn-sm" onClick={downloadVod} title={t(lang, 'downloadVod')} disabled={!hasVideo}>
@@ -769,16 +802,26 @@ export default function VODPlayer({ vod, lang, onBack, puuid }) {
               </button>
             </div>
             <div className="vod-sidebar-scroll">
-              {team1.length > 0 && (
-                <PlayerTeamPanel team={team1} teamLabel={t(lang, 'blueTeam')} isWinner={vod.winner === 1} lang={lang} />
-              )}
-              {team2.length > 0 && (
-                <PlayerTeamPanel team={team2} teamLabel={t(lang, 'redTeam')} isWinner={vod.winner === 2} lang={lang} />
-              )}
-              {team1.length === 0 && team2.length === 0 && (
-                <div className="vod-no-teams">
-                  <p>{t(lang, 'noTeamData')}</p>
+              {pending && team1.length === 0 && team2.length === 0 ? (
+                <div className="vod-pending-notice">
+                  <span className="vod-pending-dot big" />
+                  <p className="vod-pending-title">{t(lang, 'pendingMatchTitle')}</p>
+                  <p className="vod-pending-desc">{t(lang, 'pendingMatchDesc')}</p>
                 </div>
+              ) : (
+                <>
+                  {team1.length > 0 && (
+                    <PlayerTeamPanel team={team1} teamLabel={t(lang, 'blueTeam')} isWinner={mv.winner === 1} lang={lang} />
+                  )}
+                  {team2.length > 0 && (
+                    <PlayerTeamPanel team={team2} teamLabel={t(lang, 'redTeam')} isWinner={mv.winner === 2} lang={lang} />
+                  )}
+                  {team1.length === 0 && team2.length === 0 && (
+                    <div className="vod-no-teams">
+                      <p>{t(lang, 'noTeamData')}</p>
+                    </div>
+                  )}
+                </>
               )}
             </div>
           </div>
@@ -786,7 +829,7 @@ export default function VODPlayer({ vod, lang, onBack, puuid }) {
       </div>
 
       <NeonTimeline
-        matchId={vod.matchId}
+        matchId={pending ? '' : mv.matchId}
         puuid={evPuuid}
         lang={lang}
         duration={duration}

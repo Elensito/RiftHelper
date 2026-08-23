@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+﻿import { useState, useEffect, useCallback, useRef } from 'react'
 import { t } from '../i18n.js'
-import { isTauri, showInFolder } from '../tauri.js'
+import { isTauri, showInFolder, getAudioMode } from '../tauri.js'
 import { deleteRecordingBlob } from '../video-recorder.js'
 
 const VOD_STORAGE_KEY = 'rh-vods'
@@ -43,7 +43,6 @@ export { loadVods, saveVods, loadSettings, saveSettings, VOD_STORAGE_KEY, VOD_SE
 
 export default function RiftTimeline({ lang, onOpenVod, profile }) {
   const [vods, setVods] = useState(loadVods)
-  const [showSettings, setShowSettings] = useState(false)
   const [contextMenu, setContextMenu] = useState(null)
   const [settings, setSettings] = useState(() => {
     const s = loadSettings()
@@ -52,11 +51,20 @@ export default function RiftTimeline({ lang, onOpenVod, profile }) {
       closeToTray: s.closeToTray ?? true,
       autoStart: s.autoStart ?? false,
       vodPath: s.vodPath ?? '',
+      audioMode: s.audioMode ?? 'game',
       ...s,
     }
   })
 
   useEffect(() => { saveSettings(settings) }, [settings])
+
+  /* Rust config is the source of truth for the recording audio mode */
+  useEffect(() => {
+    if (!isTauri()) return
+    getAudioMode().then((mode) => {
+      if (mode) setSettings(s => ({ ...s, audioMode: mode }))
+    }).catch(() => {})
+  }, [])
 
   useEffect(() => {
     const onStorage = (e) => {
@@ -132,7 +140,7 @@ export default function RiftTimeline({ lang, onOpenVod, profile }) {
             </svg>
             {t(lang, 'riftTimeline')}
           </h2>
-          <span className="rt-subtitle">{totalGames} {t(lang, 'vodsRecorded')} · {formatDuration(totalDuration)}</span>
+          <span className="rt-subtitle">{totalGames} {t(lang, 'vodsRecorded')} Â· {formatDuration(totalDuration)}</span>
         </div>
         <div className="rt-header-actions">
           <button className="rt-btn rt-btn-ghost" onClick={openFolder} title={t(lang, 'openVodFolder')}>
@@ -140,13 +148,6 @@ export default function RiftTimeline({ lang, onOpenVod, profile }) {
               <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
             </svg>
             {t(lang, 'openFolder')}
-          </button>
-          <button className="rt-btn rt-btn-primary" onClick={() => setShowSettings(true)}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="12" cy="12" r="3" />
-              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
-            </svg>
-            {t(lang, 'settings')}
           </button>
         </div>
       </div>
@@ -178,17 +179,18 @@ export default function RiftTimeline({ lang, onOpenVod, profile }) {
                   <div className="rt-card-thumb-placeholder" />
                 )}
                 <span className="rt-card-duration">{formatDuration(vod.duration)}</span>
-                {vod.hasVideo && <span className="rt-card-badge video" title="Video recorded">▶</span>}
+                {vod.pendingMatch && <span className="rt-card-badge pending">{t(lang, 'pendingBadge')}</span>}
+                {vod.hasVideo && <span className="rt-card-badge video" title="Video recorded">â–¶</span>}
                 {vod.result === 'win' && <span className="rt-card-badge win">W</span>}
                 {vod.result === 'loss' && <span className="rt-card-badge loss">L</span>}
               </div>
               <div className="rt-card-info">
                 <div className="rt-card-champ">
                   {vod.championIcon && <img className="rt-card-champ-icon" src={vod.championIcon} alt="" />}
-                  <span className="rt-card-champ-name">{vod.champion || '—'}</span>
+                  <span className="rt-card-champ-name">{vod.champion || 'â€”'}</span>
                 </div>
                 <div className="rt-card-meta">
-                  <span className="rt-card-kda">{vod.kda || '—'}</span>
+                  <span className="rt-card-kda">{vod.kda || 'â€”'}</span>
                   <span className="rt-card-date">{formatDate(vod.date)}</span>
                 </div>
                 <div className="rt-card-queue">{vod.queue || ''}</div>
@@ -196,15 +198,6 @@ export default function RiftTimeline({ lang, onOpenVod, profile }) {
             </div>
           ))}
         </div>
-      )}
-
-      {showSettings && (
-        <RiftSettings
-          settings={settings}
-          onChange={setSettings}
-          onClose={() => setShowSettings(false)}
-          lang={lang}
-        />
       )}
 
       {contextMenu && (
@@ -242,241 +235,3 @@ export default function RiftTimeline({ lang, onOpenVod, profile }) {
   )
 }
 
-function HotkeyInput({ value, onChange, lang }) {
-  const [capturing, setCapturing] = useState(false)
-  const [display, setDisplay] = useState(value)
-  const keysRef = useRef(new Set())
-  const mainKeyRef = useRef(null)
-  const MAX_KEYS = 3
-
-  const MOD_MAP = { Control: 'Ctrl', Alt: 'Alt', Shift: 'Shift', Meta: 'Meta' }
-
-  const getMainKey = (e) => {
-    const k = e.key
-    if (MOD_MAP[k]) return null
-    if (k === 'Escape') return null
-    return k.length === 1 ? k.toUpperCase() : k
-  }
-
-  const getModifiers = (e) => {
-    const mods = []
-    if (e.ctrlKey) mods.push('Ctrl')
-    if (e.altKey) mods.push('Alt')
-    if (e.shiftKey) mods.push('Shift')
-    if (e.metaKey) mods.push('Meta')
-    return mods
-  }
-
-  const buildDisplay = (mods, main) => {
-    const parts = [...mods]
-    if (main) parts.push(main)
-    return parts.join('+')
-  }
-
-  const onKey = (e) => {
-    e.preventDefault()
-    e.stopPropagation()
-
-    if (e.key === 'Escape') {
-      endCapture(false)
-      return
-    }
-
-    if (e.type === 'keydown') {
-      const mod = MOD_MAP[e.key]
-      if (mod) {
-        keysRef.current.add(mod)
-      } else {
-        const main = getMainKey(e)
-        if (main) {
-          mainKeyRef.current = main
-          keysRef.current.add(main)
-        }
-      }
-    } else if (e.type === 'keyup') {
-      const mod = MOD_MAP[e.key]
-      if (mod) {
-        keysRef.current.delete(mod)
-      } else {
-        const main = getMainKey(e)
-        if (main && mainKeyRef.current === main) {
-          keysRef.current.delete(main)
-          mainKeyRef.current = null
-        }
-      }
-    }
-
-    const mods = [...keysRef.current].filter(k => k in MOD_MAP)
-    const main = mainKeyRef.current
-    setDisplay(buildDisplay(mods, main))
-  }
-
-  const endCapture = (save) => {
-    setCapturing(false)
-    if (save && keysRef.current.size > 0) {
-      const mods = [...keysRef.current].filter(k => k in MOD_MAP)
-      const main = mainKeyRef.current
-      if (mods.length > 0 || main) {
-        onChange(buildDisplay(mods, main))
-      }
-    }
-    keysRef.current.clear()
-    mainKeyRef.current = null
-    window.removeEventListener('keydown', onKey)
-    window.removeEventListener('keyup', onKey)
-  }
-
-  const startCapture = () => {
-    keysRef.current.clear()
-    mainKeyRef.current = null
-    setCapturing(true)
-    setDisplay('')
-    window.addEventListener('keydown', onKey)
-    window.addEventListener('keyup', onKey)
-  }
-
-  useEffect(() => {
-    return () => {
-      window.removeEventListener('keydown', onKey)
-      window.removeEventListener('keyup', onKey)
-    }
-  }, [])
-
-  const placeholder = lang === 'es'
-    ? 'Pulsa las teclas...'
-    : lang === 'pt'
-    ? 'Pressione as teclas...'
-    : lang === 'fr'
-    ? 'Appuyez sur les touches...'
-    : lang === 'ko'
-    ? '키를 누르세요...'
-    : 'Press keys...'
-
-  return (
-    <div
-      className={`rt-hotkey-wrap ${capturing ? 'capturing' : ''}`}
-      onClick={() => { if (!capturing) startCapture() }}
-      onBlur={() => endCapture(true)}
-      tabIndex={0}
-    >
-      {capturing ? (
-        <span className="rt-hotkey-placeholder">{placeholder}</span>
-      ) : (
-        <span className="rt-hotkey-value">{display || value}</span>
-      )}
-      {capturing && <span className="rt-hotkey-pulse" />}
-    </div>
-  )
-}
-
-function RiftSettings({ settings, onChange, onClose, lang }) {
-  const [local, setLocal] = useState({ ...settings })
-
-  const apply = async () => {
-    if (isTauri() && local.autoStart !== undefined) {
-      try {
-        const { toggleAutostart } = await import('../tauri.js')
-        await toggleAutostart(local.autoStart)
-      } catch {}
-    }
-    onChange(local)
-    onClose()
-  }
-
-  const pickFolder = async () => {
-    if (isTauri()) {
-      try {
-        const { invoke } = await import('@tauri-apps/api/core')
-        const path = await invoke('select_vod_folder')
-        if (path) setLocal(s => ({ ...s, vodPath: path }))
-      } catch {}
-    }
-  }
-
-  return (
-    <div className="rt-settings-overlay" onClick={onClose}>
-      <div className="rt-settings-panel" onClick={(e) => e.stopPropagation()}>
-        <div className="rt-settings-header">
-          <h3>{t(lang, 'riftTimelineSettings')}</h3>
-          <button className="rt-settings-close" onClick={onClose}>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <line x1="18" y1="6" x2="6" y2="18" />
-              <line x1="6" y1="6" x2="18" y2="18" />
-            </svg>
-          </button>
-        </div>
-
-        <div className="rt-settings-body">
-          <div className="rt-setting-group">
-            <label className="rt-setting-label">{t(lang, 'autoRecord')}</label>
-            <div className="rt-toggle-row">
-              <button
-                className={`rt-toggle ${local.autoRecord ? 'on' : ''}`}
-                onClick={() => setLocal(s => ({ ...s, autoRecord: !s.autoRecord }))}
-              >
-                <span className="rt-toggle-knob" />
-              </button>
-              <span className="rt-setting-desc">{t(lang, 'autoRecordDesc')}</span>
-            </div>
-          </div>
-
-          {isTauri() && (
-            <>
-              <div className="rt-setting-group">
-                <label className="rt-setting-label">{t(lang, 'closeToTray')}</label>
-                <div className="rt-toggle-row">
-                  <button
-                    className={`rt-toggle ${local.closeToTray ? 'on' : ''}`}
-                    onClick={() => setLocal(s => ({ ...s, closeToTray: !s.closeToTray }))}
-                  >
-                    <span className="rt-toggle-knob" />
-                  </button>
-                  <span className="rt-setting-desc">{t(lang, 'closeToTrayDesc')}</span>
-                </div>
-              </div>
-
-              <div className="rt-setting-group">
-                <label className="rt-setting-label">{t(lang, 'autoStart')}</label>
-                <div className="rt-toggle-row">
-                  <button
-                    className={`rt-toggle ${local.autoStart ? 'on' : ''}`}
-                    onClick={() => setLocal(s => ({ ...s, autoStart: !s.autoStart }))}
-                  >
-                    <span className="rt-toggle-knob" />
-                  </button>
-                  <span className="rt-setting-desc">{t(lang, 'autoStartDesc')}</span>
-                </div>
-              </div>
-            </>
-          )}
-
-          <div className="rt-setting-group">
-            <label className="rt-setting-label">{t(lang, 'vodSavePath')}</label>
-            <div className="rt-path-row">
-              <input
-                className="rt-input rt-input-grow"
-                type="text"
-                value={local.vodPath}
-                onChange={(e) => setLocal(s => ({ ...s, vodPath: e.target.value }))}
-                placeholder={t(lang, 'vodPathPlaceholder')}
-              />
-              {isTauri() && (
-                <button className="rt-btn rt-btn-ghost rt-btn-sm" onClick={pickFolder}>
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
-                  </svg>
-                  {t(lang, 'browse')}
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
-
-        <div className="rt-settings-footer">
-          <button className="rt-btn rt-btn-ghost" onClick={onClose}>{t(lang, 'cancel')}</button>
-          <button className="rt-btn rt-btn-primary" onClick={apply}>{t(lang, 'save')}</button>
-        </div>
-      </div>
-    </div>
-  )
-}
