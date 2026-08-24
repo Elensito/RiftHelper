@@ -1062,6 +1062,30 @@ struct RawLpwstrVariant {
 }
 const VT_LPWSTR_U16: u16 = 31;
 
+fn propvariant_to_string(pv: &windows::core::PROPVARIANT) -> Option<String> {
+    unsafe {
+        let mut raw = RawLpwstrVariant {
+            vt: 0,
+            reserved: [0u16; 3],
+            pad: 0,
+            pwsz: std::ptr::null_mut(),
+        };
+        std::ptr::copy_nonoverlapping(
+            pv as *const windows::core::PROPVARIANT as *const u8,
+            &mut raw as *mut RawLpwstrVariant as *mut u8,
+            std::mem::size_of::<RawLpwstrVariant>(),
+        );
+        if raw.vt != VT_LPWSTR_U16 || raw.pwsz.is_null() {
+            return None;
+        }
+        Some(pcwstr_to_string(windows::core::PCWSTR(raw.pwsz)))
+    }
+}
+
+fn looks_like_device_id(s: &str) -> bool {
+    s.starts_with('{') || s.contains(".{") || s.contains('\\')
+}
+
 fn device_friendly_name(
     dev: &windows::Win32::Media::Audio::IMMDevice,
 ) -> Option<String> {
@@ -1070,27 +1094,10 @@ fn device_friendly_name(
 
     unsafe {
         let store = dev.OpenPropertyStore(STGM_READ).ok()?;
-        let pv: windows::core::PROPVARIANT = store.GetValue(&PKEY_Device_FriendlyName).ok()?;
-        debug_assert_eq!(
-            std::mem::size_of::<RawLpwstrVariant>(),
-            std::mem::size_of::<windows::core::PROPVARIANT>()
-        );
-        let mut raw = RawLpwstrVariant {
-            vt: 0,
-            reserved: [0u16; 3],
-            pad: 0,
-            pwsz: std::ptr::null_mut(),
-        };
-        std::ptr::copy_nonoverlapping(
-            &pv as *const windows::core::PROPVARIANT as *const u8,
-            &mut raw as *mut RawLpwstrVariant as *mut u8,
-            std::mem::size_of::<RawLpwstrVariant>(),
-        );
-        std::mem::forget(pv);
-        if raw.vt != VT_LPWSTR_U16 || raw.pwsz.is_null() {
-            return None;
-        }
-        Some(pcwstr_to_string(windows::core::PCWSTR(raw.pwsz)))
+        let mut pv: windows::core::PROPVARIANT = store.GetValue(&PKEY_Device_FriendlyName).ok()?;
+        let s = propvariant_to_string(&pv);
+        let _ = windows::Win32::System::Com::StructuredStorage::PropVariantClear(&mut pv);
+        s.filter(|s| !s.is_empty() && !looks_like_device_id(s))
     }
 }
 
@@ -2311,6 +2318,20 @@ async fn stop_recording(app: tauri::AppHandle) -> Result<Option<VodFile>, String
     };
     // Small delay to let the file system flush
     std::thread::sleep(std::time::Duration::from_millis(200));
+    // Guard: if ffmpeg produced an empty / tiny file (no frames written),
+    // discard it so the frontend doesn't create a ghost VOD entry.
+    if let Some(ref p) = output_path {
+        match std::fs::metadata(p) {
+            Ok(meta) if meta.len() < 4096 => {
+                let _ = std::fs::remove_file(p);
+                return Ok(None);
+            }
+            Err(_) => {
+                return Ok(None);
+            }
+            _ => {}
+        }
+    }
     let duration = output_path
         .as_deref()
         .and_then(|p| probe_media_duration(&app, p))
