@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react'
 import { t } from '../i18n.js'
 import Img from './Img.jsx'
-import { isTauri, readVodEvents } from '../tauri.js'
+import { isTauri, readVodEvents, verifyVod, deleteVodFiles } from '../tauri.js'
 import { fetchMatchEvents } from '../api.js'
 import { retryPendingMatches, loadVodsRaw, saveVodsRaw } from '../match-resolver.js'
 
@@ -461,12 +461,37 @@ export default function VODPlayer({ vod, lang, onBack, puuid, summoner, showTeam
     if (videoUrl || !vod.hasVideo) return
     if (vod.videoPath && isTauri()) {
       import('@tauri-apps/api/core').then(({ convertFileSrc }) => {
-        setVideoUrl(convertFileSrc(vod.videoPath))
-      }).catch(() => {})
+        const url = convertFileSrc(vod.videoPath)
+        console.log('[VODPlayer] video URL:', url, 'path:', vod.videoPath)
+        setVideoUrl(url)
+      }).catch(e => {
+        console.error('[VODPlayer] convertFileSrc failed:', e)
+      })
     }
   }, [vod.id, vod.hasVideo, vod.videoPath])
 
   useEffect(() => { setVideoError(false) }, [videoUrl])
+
+  /* On mount: verify the mp4 file actually exists and has content.  If it's
+     missing or too small, remove the ghost entry from localStorage so the
+     user never sees a broken VOD card again. */
+  useEffect(() => {
+    if (!vod.hasVideo || !vod.videoPath || !isTauri()) return
+    verifyVod(vod.videoPath).then(info => {
+      if (info && !info.ok) {
+        console.warn('[VODPlayer] broken VOD, cleaning up:', vod.videoPath, info)
+        deleteVodFiles(vod.videoPath)
+        // Remove from localStorage list
+        try {
+          const vods = JSON.parse(localStorage.getItem('rh-vods') || '[]')
+          const filtered = vods.filter(v => v.id !== vod.id)
+          localStorage.setItem('rh-vods', JSON.stringify(filtered))
+          // Force re-render by dispatching storage event
+          window.dispatchEvent(new Event('storage'))
+        } catch {}
+      }
+    })
+  }, [vod.id, vod.hasVideo, vod.videoPath])
 
   useEffect(() => {
     if (showTeamsProp === false) setShowTeams(false)
@@ -679,7 +704,10 @@ export default function VODPlayer({ vod, lang, onBack, puuid, summoner, showTeam
         >
           <div ref={containerRef} className="vod-video-container" onClick={(e) => { if (hasVideo) togglePlay(e) }}>
             {hasVideo ? (
-              <video ref={videoRef} className="vod-video" src={videoUrl} preload="metadata" onError={() => setVideoError(true)} />
+              <video ref={videoRef} className="vod-video" src={videoUrl} preload="metadata" onError={(e) => {
+                console.error('[VODPlayer] video load error:', e.target?.error, 'src:', videoUrl)
+                setVideoError(true)
+              }} />
             ) : (
               <div className="vod-video-placeholder vod-match-summary">
                 {vod.championIcon && <img className="vod-summary-champ" src={vod.championIcon} alt={vod.champion || ''} />}

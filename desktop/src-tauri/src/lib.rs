@@ -1641,6 +1641,13 @@ fn setup_audio_sources(
                 );
             }
         }
+
+        // Fallback: if Game/GameDiscord mode produced zero inputs (LoL PID
+        // not found), capture all system audio so the recording isn't silent.
+        if inputs.is_empty() {
+            let name = format!(r"\\.\pipe\rh-audio-system-fb-{ts}");
+            add_capture_source(&mut inputs, &mut gates, name, CaptureSource::Endpoint(None));
+        }
     } else if mode == AudioMode::System {
         let id = if output_device_id.trim().is_empty() {
             None
@@ -2220,11 +2227,18 @@ async fn start_recording(app: tauri::AppHandle) -> Result<String, String> {
         output_str.clone(),
     ]);
 
+    // Log ffmpeg stderr to a file next to the recording so we can debug
+    // silent recordings, audio failures, etc.
+    let log_path = std::path::Path::new(&output_str).with_extension("ffmpeg.log");
+    let ffmpeg_log_file = std::fs::File::create(&log_path)
+        .map(std::process::Stdio::from)
+        .unwrap_or(std::process::Stdio::null());
+
     let mut child = match Command::new(&ffmpeg_path)
         .args(&ffmpeg_args)
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
+        .stderr(ffmpeg_log_file)
         .creation_flags(0x08000000)
         .spawn()
     {
@@ -2344,17 +2358,40 @@ async fn stop_recording(app: tauri::AppHandle) -> Result<Option<VodFile>, String
 #[tauri::command]
 fn delete_vod(video_path: String) -> Result<(), String> {
     let base = std::path::Path::new(&video_path);
-    // Remove the mp4 itself
     let _ = std::fs::remove_file(base);
-    // Remove events.json
     let mut ev = base.to_path_buf();
     ev.set_extension("events.json");
     let _ = std::fs::remove_file(ev);
-    // Remove thumbnail
     let mut th = base.to_path_buf();
     th.set_extension("thumb.jpg");
     let _ = std::fs::remove_file(th);
+    let mut log = base.to_path_buf();
+    log.set_extension("ffmpeg.log");
+    let _ = std::fs::remove_file(log);
     Ok(())
+}
+
+/// Returns info about a VOD file so the frontend can decide whether to show
+/// the player or the placeholder.  `ok` is false when the file is missing,
+/// empty, or too small to contain valid video.
+#[tauri::command]
+fn verify_vod(video_path: String) -> Result<serde_json::Value, String> {
+    let p = std::path::Path::new(&video_path);
+    match std::fs::metadata(p) {
+        Ok(meta) => {
+            let size = meta.len();
+            Ok(serde_json::json!({
+                "exists": true,
+                "size": size,
+                "ok": size > 4096,
+            }))
+        }
+        Err(_) => Ok(serde_json::json!({
+            "exists": false,
+            "size": 0,
+            "ok": false,
+        })),
+    }
 }
 
 /// Cheap WinAPI check used by the frontend watchdog to detect the end of a
@@ -2606,6 +2643,7 @@ pub fn run() {
             get_last_game_mode,
             get_vod_thumb,
             delete_vod,
+            verify_vod,
             show_overlay,
             hide_overlay,
             download_and_setup_ffmpeg,

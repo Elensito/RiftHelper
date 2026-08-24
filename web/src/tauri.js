@@ -237,6 +237,12 @@ export async function deleteVodFiles(videoPath) {
   try { await invoke('delete_vod', { videoPath }) } catch {}
 }
 
+export async function verifyVod(videoPath) {
+  if (!isTauri() || !videoPath) return null
+  const { invoke } = await import('@tauri-apps/api/core')
+  try { return await invoke('verify_vod', { videoPath }) } catch { return null }
+}
+
 export async function notifyGameEnded(summoner, lang = 'en') {
   const { t } = await import('./i18n.js')
   const title = 'RiftHelper'
