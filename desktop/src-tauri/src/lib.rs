@@ -1413,8 +1413,9 @@ unsafe fn activate_process_loopback_client(
     let client = client_slot.lock().ok().and_then(|mut g| g.take());
     let _ = CloseHandle(event);
     drop(operation);
-    // propvar is dropped automatically by windows::core::PROPVARIANT's Drop impl
-    // which calls PropVariantClear — do NOT call it manually here.
+    // Reset vt to VT_EMPTY so the Drop impl (PropVariantClear) does NOT try
+    // to CoTaskMemFree our stack-allocated pBlobData pointer (which would crash).
+    *(pv_raw as *mut u16) = 0u16;
     if waited != WAIT_OBJECT_0 {
         return Err("audio activation timed out".to_string());
     }
