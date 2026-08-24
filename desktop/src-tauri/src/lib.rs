@@ -1302,15 +1302,16 @@ impl StartGate {
 }
 
 const VIRTUAL_AUDIO_DEVICE_PROCESS_LOOPBACK: &str =
-    r"\\?\swd#tssoftmix#{4E851656-72BA-46E9-BB12-27BCD95BD16B}";
+    "VAD\\Process_Loopback";
 
-/* Flat ABI mirror of AUDIOCLIENT_ACTIVATION_PARAMS (8 bytes total):
-   ActivationType i32 @0 + union{ DWORD ProcessLoopbackTargetProcessId @4 }.
-   The union is 4 bytes; mode is NOT a separate field. */
+/* Flat ABI mirror of AUDIOCLIENT_ACTIVATION_PARAMS (12 bytes total):
+   ActivationType i32 @0 + TargetProcessId u32 @4 + ProcessLoopbackMode i32 @8.
+   0 = INCLUDE (capture target process tree), 1 = EXCLUDE. */
 #[repr(C)]
 struct AudioActivationParamsRaw {
     activation_type: i32, // 1 = AUDIOCLIENT_ACTIVATION_TYPE_PROCESS_LOOPBACK
     target_process_id: u32,
+    process_loopback_mode: i32, // 0 = INCLUDE target process audio tree
 }
 
 #[windows::core::implement(
@@ -1368,10 +1369,11 @@ unsafe fn activate_process_loopback_client(
     let _ = CoInitializeEx(None, windows::Win32::System::Com::COINIT_MULTITHREADED);
 
     const _: () =
-        assert!(std::mem::size_of::<AudioActivationParamsRaw>() == 8);
+        assert!(std::mem::size_of::<AudioActivationParamsRaw>() == 12);
     let params = AudioActivationParamsRaw {
         activation_type: 1,
         target_process_id: pid,
+        process_loopback_mode: 0, // INCLUDE target process audio tree
     };
     let params_ptr = &params as *const AudioActivationParamsRaw as *const u8;
 
@@ -1451,7 +1453,8 @@ fn spawn_capture_source(
         use windows::Win32::System::Threading::{CreateEventW, SetEvent, WaitForSingleObject};
 
         const STREAM_FLAGS_ENDPOINT: u32 = 0x0002_0000 | 0x0004_0000; // LOOPBACK | EVENTCALLBACK (endpoint only)
-        const STREAM_FLAGS_PROCESS: u32 = 0x0004_0000; // EVENTCALLBACK only — LOOPBACK is invalid for process loopback
+        // Process loopback requires LOOPBACK + EVENTCALLBACK + AUTOCONVERTPCM.
+        const STREAM_FLAGS_PROCESS: u32 = 0x0002_0000 | 0x0004_0000 | 0x8000_0000;
 
         let fail = |msg: String| {
             audio_log(&format!("capture thread error: {msg}"));
@@ -1481,8 +1484,26 @@ fn spawn_capture_source(
             }
         };
 
-        let pwfx = match client.GetMixFormat() {
-            Ok(p) if !p.is_null() => p,
+        // GetMixFormat is NOT supported for process loopback clients.
+        // Try it first; on failure, fall back to a hardcoded PCM 16-bit stereo 44100 Hz format.
+        let is_process = matches!(&source, CaptureSource::Process(_));
+        let pwfx_raw = client.GetMixFormat();
+        let (pwfx, owned_pwfx): (*mut WAVEFORMATEX, Option<*mut u8>) = match pwfx_raw {
+            Ok(p) if !p.is_null() => (p, None),
+            _ if is_process => {
+                audio_log("GetMixFormat not supported for process loopback — using hardcoded PCM 16-bit 44100Hz stereo");
+                // Allocate a WAVEFORMATEX on the heap (CoTaskMemFree compatible via CoTaskMemAlloc)
+                let fmt = Box::into_raw(Box::new(WAVEFORMATEX {
+                    wFormatTag: 1, // WAVE_FORMAT_PCM
+                    nChannels: 2,
+                    nSamplesPerSec: 44100,
+                    nAvgBytesPerSec: 44100 * 2 * 2,
+                    nBlockAlign: 4,
+                    wBitsPerSample: 16,
+                    cbSize: 0,
+                }));
+                (fmt, Some(fmt as *mut u8))
+            }
             Ok(_) => return fail("mixformat null".to_string()),
             Err(e) => return fail(format!("mixformat: {e}")),
         };
@@ -1611,7 +1632,10 @@ fn spawn_capture_source(
         let _ = DisconnectNamedPipe(pipe);
         let _ = CloseHandle(pipe);
         let _ = CloseHandle(ev);
-        if !pwfx.is_null() {
+        if let Some(ptr) = owned_pwfx {
+            // We heap-allocated via Box::into_raw — reclaim it.
+            drop(Box::from_raw(ptr as *mut WAVEFORMATEX));
+        } else if !pwfx.is_null() {
             CoTaskMemFree(Some(pwfx as *const core::ffi::c_void));
         }
     });
@@ -2584,12 +2608,26 @@ async fn show_overlay(app: tauri::AppHandle, lang: String) -> Result<(), String>
                 y: overlay_y.max(y),
             }));
         }
-        let _ = win.show();
-        let _ = win.eval(&js);
-        // Give focus back to LoL so it doesn't get minimized.
+        // Show overlay WITHOUT activating it to prevent LoL from losing focus and minimizing.
+        // Use SetWindowPos with HWND_TOPMOST + SWP_NOACTIVATE instead of Tauri's win.show().
+        // Find overlay HWND by title "Overlay" to avoid windows crate version mismatch with Tauri.
         unsafe {
-            use windows::Win32::UI::WindowsAndMessaging::{SetForegroundWindow, FindWindowW};
+            use windows::Win32::UI::WindowsAndMessaging::{
+                SetWindowPos, FindWindowW, ShowWindow,
+                HWND_TOPMOST, SWP_NOMOVE, SWP_NOSIZE, SWP_NOACTIVATE, SW_SHOWNOACTIVATE,
+                SetForegroundWindow,
+            };
             use windows::core::w;
+            if let Ok(oh) = FindWindowW(None, w!("Overlay")) {
+                let _ = ShowWindow(oh, SW_SHOWNOACTIVATE);
+                let _ = SetWindowPos(
+                    oh,
+                    HWND_TOPMOST,
+                    0, 0, 0, 0,
+                    SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
+                );
+            }
+            let _ = win.eval(&js);
             if let Ok(hwnd) = FindWindowW(None, w!("League of Legends (TM) Client")) {
                 let _ = SetForegroundWindow(hwnd);
             }
