@@ -10,6 +10,7 @@ import {
   getRecordingsFolder, setRecordingsFolder, selectRecordingsFolder, selectFfmpegFile,
   getAutoRecord, setAutoRecord, openVodFolder,
   getAudioMode, setAudioMode,
+  getMuteMic, setMuteMic,
   listAudioOutputs, getAudioOutputDevice, setAudioOutputDevice,
   downloadFfmpeg, onFfmpegProgress,
 } from '../tauri.js'
@@ -81,6 +82,7 @@ export default function AppSettings({ theme, onThemeChange, lang, onLangChange, 
   const [recordingsFolder, setRecordingsFolderState] = useState('')
   const [autoRecord, setAutoRecordState] = useState(false)
   const [audioMode, setAudioModeState] = useState('game')
+  const [muteMic, setMuteMicState] = useState(false)
   const [audioOutputs, setAudioOutputs] = useState([])
   const [audioOutputDevice, setAudioOutputDeviceState] = useState('')
   const [ffmpegTest, setFfmpegTest] = useState(null)
@@ -99,6 +101,7 @@ export default function AppSettings({ theme, onThemeChange, lang, onLangChange, 
     getRecordingsFolder().then(setRecordingsFolderState)
     getAutoRecord().then(setAutoRecordState)
     getAudioMode().then(setAudioModeState)
+    getMuteMic().then(setMuteMicState)
     getAudioOutputDevice().then(setAudioOutputDeviceState)
     listAudioOutputs().then(setAudioOutputs)
   }, [])
@@ -162,6 +165,12 @@ export default function AppSettings({ theme, onThemeChange, lang, onLangChange, 
     setAudioModeState(mode)
     await setAudioMode(mode)
     if (mode === 'system') refreshAudioOutputs()
+  }
+
+  const handleMuteMic = async () => {
+    const next = !muteMic
+    setMuteMicState(next)
+    await setMuteMic(next)
   }
 
   const handleAudioOutputDevice = async (id) => {
@@ -298,6 +307,15 @@ export default function AppSettings({ theme, onThemeChange, lang, onLangChange, 
                   </div>
                   <span className="settings-row-desc">{selectedModeDesc}</span>
                 </div>
+
+                <Row label={t(lang, 'muteMic')} desc={t(lang, 'muteMicDesc')}>
+                  <button
+                    className={`rt-toggle ${muteMic ? 'on' : ''}`}
+                    onClick={handleMuteMic}
+                  >
+                    <span className="rt-toggle-knob" />
+                  </button>
+                </Row>
 
                 {audioMode === 'system' && (
                   <>

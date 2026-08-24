@@ -351,7 +351,6 @@ export default function App() {
               recordingStartRef.current = Date.now()
               setIsRecording(true)
               recordingActiveRef.current = true
-              showOverlay(lang)
               /* On failure every ref must be cleared, otherwise the next poll
                  finalizes this aborted attempt as a zero-length ghost VOD */
               const abort = () => {
@@ -361,7 +360,8 @@ export default function App() {
                 hideOverlay()
               }
               startRecordingTauri().then(path => {
-                if (!path) abort()
+                if (!path) { abort(); return }
+                showOverlay(lang)
               }).catch(abort)
             }
             tryRecord()

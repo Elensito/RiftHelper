@@ -354,6 +354,8 @@ export default function VODPlayer({ vod, lang, onBack, puuid, summoner, showTeam
   const [showTeams, setShowTeams] = useState(showTeamsProp !== false)
   const [videoUrl, setVideoUrl] = useState(null)
   const [videoError, setVideoError] = useState(false)
+  const [videoRetry, setVideoRetry] = useState(0)
+  const videoErrorTimerRef = useRef(null)
 
   /* Matches recorded before Riot finished indexing stay "pending": the
      timeline/teams unlock as soon as the resolver patches the VOD. */
@@ -453,6 +455,7 @@ export default function VODPlayer({ vod, lang, onBack, puuid, summoner, showTeam
   }, [playing, hasVideoLive, bumpUi])
 
   useEffect(() => () => { if (uiTimerRef.current) clearTimeout(uiTimerRef.current) }, [])
+  useEffect(() => () => { if (videoErrorTimerRef.current) clearTimeout(videoErrorTimerRef.current) }, [])
 
   const team1 = mv.team1 || []
   const team2 = mv.team2 || []
@@ -468,7 +471,7 @@ export default function VODPlayer({ vod, lang, onBack, puuid, summoner, showTeam
         console.error('[VODPlayer] convertFileSrc failed:', e)
       })
     }
-  }, [vod.id, vod.hasVideo, vod.videoPath])
+  }, [vod.id, vod.hasVideo, vod.videoPath, videoRetry])
 
   useEffect(() => {
     if (!videoError || !vod.videoPath || !isTauri()) return
@@ -476,6 +479,7 @@ export default function VODPlayer({ vod, lang, onBack, puuid, summoner, showTeam
     const t = setTimeout(() => {
       setVideoError(false)
       setVideoUrl(null)
+      setVideoRetry(r => r + 1)
     }, 1000)
     return () => clearTimeout(t)
   }, [videoError, vod.videoPath])
@@ -695,7 +699,18 @@ export default function VODPlayer({ vod, lang, onBack, puuid, summoner, showTeam
             {hasVideo ? (
               <video ref={videoRef} className="vod-video" src={videoUrl} preload="metadata" onError={(e) => {
                 console.error('[VODPlayer] video load error:', e.target?.error, 'src:', videoUrl)
-                setVideoError(true)
+                if (!videoErrorTimerRef.current) {
+                  videoErrorTimerRef.current = setTimeout(() => {
+                    videoErrorTimerRef.current = null
+                    setVideoError(true)
+                  }, 1500)
+                }
+              }} onLoadedData={() => {
+                if (videoErrorTimerRef.current) {
+                  clearTimeout(videoErrorTimerRef.current)
+                  videoErrorTimerRef.current = null
+                }
+                setVideoError(false)
               }} />
             ) : (
               <div className="vod-video-placeholder vod-match-summary">

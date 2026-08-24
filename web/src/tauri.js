@@ -283,6 +283,18 @@ export async function setAudioMode(mode) {
   try { await invoke('set_audio_mode', { mode }) } catch {}
 }
 
+export async function getMuteMic() {
+  if (!isTauri()) return false
+  const { invoke } = await import('@tauri-apps/api/core')
+  try { return await invoke('get_mute_mic') } catch { return false }
+}
+
+export async function setMuteMic(enabled) {
+  if (!isTauri()) return
+  const { invoke } = await import('@tauri-apps/api/core')
+  try { await invoke('set_mute_mic', { enabled }) } catch {}
+}
+
 export async function listAudioOutputs() {
   if (!isTauri()) return []
   const { invoke } = await import('@tauri-apps/api/core')

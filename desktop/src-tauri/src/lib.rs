@@ -34,6 +34,30 @@ static FFMPEG_PROC: Mutex<Option<FFmpegProcess>> = Mutex::new(None);
 static FFMPEG_OUTPUT: Mutex<Option<String>> = Mutex::new(None);
 static AUDIO_CAPTURE_STOP: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
+/// Append a line to the audio debug log at %APPDATA%\com.rifthelper.desktop\rift-helper-audio.log
+/// so we can diagnose audio capture failures that `eprintln!` can't show (GUI app has no console).
+fn audio_log(msg: &str) {
+    eprintln!("[RiftHelper] {msg}");
+    if let Some(appdata) = std::env::var_os("APPDATA") {
+        let path = std::path::PathBuf::from(appdata)
+            .join("com.rifthelper.desktop")
+            .join("rift-helper-audio.log");
+        let _ = std::fs::create_dir_all(path.parent().unwrap_or(&path));
+        use std::io::Write;
+        if let Ok(mut f) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&path)
+        {
+            let ts = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs();
+            let _ = writeln!(f, "[{ts}] {msg}");
+        }
+    }
+}
+
 struct EventCaptureHandle {
     stop: Arc<std::sync::atomic::AtomicBool>,
 }
@@ -860,6 +884,22 @@ async fn set_audio_mode(app: tauri::AppHandle, mode: String) -> Result<(), Strin
 }
 
 #[tauri::command]
+async fn get_mute_mic(app: tauri::AppHandle) -> Result<bool, String> {
+    let cfg = read_config(&app);
+    Ok(cfg.get("muteMic")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false))
+}
+
+#[tauri::command]
+async fn set_mute_mic(app: tauri::AppHandle, enabled: bool) -> Result<(), String> {
+    let mut cfg = read_config(&app);
+    cfg["muteMic"] = serde_json::json!(enabled);
+    write_config(&app, &cfg);
+    Ok(())
+}
+
+#[tauri::command]
 async fn list_audio_output_devices() -> Result<Vec<serde_json::Value>, String> {
     let devices = unsafe { list_render_endpoints() }?;
     Ok(devices
@@ -1411,6 +1451,7 @@ fn spawn_capture_source(
         const STREAM_FLAGS_PROCESS: u32 = 0x0004_0000; // EVENTCALLBACK only — LOOPBACK is invalid for process loopback
 
         let fail = |msg: String| {
+            audio_log(&format!("capture thread error: {msg}"));
             let _ = tx.send(Err(msg));
         };
 
@@ -1419,12 +1460,22 @@ fn spawn_capture_source(
             CaptureSource::Endpoint(_) => STREAM_FLAGS_ENDPOINT,
         };
 
-        let client = match match source {
-            CaptureSource::Process(pid) => activate_process_loopback_client(pid),
-            CaptureSource::Endpoint(id) => open_endpoint_loopback_client(id),
-        } {
-            Ok(c) => c,
-            Err(e) => return fail(e),
+        audio_log(&format!("activating capture source: stream_flags=0x{stream_flags:08X}"));
+        let client = match &source {
+            CaptureSource::Process(pid) => {
+                audio_log(&format!("activating process loopback for PID={pid}"));
+                match activate_process_loopback_client(*pid) {
+                    Ok(c) => c,
+                    Err(e) => return fail(e),
+                }
+            }
+            CaptureSource::Endpoint(id) => {
+                audio_log(&format!("activating endpoint loopback for id={id:?}"));
+                match open_endpoint_loopback_client(id.clone()) {
+                    Ok(c) => c,
+                    Err(e) => return fail(e),
+                }
+            }
         };
 
         let pwfx = match client.GetMixFormat() {
@@ -1441,11 +1492,14 @@ fn spawn_capture_source(
         let float = tag == 3 || (extensible && bits == 32);
         let fmt_name = if float { "f32le" } else { "s16le" }.to_string();
 
+        audio_log(&format!("mixformat OK: fmt={fmt_name} rate={rate} ch={channels} bits={bits}"));
+
         let ev = match CreateEventW(None, false, false, None) {
             Ok(h) => h,
             Err(e) => return fail(format!("event: {e}")),
         };
 
+        audio_log(&format!("calling Initialize with stream_flags=0x{stream_flags:08X}..."));
         if let Err(e) = client.Initialize(
             AUDCLNT_SHAREMODE_SHARED,
             stream_flags,
@@ -1456,6 +1510,7 @@ fn spawn_capture_source(
         ) {
             return fail(format!("init: {e}"));
         }
+        audio_log("Initialize OK");
         if let Err(e) = client.SetEventHandle(ev) {
             return fail(format!("setevent: {e}"));
         }
@@ -1463,10 +1518,11 @@ fn spawn_capture_source(
             Ok(c) => c,
             Err(e) => return fail(format!("service: {e}")),
         };
+        audio_log("GetService OK, calling Start...");
         if let Err(e) = client.Start() {
             return fail(format!("start: {e}"));
         }
-        eprintln!("[RiftHelper] audio capture started: fmt={fmt_name} rate={rate} ch={channels} bits={bits}");
+        audio_log(&format!("audio capture started: fmt={fmt_name} rate={rate} ch={channels} bits={bits}"));
 
         // Report format so the caller can assemble ffmpeg args, then wait for
         // ffmpeg to be spawned before connecting the pipe.
@@ -1501,6 +1557,7 @@ fn spawn_capture_source(
                 return fail(format!("connect: {e}"));
             }
         }
+        audio_log("pipe connected, entering capture loop");
 
         let mut stopped = false;
         while !stopped {
@@ -1614,13 +1671,13 @@ fn add_capture_source(
             true
         }
         Ok(Err(e)) => {
-            eprintln!("[RiftHelper] audio capture error: {e}");
+            audio_log(&format!("audio capture error: {e}"));
             cancel.store(true, std::sync::atomic::Ordering::Relaxed);
             gate.open();
             false
         }
         Err(_) => {
-            eprintln!("[RiftHelper] audio capture timed out after 8s");
+            audio_log("audio capture timed out after 8s");
             cancel.store(true, std::sync::atomic::Ordering::Relaxed);
             gate.open();
             false
@@ -1642,11 +1699,11 @@ fn setup_audio_sources(
 
     if matches!(mode, AudioMode::Game | AudioMode::GameDiscord) {
         if let Some(gpid) = find_lol_window_pid() {
-            eprintln!("[RiftHelper] game audio: LoL PID={gpid}");
+            audio_log(&format!("game audio: LoL PID={gpid}"));
             let name = format!(r"\\.\pipe\rh-audio-game-{ts}");
             add_capture_source(&mut inputs, &mut gates, name, CaptureSource::Process(gpid));
         } else {
-            eprintln!("[RiftHelper] game audio: LoL PID not found — no window");
+            audio_log("game audio: LoL PID not found — no window");
         }
 
         if mode == AudioMode::GameDiscord {
@@ -2224,6 +2281,9 @@ async fn start_recording(app: tauri::AppHandle) -> Result<String, String> {
 
     // Audio per user setting (default: game-only via process loopback).
     let mode = audio_mode_from_cfg(&cfg);
+    let mute_mic = cfg.get("muteMic")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
     let out_dev = cfg.get("audioOutputDevice")
         .and_then(|v| v.as_str())
         .unwrap_or("")
@@ -2238,13 +2298,25 @@ async fn start_recording(app: tauri::AppHandle) -> Result<String, String> {
     }
     let has_audio = !audio_inputs.is_empty();
     if has_audio {
+        let mic_filter = mute_mic && matches!(mode, AudioMode::System);
         if audio_inputs.len() >= 2 {
             // Mix game + discord trees into one track (normalize=0 keeps level).
+            let filter = if mic_filter {
+                "[1:a]aformat=sample_rates=48000:channel_layouts=stereo,afftdn=nf=-25[a1];[2:a]aformat=sample_rates=48000:channel_layouts=stereo,afftdn=nf=-25[a2];[a1][a2]amix=inputs=2:duration=longest:normalize=0[aout]"
+            } else {
+                "[1:a]aformat=sample_rates=48000:channel_layouts=stereo[a1];[2:a]aformat=sample_rates=48000:channel_layouts=stereo[a2];[a1][a2]amix=inputs=2:duration=longest:normalize=0[aout]"
+            };
             ffmpeg_args.extend([
                 "-filter_complex".to_string(),
-                "[1:a]aformat=sample_rates=48000:channel_layouts=stereo[a1];[2:a]aformat=sample_rates=48000:channel_layouts=stereo[a2];[a1][a2]amix=inputs=2:duration=longest:normalize=0[aout]".to_string(),
+                filter.to_string(),
                 "-map".to_string(), "0:v:0".to_string(),
                 "-map".to_string(), "[aout]".to_string(),
+            ]);
+        } else if mic_filter {
+            ffmpeg_args.extend([
+                "-filter:a".to_string(), "afftdn=nf=-25".to_string(),
+                "-map".to_string(), "0:v:0".to_string(),
+                "-map".to_string(), "1:a:0".to_string(),
             ]);
         } else {
             ffmpeg_args.extend([
@@ -2691,6 +2763,8 @@ pub fn run() {
             set_auto_record,
             get_audio_mode,
             set_audio_mode,
+            get_mute_mic,
+            set_mute_mic,
             list_audio_output_devices,
             get_audio_output_device,
             set_audio_output_device,
