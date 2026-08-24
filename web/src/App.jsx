@@ -88,6 +88,7 @@ export default function App() {
   const latestMatchRef = useRef(null)
   const busyRef = useRef(false)
   const loadRef = useRef(null)
+  const inGameRef = useRef(false)
 
   useEffect(() => {
     loadRef.current = load
@@ -313,9 +314,6 @@ export default function App() {
 
       recordingGameDataRef.current = null
     }
-
-    /* Shared inGame state for watchdog to avoid false finalize during loading transitions */
-    const inGameRef = useRef(false)
 
     const poll = async () => {
       try {
