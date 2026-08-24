@@ -472,27 +472,6 @@ export default function VODPlayer({ vod, lang, onBack, puuid, summoner, showTeam
 
   useEffect(() => { setVideoError(false) }, [videoUrl])
 
-  /* On mount: verify the mp4 file actually exists and has content.  If it's
-     missing or too small, remove the ghost entry from localStorage so the
-     user never sees a broken VOD card again. */
-  useEffect(() => {
-    if (!vod.hasVideo || !vod.videoPath || !isTauri()) return
-    verifyVod(vod.videoPath).then(info => {
-      if (info && !info.ok) {
-        console.warn('[VODPlayer] broken VOD, cleaning up:', vod.videoPath, info)
-        deleteVodFiles(vod.videoPath)
-        // Remove from localStorage list
-        try {
-          const vods = JSON.parse(localStorage.getItem('rh-vods') || '[]')
-          const filtered = vods.filter(v => v.id !== vod.id)
-          localStorage.setItem('rh-vods', JSON.stringify(filtered))
-          // Force re-render by dispatching storage event
-          window.dispatchEvent(new Event('storage'))
-        } catch {}
-      }
-    })
-  }, [vod.id, vod.hasVideo, vod.videoPath])
-
   useEffect(() => {
     if (showTeamsProp === false) setShowTeams(false)
   }, [showTeamsProp])

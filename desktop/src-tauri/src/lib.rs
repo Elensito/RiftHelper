@@ -1053,12 +1053,13 @@ unsafe fn list_render_endpoints() -> Result<Vec<(String, String, bool)>, String>
 }
 
 /// VT_LPWSTR reader that avoids generated union field names.
+/// Layout must match PROPVARIANT on x64: vt(2) + wReserved(6) + union(16).
+/// For VT_LPWSTR the PWSTR pointer sits at the start of the union (offset 8).
 #[repr(C)]
 struct RawLpwstrVariant {
     vt: u16,
     reserved: [u16; 3],
-    pad: u32,
-    pwsz: *mut u16,
+    pwsz: *mut u16, // offset 8 — matches the PROPVARIANT union start
 }
 const VT_LPWSTR_U16: u16 = 31;
 
@@ -1067,7 +1068,6 @@ fn propvariant_to_string(pv: &windows::core::PROPVARIANT) -> Option<String> {
         let mut raw = RawLpwstrVariant {
             vt: 0,
             reserved: [0u16; 3],
-            pad: 0,
             pwsz: std::ptr::null_mut(),
         };
         std::ptr::copy_nonoverlapping(
@@ -1266,7 +1266,7 @@ const VIRTUAL_AUDIO_DEVICE_PROCESS_LOOPBACK: &str =
 struct AudioActivationParamsRaw {
     activation_type: i32, // 1 = AUDIOCLIENT_ACTIVATION_TYPE_PROCESS_LOOPBACK
     target_process_id: u32,
-    loopback_mode: i32, // 1 = PROCESS_LOOPBACK_MODE_INCLUDE_TARGET_PROCESS_TREE
+    loopback_mode: i32, // 0 = PROCESS_LOOPBACK_MODE_INCLUDE_TARGET_PROCESS_TREE
 }
 
 #[windows::core::implement(
@@ -1334,7 +1334,7 @@ unsafe fn activate_process_loopback_client(
     let params = AudioActivationParamsRaw {
         activation_type: 1,
         target_process_id: pid,
-        loopback_mode: 1,
+        loopback_mode: 0, // PROCESS_LOOPBACK_MODE_INCLUDE_TARGET_PROCESS_TREE
     };
     let params_ptr = &params as *const AudioActivationParamsRaw as *const core::ffi::c_void;
     let mut propvar = windows::Win32::System::Com::StructuredStorage::InitPropVariantFromBuffer(
@@ -1708,6 +1708,8 @@ static VIDEO_CAPTURE_STOP: std::sync::atomic::AtomicBool =
     std::sync::atomic::AtomicBool::new(false);
 static VIDEO_MODE_DDA: std::sync::atomic::AtomicBool =
     std::sync::atomic::AtomicBool::new(false);
+static OVERLAY_GEN: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(0);
 
 fn find_lol_hwnd() -> isize {
     use std::ffi::c_void;
@@ -1937,6 +1939,7 @@ fn run_video_capture(mut stdin: std::process::ChildStdin, hwnd_hint: isize, cw: 
     let frame_dur = std::time::Duration::from_millis(33);
     let mut next_tick = std::time::Instant::now();
     let mut missing_since: Option<std::time::Instant> = None;
+    let mut hidden_since: Option<std::time::Instant> = None;
     let mut prev_show = false;
 
     'outer: while !VIDEO_CAPTURE_STOP.load(std::sync::atomic::Ordering::SeqCst) {
@@ -1983,6 +1986,21 @@ fn run_video_capture(mut stdin: std::process::ChildStdin, hwnd_hint: isize, cw: 
             let show = client.is_some()
                 && lol_window_foreground(hwnd)
                 && pipe.out_w > 0;
+
+            // Track how long the game has been invisible.
+            if show {
+                hidden_since = None;
+            } else if hidden_since.is_none() {
+                hidden_since = Some(std::time::Instant::now());
+            }
+
+            // If game window exists but isn't foreground for 10s, the game
+            // ended or is in lobby — stop the capture.
+            if !show && hidden_since.map(|t| t.elapsed()).unwrap_or_default()
+                > std::time::Duration::from_secs(10)
+            {
+                break 'outer;
+            }
 
             // Zero canvas only on the visible→hidden transition.
             if !show && prev_show {
@@ -2461,13 +2479,21 @@ async fn show_overlay(app: tauri::AppHandle, lang: String) -> Result<(), String>
                 let _ = SetForegroundWindow(hwnd);
             }
         }
+        // Increment generation so a previous timer won't hide this overlay.
+        let gen = OVERLAY_GEN.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
         let handle = app.clone();
         std::thread::spawn(move || {
-            // Keep the card on screen for 5s, then slide it out before hiding.
             std::thread::sleep(std::time::Duration::from_secs(5));
+            // Only hide if no newer overlay has been shown.
+            if OVERLAY_GEN.load(std::sync::atomic::Ordering::SeqCst) != gen {
+                return;
+            }
             if let Some(w) = handle.get_webview_window("overlay") {
                 let _ = w.eval("if (window.__rhExit) window.__rhExit();");
                 std::thread::sleep(std::time::Duration::from_millis(750));
+                if OVERLAY_GEN.load(std::sync::atomic::Ordering::SeqCst) != gen {
+                    return;
+                }
                 if let Some(w) = handle.get_webview_window("overlay") {
                     let _ = w.hide();
                 }
