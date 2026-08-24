@@ -1363,7 +1363,6 @@ unsafe fn activate_process_loopback_client(
         ActivateAudioInterfaceAsync, IActivateAudioInterfaceCompletionHandler, IAudioClient,
     };
     use windows::Win32::System::Com::CoInitializeEx;
-    use windows::Win32::System::Com::StructuredStorage::PropVariantClear;
     use windows::Win32::System::Threading::{CreateEventW, WaitForSingleObject};
 
     let _ = CoInitializeEx(None, windows::Win32::System::Com::COINIT_MULTITHREADED);
@@ -1414,7 +1413,8 @@ unsafe fn activate_process_loopback_client(
     let client = client_slot.lock().ok().and_then(|mut g| g.take());
     let _ = CloseHandle(event);
     drop(operation);
-    PropVariantClear(&mut propvar).ok();
+    // propvar is dropped automatically by windows::core::PROPVARIANT's Drop impl
+    // which calls PropVariantClear — do NOT call it manually here.
     if waited != WAIT_OBJECT_0 {
         return Err("audio activation timed out".to_string());
     }
