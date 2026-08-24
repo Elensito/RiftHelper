@@ -445,9 +445,13 @@ fn find_lol_window_rect() -> Option<(i32, i32, i32, i32)> {
             if title.contains("League of Legends (TM) Client") {
                 let mut rect = RECT { left: 0, top: 0, right: 0, bottom: 0 };
                 if GetWindowRect(hwnd, &mut rect) != 0 {
-                    let slot = &*(lparam as *const Mutex<Option<(i32, i32, i32, i32)>>);
-                    if let Ok(mut guard) = slot.lock() {
-                        *guard = Some((rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top));
+                    let w = rect.right - rect.left;
+                    let h = rect.bottom - rect.top;
+                    if w >= 16 && h >= 16 {
+                        let slot = &*(lparam as *const Mutex<Option<(i32, i32, i32, i32)>>);
+                        if let Ok(mut guard) = slot.lock() {
+                            *guard = Some((rect.left, rect.top, w, h));
+                        }
                     }
                 }
                 return 0;
@@ -2149,14 +2153,23 @@ async fn start_recording(app: tauri::AppHandle) -> Result<String, String> {
     // gdigrab desktop-region capture when DDA is unavailable.
     VIDEO_CAPTURE_STOP.store(false, std::sync::atomic::Ordering::SeqCst);
 
-    // find_lol_hwnd() may return 0 right after the game start wait (the
-    // window is not yet visible during loading). Retry a few times before
-    // giving up on DDA.
-    let mut hwnd = find_lol_hwnd();
-    for _ in 0..5u32 {
-        if hwnd != 0 { break; }
+    // find_lol_hwnd() may return a window handle right after the game start
+    // wait, but the window may not have been sized yet (1×1 client rect).
+    // Retry until the window has proper dimensions or we give up.
+    let mut hwnd: isize = 0;
+    for _attempt in 0..15u32 {
+        let h = find_lol_hwnd();
+        if h != 0 {
+            // Window exists — but does it have real dimensions?
+            if let Some((_, _, w, ht)) = lol_client_rect(h) {
+                if w >= 16 && ht >= 16 {
+                    hwnd = h;
+                    break;
+                }
+            }
+            // Window exists but dimensions are bad — wait and retry.
+        }
         std::thread::sleep(std::time::Duration::from_secs(2));
-        hwnd = find_lol_hwnd();
     }
     let video_plan = if hwnd != 0 { dda_validate(hwnd) } else { None };
     // If DDA failed but the window exists, try DDA once more with a fresh
