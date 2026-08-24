@@ -1641,13 +1641,6 @@ fn setup_audio_sources(
                 );
             }
         }
-
-        // Fallback: if Game/GameDiscord mode produced zero inputs (LoL PID
-        // not found), capture all system audio so the recording isn't silent.
-        if inputs.is_empty() {
-            let name = format!(r"\\.\pipe\rh-audio-system-fb-{ts}");
-            add_capture_source(&mut inputs, &mut gates, name, CaptureSource::Endpoint(None));
-        }
     } else if mode == AudioMode::System {
         let id = if output_device_id.trim().is_empty() {
             None
