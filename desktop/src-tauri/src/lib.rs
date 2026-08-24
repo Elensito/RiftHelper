@@ -2302,6 +2302,24 @@ async fn stop_recording(app: tauri::AppHandle) -> Result<Option<VodFile>, String
     Ok(output_path.map(|path| VodFile { path, duration }))
 }
 
+/// Removes a VOD and all its associated files from disk (mp4, events.json,
+/// thumbnail). Called from the frontend when the user deletes a VOD.
+#[tauri::command]
+fn delete_vod(video_path: String) -> Result<(), String> {
+    let base = std::path::Path::new(&video_path);
+    // Remove the mp4 itself
+    let _ = std::fs::remove_file(base);
+    // Remove events.json
+    let mut ev = base.to_path_buf();
+    ev.set_extension("events.json");
+    let _ = std::fs::remove_file(ev);
+    // Remove thumbnail
+    let mut th = base.to_path_buf();
+    th.set_extension("thumb.jpg");
+    let _ = std::fs::remove_file(th);
+    Ok(())
+}
+
 /// Cheap WinAPI check used by the frontend watchdog to detect the end of a
 /// game the moment the "League of Legends (TM) Client" window disappears.
 #[tauri::command]
@@ -2550,6 +2568,7 @@ pub fn run() {
             read_vod_events,
             get_last_game_mode,
             get_vod_thumb,
+            delete_vod,
             show_overlay,
             hide_overlay,
             download_and_setup_ffmpeg,

@@ -28,10 +28,11 @@ const NAV_ITEMS = [
   { id: 'rift-timeline', icon: 'timeline', label: 'Rift Timeline', labelEs: 'Rift Timeline' },
 ]
 
-export default function NavSidebar({ view, onNavigate, lang, onSettingsOpen }) {
+export default function NavSidebar({ view, onNavigate, lang, onSettingsOpen, riftSubTab, onSubTabChange }) {
   const [hovered, setHovered] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
   const [isMobile, setIsMobile] = useState(false)
+  const [hoveredNav, setHoveredNav] = useState(null)
   const sidebarRef = useRef(null)
   const triggerRef = useRef(null)
   const hoverTimerRef = useRef(null)
@@ -123,16 +124,51 @@ export default function NavSidebar({ view, onNavigate, lang, onSettingsOpen }) {
 
         <div className="nav-items">
           {NAV_ITEMS.filter(item => item.id !== 'rift-timeline' || isTauri()).map((item) => (
-            <button
+            <div
               key={item.id}
-              className={`nav-item ${view === item.id ? 'active' : ''}`}
-              onClick={() => handleNav(item.id)}
-              title={!expanded ? (lang === 'es' ? item.labelEs : item.label) : undefined}
+              className="nav-item-wrap"
+              onMouseEnter={() => item.id === 'rift-timeline' && setHoveredNav('rift-timeline')}
+              onMouseLeave={() => item.id === 'rift-timeline' && setHoveredNav(null)}
             >
-              <span className="nav-item-icon">{ICONS[item.icon]}</span>
-              <span className="nav-item-label">{lang === 'es' ? item.labelEs : item.label}</span>
-              {view === item.id && <span className="nav-item-indicator" />}
-            </button>
+              <button
+                className={`nav-item ${view === item.id ? 'active' : ''}`}
+                onClick={() => {
+                  if (item.id === 'rift-timeline') {
+                    onNavigate(item.id)
+                    onSubTabChange('recordings')
+                  } else {
+                    handleNav(item.id)
+                  }
+                }}
+                title={!expanded ? (lang === 'es' ? item.labelEs : item.label) : undefined}
+              >
+                <span className="nav-item-icon">{ICONS[item.icon]}</span>
+                <span className="nav-item-label">{lang === 'es' ? item.labelEs : item.label}</span>
+                {view === item.id && <span className="nav-item-indicator" />}
+              </button>
+              {item.id === 'rift-timeline' && hoveredNav === 'rift-timeline' && expanded && (
+                <div className="nav-submenu">
+                  <button
+                    className={`nav-subitem ${view === 'rift-timeline' && riftSubTab === 'recordings' ? 'active' : ''}`}
+                    onClick={() => {
+                      onNavigate('rift-timeline')
+                      onSubTabChange('recordings')
+                    }}
+                  >
+                    {t(lang, 'navRecordings')}
+                  </button>
+                  <button
+                    className={`nav-subitem ${view === 'rift-timeline' && riftSubTab === 'clips' ? 'active' : ''}`}
+                    onClick={() => {
+                      onNavigate('rift-timeline')
+                      onSubTabChange('clips')
+                    }}
+                  >
+                    {t(lang, 'navClips')}
+                  </button>
+                </div>
+              )}
+            </div>
           ))}
         </div>
 

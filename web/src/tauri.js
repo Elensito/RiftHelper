@@ -231,6 +231,12 @@ export async function showInFolder(path) {
   try { await invoke('show_in_folder', { path }) } catch {}
 }
 
+export async function deleteVodFiles(videoPath) {
+  if (!isTauri() || !videoPath) return
+  const { invoke } = await import('@tauri-apps/api/core')
+  try { await invoke('delete_vod', { videoPath }) } catch {}
+}
+
 export async function notifyGameEnded(summoner, lang = 'en') {
   const { t } = await import('./i18n.js')
   const title = 'RiftHelper'

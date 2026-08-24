@@ -19,7 +19,7 @@ import VODPlayer from './components/VODPlayer.jsx'
 import AppSettings from './components/AppSettings.jsx'
 import { fetchSummoner, fetchLatestMatch, fetchLiveGame, fetchMastery, fetchChampions, fetchChampion } from './api.js'
 import { retryPendingMatches, loadVodsRaw, saveVodsRaw } from './match-resolver.js'
-import { isTauri, getRiotClientSession, notifyGameEnded, startRecordingTauri, stopRecordingTauri, getAutoRecord, isLolWindowOpen, showOverlay, hideOverlay, getLastGameMode } from './tauri.js'
+import { isTauri, getRiotClientSession, notifyGameEnded, startRecordingTauri, stopRecordingTauri, getAutoRecord, isLolWindowOpen, showOverlay, hideOverlay, getLastGameMode, deleteVodFiles } from './tauri.js'
 import { matchGroup, t } from './i18n.js'
 
 const PAGE_SIZE = 20
@@ -71,6 +71,7 @@ export default function App() {
   const [ownProfile, setOwnProfile] = useState(false)
 
   const [activeVod, setActiveVod] = useState(null)
+  const [riftSubTab, setRiftSubTab] = useState('recordings')
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [isRecording, setIsRecording] = useState(false)
   const [recordingExiting, setRecordingExiting] = useState(false)
@@ -511,10 +512,15 @@ export default function App() {
         onNavigate={(v) => { if (v !== 'rift-timeline' || isTauri()) setView(v); setActiveVod(null); setChampion(null) }}
         lang={lang}
         onSettingsOpen={() => setSettingsOpen(true)}
+        riftSubTab={riftSubTab}
+        onSubTabChange={setRiftSubTab}
       />
 
       {view === 'rift-timeline' && activeVod ? (
-        <VODPlayer vod={activeVod} lang={lang} puuid={profile?.summoner?.puuid} summoner={profile?.summoner} onBack={() => setActiveVod(null)} />
+        (() => {
+          const isCompetitiveQueue = /solo|flex/i.test(activeVod.queue || '')
+          return <VODPlayer vod={activeVod} lang={lang} puuid={profile?.summoner?.puuid} summoner={profile?.summoner} onBack={() => setActiveVod(null)} showTeamsProp={isCompetitiveQueue} />
+        })()
       ) : view === 'rift-timeline' ? (
         <>
           <header className="topbar topbar-icon-rail">
@@ -537,6 +543,15 @@ export default function App() {
               lang={lang}
               onOpenVod={(vod) => setActiveVod(vod)}
               profile={profile}
+              subTab={riftSubTab}
+              onSubTabChange={setRiftSubTab}
+              onDelete={(vod) => {
+                if (confirm(t(lang, 'confirmDeleteVod'))) {
+                  deleteVodFiles(vod.videoPath)
+                  const vods = loadVodsRaw().filter(v => v.id !== vod.id)
+                  saveVodsRaw(vods)
+                }
+              }}
             />
           </main>
         </>

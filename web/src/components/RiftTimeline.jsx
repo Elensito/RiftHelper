@@ -5,6 +5,7 @@ import { deleteRecordingBlob } from '../video-recorder.js'
 
 const VOD_STORAGE_KEY = 'rh-vods'
 const VOD_SETTINGS_KEY = 'rh-vod-settings'
+const CLIPS_STORAGE_KEY = 'rh-clips'
 
 function loadVods() {
   try {
@@ -76,8 +77,11 @@ function VodThumb({ vod }) {
 
 export { loadVods, saveVods, loadSettings, saveSettings, VOD_STORAGE_KEY, VOD_SETTINGS_KEY }
 
-export default function RiftTimeline({ lang, onOpenVod, profile }) {
+export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTabChange, onDelete, onSeekTo }) {
   const [vods, setVods] = useState(loadVods)
+  const [clips, setClips] = useState(() => {
+    try { return JSON.parse(localStorage.getItem(CLIPS_STORAGE_KEY) || '[]') } catch { return [] }
+  })
   const [contextMenu, setContextMenu] = useState(null)
   const [settings, setSettings] = useState(() => {
     const s = loadSettings()
@@ -104,6 +108,9 @@ export default function RiftTimeline({ lang, onOpenVod, profile }) {
   useEffect(() => {
     const onStorage = (e) => {
       if (e.key === VOD_STORAGE_KEY) setVods(loadVods())
+      if (e.key === CLIPS_STORAGE_KEY) {
+        try { setClips(JSON.parse(localStorage.getItem(CLIPS_STORAGE_KEY) || '[]')) } catch { setClips([]) }
+      }
     }
     window.addEventListener('storage', onStorage)
     const onCustom = () => setVods(loadVods())
@@ -121,6 +128,12 @@ export default function RiftTimeline({ lang, onOpenVod, profile }) {
     window.dispatchEvent(new Event('rh-vods-changed'))
     deleteRecordingBlob(id).catch(() => {})
   }, [vods])
+
+  const deleteClip = useCallback((clipId) => {
+    const filtered = clips.filter(c => c.id !== clipId)
+    setClips(filtered)
+    try { localStorage.setItem(CLIPS_STORAGE_KEY, JSON.stringify(filtered)) } catch {}
+  }, [clips])
 
   const handleContextMenu = useCallback((e, vod) => {
     e.preventDefault()
@@ -194,43 +207,117 @@ export default function RiftTimeline({ lang, onOpenVod, profile }) {
         </span>
       </div>
 
-      {vods.length === 0 ? (
+      <div className="rt-subtabs">
+        <button
+          className={`rt-subtab ${subTab === 'recordings' ? 'active' : ''}`}
+          onClick={() => onSubTabChange('recordings')}
+        >
+          {t(lang, 'navRecordings')}
+        </button>
+        <button
+          className={`rt-subtab ${subTab === 'clips' ? 'active' : ''}`}
+          onClick={() => onSubTabChange('clips')}
+        >
+          {t(lang, 'navClips')}
+        </button>
+      </div>
+
+      {subTab === 'recordings' ? (
+        vods.length === 0 ? (
+          <div className="rt-empty">
+            <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" opacity="0.3">
+              <circle cx="12" cy="12" r="10" />
+              <polygon points="10 8 16 12 10 16 10 8" />
+            </svg>
+            <p className="rt-empty-title">{t(lang, 'noVods')}</p>
+            <p className="rt-empty-sub">{t(lang, 'noVodsHint')}</p>
+          </div>
+        ) : (
+          <div className="rt-grid">
+            {vods.map((vod) => (
+              <div key={vod.id} className="rt-card" onClick={() => onOpenVod(vod)} onContextMenu={(e) => handleContextMenu(e, vod)}>
+                <div className="rt-card-thumb">
+                  {vod.thumbnail ? (
+                    <img src={vod.thumbnail} alt="" />
+                  ) : (
+                    <VodThumb vod={vod} />
+                  )}
+                  <span className="rt-card-duration">{formatDuration(vod.duration)}</span>
+                  {vod.pendingMatch && <span className="rt-card-badge pending">{t(lang, 'pendingBadge')}</span>}
+                  {vod.result === 'win' && <span className="rt-card-badge win">W</span>}
+                  {vod.result === 'loss' && <span className="rt-card-badge loss">L</span>}
+                </div>
+                <div className="rt-card-info">
+                  <div className="rt-card-champ">
+                    {vod.championIcon && <img className="rt-card-champ-icon" src={vod.championIcon} alt="" />}
+                    <span className="rt-card-champ-name">{vod.champion || '—'}</span>
+                  </div>
+                  <div className="rt-card-meta">
+                    <span className="rt-card-kda">{relTime(lang, vod.date)}</span>
+                    <span className="rt-card-date">{formatDate(vod.date)}</span>
+                  </div>
+                  <div className="rt-card-queue">{vod.queue || ''}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )
+      ) : clips.length === 0 ? (
         <div className="rt-empty">
           <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" opacity="0.3">
-            <circle cx="12" cy="12" r="10" />
-            <polygon points="10 8 16 12 10 16 10 8" />
+            <circle cx="6" cy="6" r="3" />
+            <circle cx="6" cy="18" r="3" />
+            <line x1="20" y1="4" x2="8.12" y2="15.88" />
+            <line x1="14.47" y1="14.48" x2="20" y2="20" />
+            <line x1="8.12" y1="8.12" x2="12" y2="12" />
           </svg>
-          <p className="rt-empty-title">{t(lang, 'noVods')}</p>
-          <p className="rt-empty-sub">{t(lang, 'noVodsHint')}</p>
+          <p className="rt-empty-title">{t(lang, 'noClips')}</p>
+          <p className="rt-empty-sub">{t(lang, 'noClipsHint')}</p>
         </div>
       ) : (
         <div className="rt-grid">
-          {vods.map((vod) => (
-            <div key={vod.id} className="rt-card" onClick={() => onOpenVod(vod)} onContextMenu={(e) => handleContextMenu(e, vod)}>
-              <div className="rt-card-thumb">
-                {vod.thumbnail ? (
-                  <img src={vod.thumbnail} alt="" />
-                ) : (
-                  <VodThumb vod={vod} />
-                )}
-                <span className="rt-card-duration">{formatDuration(vod.duration)}</span>
-                {vod.pendingMatch && <span className="rt-card-badge pending">{t(lang, 'pendingBadge')}</span>}
-                {vod.result === 'win' && <span className="rt-card-badge win">W</span>}
-                {vod.result === 'loss' && <span className="rt-card-badge loss">L</span>}
-              </div>
-              <div className="rt-card-info">
-                <div className="rt-card-champ">
-                  {vod.championIcon && <img className="rt-card-champ-icon" src={vod.championIcon} alt="" />}
-                  <span className="rt-card-champ-name">{vod.champion || '—'}</span>
+          {clips.map((clip) => {
+            const vod = vods.find(v => v.id === clip.vodId)
+            const duration = clip.end - clip.start
+            return (
+              <div key={clip.id} className="rt-card rt-card-clip">
+                <div className="rt-card-clip-header">
+                  <div className="rt-card-champ">
+                    {vod?.championIcon && <img className="rt-card-champ-icon" src={vod.championIcon} alt="" />}
+                    <span className="rt-card-champ-name">{vod?.champion || '—'}</span>
+                  </div>
+                  <div className="rt-card-meta">
+                    <span className="rt-card-date">{formatDate(clip.date)}</span>
+                  </div>
                 </div>
-                <div className="rt-card-meta">
-                  <span className="rt-card-kda">{relTime(lang, vod.date)}</span>
-                  <span className="rt-card-date">{formatDate(vod.date)}</span>
+                <div className="rt-card-clip-times">
+                  <span className="rt-clip-time">{t(lang, 'clipFrom')} {formatDuration(clip.start)}</span>
+                  <span className="rt-clip-time">{t(lang, 'clipTo')} {formatDuration(clip.end)}</span>
+                  <span className="rt-clip-duration">{t(lang, 'clipDuration')}: {formatDuration(duration)}</span>
                 </div>
-                <div className="rt-card-queue">{vod.queue || ''}</div>
+                {vod?.queue && <div className="rt-card-queue">{vod.queue}</div>}
+                <div className="rt-card-clip-actions">
+                  <button
+                    className="rt-btn rt-btn-sm rt-btn-ghost"
+                    onClick={() => {
+                      onOpenVod(vod)
+                      if (onSeekTo) onSeekTo(clip.start)
+                    }}
+                  >
+                    {t(lang, 'clipOpenVod')}
+                  </button>
+                  <button
+                    className="rt-btn rt-btn-sm rt-btn-danger"
+                    onClick={() => {
+                      if (confirm(t(lang, 'confirmDeleteClip'))) deleteClip(clip.id)
+                    }}
+                  >
+                    {t(lang, 'deleteVod')}
+                  </button>
+                </div>
               </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
       )}
 

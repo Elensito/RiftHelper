@@ -5920,6 +5920,128 @@ button.p-name:hover {
   color: var(--text);
 }
 
+/* ── Nav Submenu ── */
+.nav-item-wrap {
+  position: relative;
+}
+
+.nav-submenu {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px 0 4px 44px;
+  animation: navSubmenuIn 0.15s ease;
+}
+
+@keyframes navSubmenuIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.nav-subitem {
+  display: block;
+  width: 100%;
+  padding: 6px 12px;
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 12px;
+  text-align: left;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: color 0.15s, background 0.15s;
+}
+
+.nav-subitem:hover {
+  color: var(--text);
+  background: rgba(0, 229, 255, 0.06);
+}
+
+.nav-subitem.active {
+  color: var(--cyan);
+  background: rgba(0, 229, 255, 0.1);
+}
+
+/* ── Rift Timeline Sub-tabs ── */
+.rt-subtabs {
+  display: flex;
+  gap: 4px;
+  padding: 0 24px 12px;
+}
+
+.rt-subtab {
+  padding: 6px 16px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 8px;
+  color: var(--muted);
+  font-size: 13px;
+  cursor: pointer;
+  transition: color 0.15s, background 0.15s, border-color 0.15s;
+}
+
+.rt-subtab:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.rt-subtab.active {
+  color: var(--cyan);
+  background: rgba(0, 229, 255, 0.08);
+  border-color: rgba(0, 229, 255, 0.2);
+}
+
+/* ── Clip Cards ── */
+.rt-card-clip {
+  cursor: default;
+}
+
+.rt-card-clip-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 14px 8px;
+}
+
+.rt-card-clip-times {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 0 14px;
+}
+
+.rt-clip-time {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.rt-clip-duration {
+  font-size: 12px;
+  color: var(--cyan);
+  font-weight: 500;
+}
+
+.rt-card-clip-actions {
+  display: flex;
+  gap: 6px;
+  padding: 10px 14px;
+  border-top: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.rt-btn-sm {
+  padding: 4px 10px;
+  font-size: 12px;
+  border-radius: 6px;
+}
+
+.rt-btn-danger {
+  color: var(--red);
+}
+
+.rt-btn-danger:hover {
+  background: rgba(255, 80, 80, 0.1);
+}
+
 /* ── Mobile Hamburger (shown only ≤920px) ── */
 @media (min-width: 921px) {
   .nav-hamburger {

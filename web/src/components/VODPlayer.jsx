@@ -334,7 +334,7 @@ function PlayerTeamPanel({ team, teamLabel, isWinner, lang }) {
 
 /* ── Player ────────────────────────────────────────────────── */
 
-export default function VODPlayer({ vod, lang, onBack, puuid, summoner }) {
+export default function VODPlayer({ vod, lang, onBack, puuid, summoner, showTeamsProp }) {
   /* personal events need the puuid the backend used to flag is_player;
      fall back to the puuid stored in the VOD when no profile is loaded */
   const evPuuid = puuid || vod.puuid || ''
@@ -351,7 +351,7 @@ export default function VODPlayer({ vod, lang, onBack, puuid, summoner }) {
   const [clipping, setClipping] = useState(false)
   const [clipStart, setClipStart] = useState(null)
   const [clipEnd, setClipEnd] = useState(null)
-  const [showTeams, setShowTeams] = useState(true)
+  const [showTeams, setShowTeams] = useState(showTeamsProp !== false)
   const [videoUrl, setVideoUrl] = useState(null)
   const [videoError, setVideoError] = useState(false)
 
@@ -467,6 +467,10 @@ export default function VODPlayer({ vod, lang, onBack, puuid, summoner }) {
   }, [vod.id, vod.hasVideo, vod.videoPath])
 
   useEffect(() => { setVideoError(false) }, [videoUrl])
+
+  useEffect(() => {
+    if (showTeamsProp === false) setShowTeams(false)
+  }, [showTeamsProp])
 
   /* Sync volume / mute to the video element */
   useEffect(() => {
@@ -654,7 +658,7 @@ export default function VODPlayer({ vod, lang, onBack, puuid, summoner }) {
               <line x1="12" y1="15" x2="12" y2="3" />
             </svg>
           </button>
-          {!showTeams && (
+          {showTeamsProp !== false && !showTeams && (
             <button className="rt-btn rt-btn-ghost rt-btn-sm" onClick={() => setShowTeams(true)} title={t(lang, 'toggleTeams')}>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
@@ -838,7 +842,7 @@ export default function VODPlayer({ vod, lang, onBack, puuid, summoner }) {
           </div>
         </div>
 
-        {showTeams && (
+        {showTeamsProp !== false && showTeams && (
           <div className="vod-sidebar-right">
             <div className="vod-sidebar-header">
               <span className="vod-sidebar-title">{t(lang, 'teams')}</span>
