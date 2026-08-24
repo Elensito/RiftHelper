@@ -1264,13 +1264,13 @@ impl StartGate {
 const VIRTUAL_AUDIO_DEVICE_PROCESS_LOOPBACK: &str =
     "{4E851656-72BA-46E9-BB12-27BCD95BD16B}";
 
-/* Flat ABI mirror of AUDIOCLIENT_ACTIVATION_PARAMS (layout fixed by WinABI:
-   ActivationType u32 @0 + union{ ProcessLoopbackTarget{ u32 pid @4, i32 mode @8 } }). */
+/* Flat ABI mirror of AUDIOCLIENT_ACTIVATION_PARAMS (8 bytes total):
+   ActivationType i32 @0 + union{ DWORD ProcessLoopbackTargetProcessId @4 }.
+   The union is 4 bytes; mode is NOT a separate field. */
 #[repr(C)]
 struct AudioActivationParamsRaw {
     activation_type: i32, // 1 = AUDIOCLIENT_ACTIVATION_TYPE_PROCESS_LOOPBACK
     target_process_id: u32,
-    loopback_mode: i32, // 0 = PROCESS_LOOPBACK_MODE_INCLUDE_TARGET_PROCESS_TREE
 }
 
 #[windows::core::implement(
@@ -1334,11 +1334,10 @@ unsafe fn activate_process_loopback_client(
     // mmdevapi's marshaling and corrupting the heap (0xc0000374 crash a few
     // seconds into every recording).
     const _: () =
-        assert!(std::mem::size_of::<AudioActivationParamsRaw>() == 12);
+        assert!(std::mem::size_of::<AudioActivationParamsRaw>() == 8);
     let params = AudioActivationParamsRaw {
         activation_type: 1,
         target_process_id: pid,
-        loopback_mode: 0, // PROCESS_LOOPBACK_MODE_INCLUDE_TARGET_PROCESS_TREE
     };
     let params_ptr = &params as *const AudioActivationParamsRaw as *const core::ffi::c_void;
     let mut propvar = windows::Win32::System::Com::StructuredStorage::InitPropVariantFromBuffer(
@@ -1603,7 +1602,7 @@ fn add_capture_source(
         }
     }
     let (rx, gate, cancel) = spawn_named_capture_thread(source, name.clone());
-    match rx.recv_timeout(std::time::Duration::from_millis(5000)) {
+    match rx.recv_timeout(std::time::Duration::from_millis(8000)) {
         Ok(Ok((fmt, rate, ch, _bits))) => {
             inputs.push(AudioInput::Pipe(vec![
                 "-f".into(), fmt,
@@ -1614,12 +1613,16 @@ fn add_capture_source(
             gates.push(gate);
             true
         }
-        other => {
+        Ok(Err(e)) => {
+            eprintln!("[RiftHelper] audio capture error: {e}");
             cancel.store(true, std::sync::atomic::Ordering::Relaxed);
             gate.open();
-            if let Err(ref e) = other {
-                eprintln!("[RiftHelper] audio capture failed: {e}");
-            }
+            false
+        }
+        Err(_) => {
+            eprintln!("[RiftHelper] audio capture timed out after 8s");
+            cancel.store(true, std::sync::atomic::Ordering::Relaxed);
+            gate.open();
             false
         }
     }

@@ -687,7 +687,7 @@ export default function VODPlayer({ vod, lang, onBack, puuid, summoner, showTeam
 
       <div className="vod-main">
         <div className="vod-video-area"
-          onMouseEnter={() => { if (playing) bumpUi() }}
+          onMouseEnter={() => bumpUi() }
           onMouseMove={() => { if (playing) bumpUi() }}
           onMouseLeave={() => { if (playing) hideUiNow() }}
         >

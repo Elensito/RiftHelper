@@ -7217,6 +7217,7 @@ body.sidebar-expanded .vod-player-view {
      keeping the control deck visible. */
   transform: translateZ(0);
   backface-visibility: hidden;
+  isolation: isolate;
 }
 
 .vod-video-placeholder {
