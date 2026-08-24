@@ -1408,10 +1408,16 @@ fn spawn_capture_source(
         };
         use windows::Win32::System::Threading::{CreateEventW, SetEvent, WaitForSingleObject};
 
-        const STREAM_FLAGS: u32 = 0x0002_0000 | 0x0004_0000; // LOOPBACK | EVENTCALLBACK
+        const STREAM_FLAGS_ENDPOINT: u32 = 0x0002_0000 | 0x0004_0000; // LOOPBACK | EVENTCALLBACK (endpoint only)
+        const STREAM_FLAGS_PROCESS: u32 = 0x0004_0000; // EVENTCALLBACK only — LOOPBACK is invalid for process loopback
 
         let fail = |msg: String| {
             let _ = tx.send(Err(msg));
+        };
+
+        let stream_flags = match &source {
+            CaptureSource::Process(_) => STREAM_FLAGS_PROCESS,
+            CaptureSource::Endpoint(_) => STREAM_FLAGS_ENDPOINT,
         };
 
         let client = match match source {
@@ -1443,7 +1449,7 @@ fn spawn_capture_source(
 
         if let Err(e) = client.Initialize(
             AUDCLNT_SHAREMODE_SHARED,
-            STREAM_FLAGS,
+            stream_flags,
             2_000_000, // ~200ms buffer (100ns units)
             0,
             pwfx as *const WAVEFORMATEX,
@@ -1461,6 +1467,7 @@ fn spawn_capture_source(
         if let Err(e) = client.Start() {
             return fail(format!("start: {e}"));
         }
+        eprintln!("[RiftHelper] audio capture started: fmt={fmt_name} rate={rate} ch={channels} bits={bits}");
 
         // Report format so the caller can assemble ffmpeg args, then wait for
         // ffmpeg to be spawned before connecting the pipe.

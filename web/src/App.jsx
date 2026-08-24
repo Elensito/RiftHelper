@@ -209,9 +209,11 @@ export default function App() {
   useEffect(() => {
     if (!profile) return
     let wasInGameLocal = null
+    let consecutiveNotInGame = 0
 
     /* Shared end-of-game flow: stop ffmpeg, save the VOD entry, backfill stats */
     const finalizeRecording = async () => {
+      consecutiveNotInGame = 0
       wasInGameRef.current = false
       finalizedAtRef.current = Date.now()
       hideOverlay()
@@ -366,7 +368,12 @@ export default function App() {
           }
         }
         if (!inGame && wasInGameRef.current === true) {
-          await finalizeRecording()
+          consecutiveNotInGame += 1
+          if (consecutiveNotInGame >= 2) {
+            await finalizeRecording()
+          }
+        } else if (inGame) {
+          consecutiveNotInGame = 0
         }
         wasInGameLocal = inGame
       } catch (e) {}
