@@ -1890,8 +1890,13 @@ unsafe fn dda_setup(hwnd: isize) -> Option<DdaPipeline> {
 /// Returns the evened client dimensions for the rawvideo stream.
 fn dda_validate(hwnd: isize) -> Option<(u32, u32)> {
     let (_x, _y, w, h) = lol_client_rect(hwnd)?;
+    let ew = w & !1;
+    let eh = h & !1;
+    if ew < 16 || eh < 16 {
+        return None;
+    }
     if unsafe { dda_setup(hwnd) }.is_some() {
-        Some((w & !1, h & !1))
+        Some((ew, eh))
     } else {
         None
     }
@@ -2343,13 +2348,23 @@ async fn stop_recording(app: tauri::AppHandle) -> Result<Option<VodFile>, String
     };
     // Small delay to let the file system flush
     std::thread::sleep(std::time::Duration::from_millis(200));
-    // Guard: if ffmpeg produced an empty / tiny file (no frames written),
-    // discard it so the frontend doesn't create a ghost VOD entry.
-    let duration = output_path
-        .as_deref()
+    // Guard: if ffmpeg never produced a valid mp4 (file missing, empty,
+    // or too small), discard the path so the frontend doesn't create a
+    // ghost VOD entry with "Screen recording not available".
+    let valid_path = output_path.as_deref().and_then(|p| {
+        let meta = std::fs::metadata(p).ok()?;
+        let size = meta.len();
+        if size < 4096 {
+            eprintln!("[RiftHelper] VOD too small ({} bytes), discarding: {}", size, p);
+            let _ = std::fs::remove_file(p);
+            return None;
+        }
+        Some(p)
+    });
+    let duration = valid_path
         .and_then(|p| probe_media_duration(&app, p))
         .unwrap_or(0.0);
-    Ok(output_path.map(|path| VodFile { path, duration }))
+    Ok(valid_path.map(|path| VodFile { path: path.to_string(), duration }))
 }
 
 /// Removes a VOD and all its associated files from disk (mp4, events.json,
