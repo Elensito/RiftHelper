@@ -156,7 +156,7 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
     if (window.__TAURI_INTERNALS__) {
       try {
         const { invoke } = await import('@tauri-apps/api/core')
-        await invoke('open_vod_folder', { path: settings.vodPath || '' })
+        await invoke('open_vod_folder')
       } catch {}
     } else if (settings.vodPath) {
       window.open('file:///' + settings.vodPath.replace(/\\/g, '/'))

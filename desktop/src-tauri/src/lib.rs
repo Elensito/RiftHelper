@@ -2501,9 +2501,11 @@ async fn show_overlay(app: tauri::AppHandle, lang: String) -> Result<(), String>
         let _ = win.eval(&js);
         // Refocus LoL so it stays in the foreground (overlay steals focus).
         unsafe {
-            use windows::Win32::UI::WindowsAndMessaging::{SetForegroundWindow, FindWindowW};
+            use windows::Win32::UI::WindowsAndMessaging::{SetForegroundWindow, FindWindowW, ShowWindow, SW_RESTORE};
             use windows::core::w;
             if let Ok(hwnd) = FindWindowW(None, w!("League of Legends (TM) Client")) {
+                // Force-restore if minimized, then refocus
+                let _ = ShowWindow(hwnd, SW_RESTORE);
                 let _ = SetForegroundWindow(hwnd);
             }
         }

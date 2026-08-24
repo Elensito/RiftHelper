@@ -314,11 +314,15 @@ export default function App() {
       recordingGameDataRef.current = null
     }
 
+    /* Shared inGame state for watchdog to avoid false finalize during loading transitions */
+    const inGameRef = useRef(false)
+
     const poll = async () => {
       try {
         const data = await fetchLiveGame(profile.summoner.name, profile.summoner.tag)
         setLive(data)
         const inGame = !!data.in_game
+        inGameRef.current = inGame
         if (tab === 'live') {
           if (wasInGameLocal === true && !inGame) {
             notifyGameEnded(profile.summoner, lang)
@@ -386,6 +390,9 @@ export default function App() {
       try {
         const open = await isLolWindowOpen()
         if (open) { wdMisses = 0; return }
+        // Don't finalize if Riot API still says game is in progress —
+        // window might be temporarily hidden during loading→in-game transition
+        if (inGameRef.current) { wdMisses = 0; return }
         wdMisses += 1
         if (wdMisses >= 2) {
           wdMisses = 0
