@@ -470,6 +470,16 @@ export default function VODPlayer({ vod, lang, onBack, puuid, summoner, showTeam
     }
   }, [vod.id, vod.hasVideo, vod.videoPath])
 
+  useEffect(() => {
+    if (!videoError || !vod.videoPath || !isTauri()) return
+    console.warn('[VODPlayer] video error, trying retry in 1s')
+    const t = setTimeout(() => {
+      setVideoError(false)
+      setVideoUrl(null)
+    }, 1000)
+    return () => clearTimeout(t)
+  }, [videoError, vod.videoPath])
+
   useEffect(() => { setVideoError(false) }, [videoUrl])
 
   useEffect(() => {

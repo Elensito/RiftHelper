@@ -80,6 +80,7 @@ export default function App() {
   const recordingActiveRef = useRef(false)
   const autoRecordRef = useRef(null)
   const wasInGameRef = useRef(null)
+  const finalizedAtRef = useRef(0)
   /* Latest match id known BEFORE the current game started — used to reject
      stale /check results that still point at the previous game */
   const preGameMatchIdRef = useRef('')
@@ -212,6 +213,7 @@ export default function App() {
     /* Shared end-of-game flow: stop ffmpeg, save the VOD entry, backfill stats */
     const finalizeRecording = async () => {
       wasInGameRef.current = false
+      finalizedAtRef.current = Date.now()
       hideOverlay()
       if (!recordingStartRef.current) return
       const duration = Math.floor((Date.now() - recordingStartRef.current) / 1000)
@@ -323,7 +325,7 @@ export default function App() {
           }
           if (!inGame) setTab('matches')
         }
-        if (inGame && wasInGameRef.current !== true) {
+        if (inGame && wasInGameRef.current !== true && Date.now() - finalizedAtRef.current > 30000) {
           wasInGameRef.current = true
           if (isTauri()) {
             recordingGameDataRef.current = {
