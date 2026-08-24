@@ -207,21 +207,6 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
         </span>
       </div>
 
-      <div className="rt-subtabs">
-        <button
-          className={`rt-subtab ${subTab === 'recordings' ? 'active' : ''}`}
-          onClick={() => onSubTabChange('recordings')}
-        >
-          {t(lang, 'navRecordings')}
-        </button>
-        <button
-          className={`rt-subtab ${subTab === 'clips' ? 'active' : ''}`}
-          onClick={() => onSubTabChange('clips')}
-        >
-          {t(lang, 'navClips')}
-        </button>
-      </div>
-
       {subTab === 'recordings' ? (
         vods.length === 0 ? (
           <div className="rt-empty">

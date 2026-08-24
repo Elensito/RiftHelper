@@ -2118,11 +2118,27 @@ async fn start_recording(app: tauri::AppHandle) -> Result<String, String> {
     // when the window is minimized or unfocused). Fall back to the legacy
     // gdigrab desktop-region capture when DDA is unavailable.
     VIDEO_CAPTURE_STOP.store(false, std::sync::atomic::Ordering::SeqCst);
-    let hwnd = find_lol_hwnd();
-    let video_plan = if hwnd != 0 {
-        dda_validate(hwnd)
-    } else {
-        None
+
+    // find_lol_hwnd() may return 0 right after the game start wait (the
+    // window is not yet visible during loading). Retry a few times before
+    // giving up on DDA.
+    let mut hwnd = find_lol_hwnd();
+    for _ in 0..5u32 {
+        if hwnd != 0 { break; }
+        std::thread::sleep(std::time::Duration::from_secs(2));
+        hwnd = find_lol_hwnd();
+    }
+    let video_plan = if hwnd != 0 { dda_validate(hwnd) } else { None };
+    // If DDA failed but the window exists, try DDA once more with a fresh
+    // handle after a short delay — the window may have just appeared.
+    let video_plan = match video_plan {
+        Some(_) => video_plan,
+        None if hwnd == 0 => {
+            std::thread::sleep(std::time::Duration::from_secs(3));
+            let h2 = find_lol_hwnd();
+            if h2 != 0 { dda_validate(h2) } else { None }
+        }
+        None => None,
     };
     VIDEO_MODE_DDA.store(video_plan.is_some(), std::sync::atomic::Ordering::SeqCst);
 

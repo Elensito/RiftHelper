@@ -239,7 +239,7 @@ export default function App() {
       }
       /* Nothing was actually captured (backend never started): don't save
          a ghost pending entry for an aborted attempt */
-      if (!videoPath && duration < 15) return
+      if (!videoPath) return
       const gd = recordingGameDataRef.current || {}
       const preGameId = preGameMatchIdRef.current || ''
 
