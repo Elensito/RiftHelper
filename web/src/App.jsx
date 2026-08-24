@@ -88,7 +88,6 @@ export default function App() {
   const latestMatchRef = useRef(null)
   const busyRef = useRef(false)
   const loadRef = useRef(null)
-  const inGameRef = useRef(false)
 
   useEffect(() => {
     loadRef.current = load
@@ -320,7 +319,6 @@ export default function App() {
         const data = await fetchLiveGame(profile.summoner.name, profile.summoner.tag)
         setLive(data)
         const inGame = !!data.in_game
-        inGameRef.current = inGame
         if (tab === 'live') {
           if (wasInGameLocal === true && !inGame) {
             notifyGameEnded(profile.summoner, lang)
@@ -388,9 +386,6 @@ export default function App() {
       try {
         const open = await isLolWindowOpen()
         if (open) { wdMisses = 0; return }
-        // Don't finalize if Riot API still says game is in progress —
-        // window might be temporarily hidden during loading→in-game transition
-        if (inGameRef.current) { wdMisses = 0; return }
         wdMisses += 1
         if (wdMisses >= 2) {
           wdMisses = 0

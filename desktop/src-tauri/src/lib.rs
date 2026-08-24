@@ -1610,7 +1610,9 @@ fn add_capture_source(
         other => {
             cancel.store(true, std::sync::atomic::Ordering::Relaxed);
             gate.open();
-            let _ = other;
+            if let Err(ref e) = other {
+                eprintln!("[RiftHelper] audio capture failed: {e}");
+            }
             false
         }
     }
@@ -1630,8 +1632,11 @@ fn setup_audio_sources(
 
     if matches!(mode, AudioMode::Game | AudioMode::GameDiscord) {
         if let Some(gpid) = find_lol_window_pid() {
+            eprintln!("[RiftHelper] game audio: LoL PID={gpid}");
             let name = format!(r"\\.\pipe\rh-audio-game-{ts}");
             add_capture_source(&mut inputs, &mut gates, name, CaptureSource::Process(gpid));
+        } else {
+            eprintln!("[RiftHelper] game audio: LoL PID not found — no window");
         }
 
         if mode == AudioMode::GameDiscord {
@@ -2499,13 +2504,11 @@ async fn show_overlay(app: tauri::AppHandle, lang: String) -> Result<(), String>
         }
         let _ = win.show();
         let _ = win.eval(&js);
-        // Refocus LoL so it stays in the foreground (overlay steals focus).
+        // Give focus back to LoL so it doesn't get minimized.
         unsafe {
-            use windows::Win32::UI::WindowsAndMessaging::{SetForegroundWindow, FindWindowW, ShowWindow, SW_RESTORE};
+            use windows::Win32::UI::WindowsAndMessaging::{SetForegroundWindow, FindWindowW};
             use windows::core::w;
             if let Ok(hwnd) = FindWindowW(None, w!("League of Legends (TM) Client")) {
-                // Force-restore if minimized, then refocus
-                let _ = ShowWindow(hwnd, SW_RESTORE);
                 let _ = SetForegroundWindow(hwnd);
             }
         }
