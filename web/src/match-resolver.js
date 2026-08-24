@@ -76,6 +76,14 @@ export async function retryPendingMatches(summoner, excludeIds = []) {
       changed = true
       continue
     }
+    /* Practice / custom games never appear in Riot's Match-V5 index.
+       Belt-and-suspenders: even if the queue name wasn't set correctly
+       at creation time, refuse to bind these VODs to any match. */
+    if (/practice|custom/i.test(String(vod.queue || ''))) {
+      vod.pendingMatch = false
+      changed = true
+      continue
+    }
     const champ = vod.pendingChampion || vod.champion || ''
     const cand = fresh.find(m =>
       m.match_id &&

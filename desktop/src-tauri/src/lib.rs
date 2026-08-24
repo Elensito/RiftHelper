@@ -1919,11 +1919,18 @@ unsafe fn blit_client(
 /// Streams BGRA frames of the game client into ffmpeg's stdin as a rawvideo
 /// feed at ~30fps until VIDEO_CAPTURE_STOP fires. Dropping stdin closes the
 /// pipe: ffmpeg sees video EOF and finalizes the file cleanly.
+///
+/// The canvas retains the last known content between successful DDA frames.
+/// `canvas.fill(0)` is ONLY applied when transitioning from visible→hidden
+/// (show → !show). When DDA times out while the game is in the foreground
+/// the previous content is rewritten as-is — correct CFR behaviour that
+/// avoids turning practice-tool-like static scenes entirely black.
 fn run_video_capture(mut stdin: std::process::ChildStdin, hwnd_hint: isize, cw: u32, ch: u32) {
     let mut canvas = vec![0u8; cw as usize * ch as usize * 4];
     let frame_dur = std::time::Duration::from_millis(33);
     let mut next_tick = std::time::Instant::now();
     let mut missing_since: Option<std::time::Instant> = None;
+    let mut prev_show = false;
 
     'outer: while !VIDEO_CAPTURE_STOP.load(std::sync::atomic::Ordering::SeqCst) {
         let hwnd = if hwnd_hint != 0 && lol_window_alive(hwnd_hint) {
@@ -1932,8 +1939,6 @@ fn run_video_capture(mut stdin: std::process::ChildStdin, hwnd_hint: isize, cw: 
             find_lol_hwnd()
         };
         if hwnd == 0 {
-            // Window gone: keep feeding black briefly, then bail so the
-            // recording ends instead of running forever headless.
             if missing_since.map(|t| t.elapsed()).unwrap_or_default()
                 > std::time::Duration::from_secs(20)
             {
@@ -1942,7 +1947,10 @@ fn run_video_capture(mut stdin: std::process::ChildStdin, hwnd_hint: isize, cw: 
             if missing_since.is_none() {
                 missing_since = Some(std::time::Instant::now());
             }
-            canvas.fill(0);
+            if prev_show {
+                canvas.fill(0);
+                prev_show = false;
+            }
             let _ = stdin.write_all(&canvas);
             next_tick += frame_dur;
             let now = std::time::Instant::now();
@@ -1959,35 +1967,52 @@ fn run_video_capture(mut stdin: std::process::ChildStdin, hwnd_hint: isize, cw: 
             }
         };
 
+        // Inner loop: reuse the duplication pipeline until it goes stale.
         loop {
             if VIDEO_CAPTURE_STOP.load(std::sync::atomic::Ordering::SeqCst) {
                 break 'outer;
             }
-            let show = match lol_client_rect(hwnd) {
-                Some((rx, ry, rw, rh)) => {
-                    lol_window_foreground(hwnd) && blit_ready(&pipe, rx, ry, rw, rh)
-                }
-                None => false,
-            };
-            canvas.fill(0);
+            let client = lol_client_rect(hwnd);
+            let show = client.is_some()
+                && lol_window_foreground(hwnd)
+                && pipe.out_w > 0;
+
+            // Zero canvas only on the visible→hidden transition.
+            if !show && prev_show {
+                canvas.fill(0);
+            }
+            prev_show = show;
 
             unsafe {
                 let mut info = DXGI_OUTDUPL_FRAME_INFO::default();
                 let mut resource: Option<IDXGIResource> = None;
-                if pipe.dup.AcquireNextFrame(0, &mut info, &mut resource).is_ok() {
-                    if let Ok(tex) = resource.unwrap().cast::<ID3D11Texture2D>() {
-                        pipe.ctx.CopyResource(&pipe.staging, &tex);
-                        let mut mapped = D3D11_MAPPED_SUBRESOURCE::default();
-                        if pipe.ctx.Map(&pipe.staging, 0, D3D11_MAP_READ, 0, Some(&mut mapped)).is_ok() {
-                            if show {
-                                if let Some((rx, ry, rw, rh)) = lol_client_rect(hwnd) {
-                                    blit_client(&pipe, &mapped, rx, ry, rw, rh, &mut canvas, cw);
+                match pipe.dup.AcquireNextFrame(16, &mut info, &mut resource) {
+                    Ok(()) => {
+                        if let Ok(tex) = resource.unwrap().cast::<ID3D11Texture2D>() {
+                            pipe.ctx.CopyResource(&pipe.staging, &tex);
+                            let mut mapped = D3D11_MAPPED_SUBRESOURCE::default();
+                            if pipe.ctx.Map(&pipe.staging, 0, D3D11_MAP_READ, 0, Some(&mut mapped)).is_ok() {
+                                if show {
+                                    if let Some((rx, ry, rw, rh)) = lol_client_rect(hwnd) {
+                                        canvas.fill(0);
+                                        blit_client(&pipe, &mapped, rx, ry, rw, rh, &mut canvas, cw);
+                                    }
                                 }
+                                pipe.ctx.Unmap(&pipe.staging, 0);
                             }
-                            pipe.ctx.Unmap(&pipe.staging, 0);
+                        }
+                        let _ = pipe.dup.ReleaseFrame();
+                    }
+                    Err(e) => {
+                        let code = e.code();
+                        use windows::Win32::Graphics::Dxgi::DXGI_ERROR_WAIT_TIMEOUT;
+                        if code == DXGI_ERROR_WAIT_TIMEOUT {
+                            // No new frame — keep previous canvas content.
+                        } else {
+                            // ACCESS_LOST or other: output changed, recreate.
+                            break;
                         }
                     }
-                    let _ = pipe.dup.ReleaseFrame();
                 }
                 let _ = stdin.write_all(&canvas);
             }
@@ -1999,12 +2024,6 @@ fn run_video_capture(mut stdin: std::process::ChildStdin, hwnd_hint: isize, cw: 
     }
 }
 
-/// The blit needs the pipeline's output origin; when the game jumps to a
-/// monitor this thread does not duplicate, drop the stale pipeline instead
-/// of cropping garbage coordinates.
-fn blit_ready(pipe: &DdaPipeline, _rx: i32, _ry: i32, _rw: u32, _rh: u32) -> bool {
-    pipe.out_w > 0 && pipe.out_h > 0
-}
 
 #[derive(Serialize)]
 struct VodFile {

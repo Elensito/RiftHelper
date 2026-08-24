@@ -245,10 +245,15 @@ export default function App() {
       /* Practice tool and custom games never appear in Riot's Match-V5
          index: creating them as "pending" would poll forever and risk
          binding some unrelated future match. Detect the mode from the
-         LCD capture and mark those VODs as final from the start. */
+         LCD capture AND from the live-game queue ID (belt + suspenders)
+         and mark those VODs as final from the start. */
       let gameModeRaw = ''
       try { gameModeRaw = (await getLastGameMode()) || '' } catch {}
+      const queue = gd.queue || ''
+      const queueNum = Number(queue)
       const unindexed = /practice|custom/i.test(gameModeRaw)
+        || /practice|custom/i.test(String(gd.game?.mode || gd.game?.gameMode || ''))
+        || queueNum === 3100
       /* Champion snapshot from the live-game data captured at record time */
       let champion = ''
       let championIcon = ''
@@ -257,7 +262,6 @@ export default function App() {
         const lp = lt ? lt.players.find(p => p.is_player) : null
         if (lp) { champion = lp.champion || ''; championIcon = lp.champion_icon || '' }
       }
-      const queue = gd.queue || ''
 
       /* Riot takes 1–5 min to index a finished match, so the latest-match
          endpoint still returns the PREVIOUS game right after the end. The VOD
