@@ -244,6 +244,10 @@ export default function App() {
       /* Nothing was actually captured (backend never started): don't save
          a ghost pending entry for an aborted attempt */
       if (!videoPath) return
+      /* Discard very short recordings (< 10s): these are ghost VODs caused by
+         the recording starting and immediately being finalized (e.g. window
+         detection race or audio setup delay). */
+      if ((realDuration || duration) < 10) return
       const gd = recordingGameDataRef.current || {}
       const preGameId = preGameMatchIdRef.current || ''
 

@@ -1368,23 +1368,26 @@ unsafe fn activate_process_loopback_client(
 
     let _ = CoInitializeEx(None, windows::Win32::System::Com::COINIT_MULTITHREADED);
 
-    // Build the activation PROPVARIANT (VT_BLOB wrapping the params struct).
-    // Built via the official helper: hand-rolling the variant previously put
-    // cbSize at the wrong struct offset, sending a size-0 blob through
-    // mmdevapi's marshaling and corrupting the heap (0xc0000374 crash a few
-    // seconds into every recording).
     const _: () =
         assert!(std::mem::size_of::<AudioActivationParamsRaw>() == 8);
     let params = AudioActivationParamsRaw {
         activation_type: 1,
         target_process_id: pid,
     };
-    let params_ptr = &params as *const AudioActivationParamsRaw as *const core::ffi::c_void;
-    let mut propvar = windows::Win32::System::Com::StructuredStorage::InitPropVariantFromBuffer(
-        params_ptr,
-        std::mem::size_of::<AudioActivationParamsRaw>() as u32,
-    )
-    .map_err(|e| format!("propvariant: {e}"))?;
+    let params_ptr = &params as *const AudioActivationParamsRaw as *const u8;
+
+    // Build PROPVARIANT manually for exact ABI control.  The VT_BLOB
+    // layout on x64 is: vt(u16) + reserved(6) + cbSize(u32) + pad(4) + pBlobData(ptr).
+    let mut propvar: windows::core::PROPVARIANT =
+        std::mem::zeroed();
+    let pv_raw = &mut propvar as *mut _ as *mut u8;
+    // offset 0 = vt (VARTYPE = u16, LE). VT_BLOB = 65
+    *(pv_raw as *mut u16) = 65u16;
+    // offset 8 = cbSize (u32) — x64 PROPVARIANT: [vt:2][r1:2][r2:2][r3:2][blob...]
+    // blob union starts at offset 8; cbSize is first field at offset 8
+    *(pv_raw.add(8) as *mut u32) = std::mem::size_of::<AudioActivationParamsRaw>() as u32;
+    // offset 16 = pBlobData (pointer, x64)
+    *(pv_raw.add(16) as *mut *const u8) = params_ptr;
 
     let event = CreateEventW(None, false, false, None).map_err(|e| e.to_string())?;
     let result_flag = std::sync::Arc::new(std::sync::atomic::AtomicI32::new(-1));
@@ -1398,7 +1401,6 @@ unsafe fn activate_process_loopback_client(
     let handler: IActivateAudioInterfaceCompletionHandler = signal.into();
 
     let device_path = HSTRING::from(VIRTUAL_AUDIO_DEVICE_PROCESS_LOOPBACK);
-    // Keep the operation alive until the completion event fires.
     let operation = ActivateAudioInterfaceAsync(
         PCWSTR::from_raw(device_path.as_ptr()),
         &IAudioClient::IID,
@@ -1716,6 +1718,15 @@ fn setup_audio_sources(
                     CaptureSource::Process(dpid),
                 );
             }
+        }
+
+        // Fallback: if process loopback produced no inputs (e.g. E_INVALIDARG on
+        // some Windows builds), silently fall back to endpoint loopback so the
+        // user at least gets system audio instead of silence.
+        if inputs.is_empty() {
+            audio_log("process loopback produced no inputs — falling back to endpoint loopback");
+            let name = format!(r"\\.\pipe\rh-audio-system-fb-{ts}");
+            add_capture_source(&mut inputs, &mut gates, name, CaptureSource::Endpoint(None));
         }
     } else if mode == AudioMode::System {
         let id = if output_device_id.trim().is_empty() {
@@ -2454,8 +2465,8 @@ async fn stop_recording(app: tauri::AppHandle) -> Result<Option<VodFile>, String
     let valid_path = output_path.as_deref().and_then(|p| {
         let meta = std::fs::metadata(p).ok()?;
         let size = meta.len();
-        if size < 4096 {
-            eprintln!("[RiftHelper] VOD too small ({} bytes), discarding: {}", size, p);
+        if size < 50_000 {
+            audio_log(&format!("VOD too small ({size} bytes), discarding: {p}"));
             let _ = std::fs::remove_file(p);
             return None;
         }
