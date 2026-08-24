@@ -1302,7 +1302,7 @@ impl StartGate {
 }
 
 const VIRTUAL_AUDIO_DEVICE_PROCESS_LOOPBACK: &str =
-    "{4E851656-72BA-46E9-BB12-27BCD95BD16B}";
+    r"\\?\swd#tssoftmix#{4E851656-72BA-46E9-BB12-27BCD95BD16B}";
 
 /* Flat ABI mirror of AUDIOCLIENT_ACTIVATION_PARAMS (8 bytes total):
    ActivationType i32 @0 + union{ DWORD ProcessLoopbackTargetProcessId @4 }.
@@ -1721,13 +1721,12 @@ fn setup_audio_sources(
             }
         }
 
-        // Fallback: if process loopback produced no inputs (e.g. E_INVALIDARG on
-        // some Windows builds), silently fall back to endpoint loopback so the
-        // user at least gets system audio instead of silence.
+        // No fallback to endpoint loopback here: process loopback should
+        // capture ONLY the target process audio. Falling back to system-wide
+        // endpoint loopback would capture YouTube, browser, etc. which the
+        // user does NOT want in "League Only" or "Game+Discord" modes.
         if inputs.is_empty() {
-            audio_log("process loopback produced no inputs — falling back to endpoint loopback");
-            let name = format!(r"\\.\pipe\rh-audio-system-fb-{ts}");
-            add_capture_source(&mut inputs, &mut gates, name, CaptureSource::Endpoint(None));
+            audio_log("process loopback produced no inputs — no audio (not falling back to system)");
         }
     } else if mode == AudioMode::System {
         let id = if output_device_id.trim().is_empty() {
@@ -2032,7 +2031,6 @@ fn run_video_capture(mut stdin: std::process::ChildStdin, hwnd_hint: isize, cw: 
     let frame_dur = std::time::Duration::from_millis(33);
     let mut next_tick = std::time::Instant::now();
     let mut missing_since: Option<std::time::Instant> = None;
-    let mut hidden_since: Option<std::time::Instant> = None;
     let mut prev_show = false;
 
     'outer: while !VIDEO_CAPTURE_STOP.load(std::sync::atomic::Ordering::SeqCst) {
@@ -2043,7 +2041,7 @@ fn run_video_capture(mut stdin: std::process::ChildStdin, hwnd_hint: isize, cw: 
         };
         if hwnd == 0 {
             if missing_since.map(|t| t.elapsed()).unwrap_or_default()
-                > std::time::Duration::from_secs(20)
+                > std::time::Duration::from_secs(60)
             {
                 break 'outer;
             }
@@ -2080,20 +2078,10 @@ fn run_video_capture(mut stdin: std::process::ChildStdin, hwnd_hint: isize, cw: 
                 && lol_window_foreground(hwnd)
                 && pipe.out_w > 0;
 
-            // Track how long the game has been invisible.
-            if show {
-                hidden_since = None;
-            } else if hidden_since.is_none() {
-                hidden_since = Some(std::time::Instant::now());
-            }
-
-            // If game window exists but isn't foreground for 10s, the game
-            // ended or is in lobby — stop the capture.
-            if !show && hidden_since.map(|t| t.elapsed()).unwrap_or_default()
-                > std::time::Duration::from_secs(10)
-            {
-                break 'outer;
-            }
+            // Do NOT stop the capture when the game is just not foreground
+            // (e.g. tabbed out briefly, Discord overlay, alt-tab). The canvas
+            // emits black frames while hidden. The recording is stopped by the
+            // frontend's game-end detection (Live Client Data API) or the user.
 
             // Zero canvas only on the visible→hidden transition.
             if !show && prev_show {
