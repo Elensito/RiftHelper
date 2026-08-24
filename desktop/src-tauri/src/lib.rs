@@ -2327,18 +2327,6 @@ async fn stop_recording(app: tauri::AppHandle) -> Result<Option<VodFile>, String
     std::thread::sleep(std::time::Duration::from_millis(200));
     // Guard: if ffmpeg produced an empty / tiny file (no frames written),
     // discard it so the frontend doesn't create a ghost VOD entry.
-    if let Some(ref p) = output_path {
-        match std::fs::metadata(p) {
-            Ok(meta) if meta.len() < 4096 => {
-                let _ = std::fs::remove_file(p);
-                return Ok(None);
-            }
-            Err(_) => {
-                return Ok(None);
-            }
-            _ => {}
-        }
-    }
     let duration = output_path
         .as_deref()
         .and_then(|p| probe_media_duration(&app, p))
@@ -2454,6 +2442,7 @@ async fn show_overlay(app: tauri::AppHandle, lang: String) -> Result<(), String>
 
     if let Some(win) = app.get_webview_window("overlay") {
         let _ = win.set_always_on_top(true);
+        let _ = win.set_focusable(false);
         if let Some((x, y, w, h)) = find_lol_window_rect() {
             let overlay_x = x + w - 360;
             let overlay_y = y + (h / 2) - 45;
@@ -2464,6 +2453,14 @@ async fn show_overlay(app: tauri::AppHandle, lang: String) -> Result<(), String>
         }
         let _ = win.show();
         let _ = win.eval(&js);
+        // Refocus LoL so it stays in the foreground (overlay steals focus).
+        unsafe {
+            use windows::Win32::UI::WindowsAndMessaging::{SetForegroundWindow, FindWindowW};
+            use windows::core::w;
+            if let Ok(hwnd) = FindWindowW(None, w!("League of Legends (TM) Client")) {
+                let _ = SetForegroundWindow(hwnd);
+            }
+        }
         let handle = app.clone();
         std::thread::spawn(move || {
             // Keep the card on screen for 5s, then slide it out before hiding.
