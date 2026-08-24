@@ -84,6 +84,7 @@ export default function App() {
   /* Latest match id known BEFORE the current game started — used to reject
      stale /check results that still point at the previous game */
   const preGameMatchIdRef = useRef('')
+  const gameTimeOffsetRef = useRef(0) // gameTime at recording start (for timeline alignment)
   const sentinelRef = useRef(null)
   const latestMatchRef = useRef(null)
   const busyRef = useRef(false)
@@ -299,6 +300,7 @@ export default function App() {
         pendingMatch: !unindexed,
         pendingChampion: champion,
         pendingAt: Date.now(),
+        gameTimeOffset: gameTimeOffsetRef.current || 0, // gameTime at recording start for timeline alignment
       })
       saveVodsRaw(vods)
 
@@ -318,6 +320,7 @@ export default function App() {
       setTimeout(tick, 20000)
 
       recordingGameDataRef.current = null
+      gameTimeOffsetRef.current = 0
     }
 
     const poll = async () => {
@@ -360,11 +363,14 @@ export default function App() {
               const abort = () => {
                 recordingActiveRef.current = false
                 recordingStartRef.current = null
+                gameTimeOffsetRef.current = 0
                 setIsRecording(false)
                 hideOverlay()
               }
-              startRecordingTauri().then(path => {
-                if (!path) { abort(); return }
+              startRecordingTauri().then(result => {
+                if (!result || !result.path) { abort(); return }
+                // Store gameTime for timeline alignment with video
+                gameTimeOffsetRef.current = result.gameTime || 0
                 showOverlay(lang)
               }).catch(abort)
             }

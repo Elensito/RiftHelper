@@ -150,7 +150,17 @@ export async function setAutoRecord(enabled) {
 export async function startRecordingTauri() {
   if (!isTauri()) return null
   const { invoke } = await import('@tauri-apps/api/core')
-  try { return await invoke('start_recording') } catch { return null }
+  try {
+    const raw = await invoke('start_recording')
+    // start_recording now returns JSON with {path, gameTime}
+    if (typeof raw === 'string') {
+      try {
+        const parsed = JSON.parse(raw)
+        return { path: parsed.path, gameTime: parsed.gameTime || 0 }
+      } catch { return { path: raw, gameTime: 0 } }
+    }
+    return { path: raw, gameTime: 0 }
+  } catch { return null }
 }
 
 export async function stopRecordingTauri() {

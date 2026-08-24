@@ -84,7 +84,7 @@ function fmt(sec) {
 
 /* ── Neon match timeline ───────────────────────────────────── */
 
-function NeonTimeline({ matchId, puuid, lang, duration, current, onSeek, localData }) {
+function NeonTimeline({ matchId, puuid, lang, duration, current, onSeek, localData, gameTimeOffset }) {
   /* v2 prefix: older caches were fetched without a puuid, so every event had
      is_player=false and personal kill/death markers never rendered */
   const CACHE_PREFIX = 'rh-vtl2-'
@@ -131,9 +131,9 @@ function NeonTimeline({ matchId, puuid, lang, duration, current, onSeek, localDa
   const tlDuration = Math.max(1, duration || (data ? (data.duration_min || 0) * 60 : 0))
 
   /* The track domain is VIDEO time, but event seconds are GAME-clock time.
-     Since recordings start at ~00:00 they mostly line up, yet the victory /
-     defeat screen makes videos run longer than the match. Scale markers by
-     the video/game duration ratio (only when both are plausible). */
+     Recordings skip the loading screen via gameTimeOffset, so events need
+     that offset subtracted before scaling. The victory/defeat screen still
+     makes videos run longer than the match, so we scale by duration ratio. */
   const gameDur = data ? Math.max(0, (data.duration_min || 0) * 60) : 0
   const scale = useMemo(() => {
     if (!duration || gameDur < 300 || duration < 300) return 1
@@ -143,11 +143,16 @@ function NeonTimeline({ matchId, puuid, lang, duration, current, onSeek, localDa
 
   const events = useMemo(() => {
     if (!data || !data.events) return []
+    // gameTimeOffset: gameTime at recording start (loading screen skip).
+    // Events use game-clock seconds; video starts at 0s. Subtract offset so
+    // events align with the correct video timestamp.
+    const offset = gameTimeOffset || 0
 
     const out = []
     for (const ev of data.events) {
       const sec = parseTimeToSec(ev)
       if (sec == null) continue
+      const adjSec = Math.max(0, sec - offset) // adjust for loading screen
       let kind = null
       if (ev.type === 'kill') {
         if (ev.killer?.is_player) kind = 'kill-me'
@@ -159,8 +164,9 @@ function NeonTimeline({ matchId, puuid, lang, duration, current, onSeek, localDa
         kind = 'baron'
       }
       if (!kind) continue
-      const vsec = sec * scale
-      out.push({ kind, sec, vsec, time: ev.time, team: ev.team === 200 ? 200 : 100, ally: ev.team === 100 })
+      if (adjSec < 0) continue // skip events before recording started (loading screen)
+      const vsec = adjSec * scale
+      out.push({ kind, sec: adjSec, vsec, time: ev.time, team: ev.team === 200 ? 200 : 100, ally: ev.team === 100 })
     }
 
     // Team alignment relative to MY team
@@ -180,7 +186,7 @@ function NeonTimeline({ matchId, puuid, lang, duration, current, onSeek, localDa
       o.lane = lane
     }
     return out.slice(0, 120)
-  }, [data, tlDuration, scale])
+  }, [data, tlDuration, scale, gameTimeOffset])
 
   const pct = (sec) => Math.min(100, Math.max(0, (sec / tlDuration) * 100))
   const stepMin = tlDuration <= 20 * 60 ? 2 : tlDuration <= 35 * 60 ? 5 : 10
@@ -920,6 +926,7 @@ export default function VODPlayer({ vod, lang, onBack, puuid, summoner, showTeam
         current={currentTime}
         onSeek={seek}
         localData={localEvents}
+        gameTimeOffset={mv.gameTimeOffset || 0}
       />
     </div>
   )

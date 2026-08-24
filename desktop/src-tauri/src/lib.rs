@@ -939,21 +939,24 @@ async fn set_audio_output_device(app: tauri::AppHandle, device_id: String) -> Re
 
 /// Outcome of waiting for the in-game clock.
 enum GameStartWait {
-    Started,
+    Started(f64), // gameTime in seconds when recording starts
     Timeout,
     WindowClosed,
 }
 
 /// Polls Riot's Live Client Data API (port 2999, served by the game client)
-/// until the in-game session is reachable, so recordings skip champ select.
-/// Port 2999 only answers once the game process is up, so the FIRST valid
-/// sample means the session has begun and we roll immediately. Requiring the
-/// clock to advance broke ARAM Mayhem: its intro freezes gameTime at 0 and it
-/// later jumps straight to ~00:30, which made recordings start late. An
-/// ambiguous first sample (mid-range time, port opened late) gets a short
-/// grace window, then we record anyway — early beats missing content.
+/// until the in-game session is reachable AND the loading screen has ended.
+/// Port 2999 only answers once the game process is up. During the loading
+/// screen, gameTime is frozen near 0. We wait for the clock to advance past
+/// a threshold (LOADING_GRACE_SECS) to ensure the game has actually started.
 /// If the window disappears the game was cancelled/dodged.
 fn wait_for_game_start(max_secs: u64) -> GameStartWait {
+    // Minimum gameTime before we consider the loading screen over.
+    // Loading screens in ranked can take 1-5+ minutes, but gameTime only
+    // starts counting once the game session begins (after loading).
+    // A value of 15s gives plenty of margin.
+    const LOADING_GRACE_SECS: f64 = 15.0;
+
     let client = match reqwest::blocking::Client::builder()
         .danger_accept_invalid_certs(true)
         .build()
@@ -963,6 +966,7 @@ fn wait_for_game_start(max_secs: u64) -> GameStartWait {
     };
     let url = "https://127.0.0.1:2999/liveclientdata/gamestats";
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(max_secs);
+    let mut first_t: Option<f64> = None;
     let mut last_t: Option<f64> = None;
     let mut missing = 0u32;
     let mut grace = 0u32;
@@ -976,21 +980,38 @@ fn wait_for_game_start(max_secs: u64) -> GameStartWait {
             .and_then(|v| v.get("gameTime").and_then(|t| t.as_f64()));
         match sample {
             Some(t) => {
-                let roll = match last_t {
-                    // First contact: near 00:00 or clearly a mid-game join.
-                    None => t <= 5.0 || t >= 90.0,
-                    // Later samples: any sign of the clock moving.
-                    Some(prev) => t > prev + 0.4,
-                };
-                if roll {
-                    return GameStartWait::Started;
+                if first_t.is_none() {
+                    first_t = Some(t);
+                    last_t = Some(t);
+                    audio_log(&format!("wait_for_game_start: first gameTime={t:.1}s"));
+                    // Mid-game join (reconnect): start immediately.
+                    if t >= 90.0 {
+                        return GameStartWait::Started(t);
+                    }
+                    continue;
                 }
-                // Ambiguous frozen time: don't wait forever on it.
+                // Check if the clock has advanced past the loading grace period.
+                let advanced = t > last_t.unwrap_or(0.0) + 0.4;
+                let past_loading = t >= LOADING_GRACE_SECS;
+                if advanced && past_loading {
+                    audio_log(&format!(
+                        "wait_for_game_start: game started — gameTime={t:.1}s (advanced from {:.1}s)",
+                        first_t.unwrap_or(0.0)
+                    ));
+                    return GameStartWait::Started(t);
+                }
+                // Ambiguous frozen time: don't wait forever.
                 grace += 1;
-                if grace >= 4 {
-                    return GameStartWait::Started;
+                if grace >= 20 {
+                    // ~6s of frozen clock after first contact — start anyway.
+                    audio_log(&format!(
+                        "wait_for_game_start: grace timeout — gameTime={t:.1}s, starting anyway"
+                    ));
+                    return GameStartWait::Started(t);
                 }
-                last_t = Some(t);
+                if advanced {
+                    last_t = Some(t);
+                }
             }
             None => {
                 last_t = None;
@@ -2236,12 +2257,13 @@ async fn start_recording(app: tauri::AppHandle) -> Result<String, String> {
     // Wait for the in-game clock (00:00) before rolling: skips champ select
     // and the loading screen. Falls back to recording anyway if the Live
     // Client Data API never comes up; aborts if the window disappears.
-    match tauri::async_runtime::spawn_blocking(|| wait_for_game_start(420)).await {
+    let game_start_time = match tauri::async_runtime::spawn_blocking(|| wait_for_game_start(420)).await {
+        Ok(GameStartWait::Started(gt)) => gt,
         Ok(GameStartWait::WindowClosed) => {
             return Err("League of Legends window closed before the game started".to_string());
         }
-        _ => {}
-    }
+        _ => 0.0, // Timeout: start anyway, no gameTime info
+    };
 
     // Capture the game client via DXGI Desktop Duplication (GPU-composited:
     // works with DirectX, no CAPTUREBLT cursor flicker, near-zero CPU, black
@@ -2430,7 +2452,11 @@ async fn start_recording(app: tauri::AppHandle) -> Result<String, String> {
     // Thumbnail frame a few seconds into the recording.
     start_thumbnail_worker(output_str.clone(), ffmpeg_path.clone());
 
-    Ok(output_str)
+    let result = serde_json::json!({
+        "path": output_str,
+        "gameTime": game_start_time,
+    });
+    Ok(result.to_string())
 }
 
 #[tauri::command]
