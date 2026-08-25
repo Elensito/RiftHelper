@@ -938,6 +938,52 @@ async fn set_audio_output_device(app: tauri::AppHandle, device_id: String) -> Re
     Ok(())
 }
 
+#[tauri::command]
+async fn get_recording_fps(app: tauri::AppHandle) -> Result<String, String> {
+    let cfg = read_config(&app);
+    Ok(cfg.get("recordingFps")
+        .and_then(|v| v.as_str())
+        .unwrap_or("30")
+        .to_string())
+}
+
+#[tauri::command]
+async fn set_recording_fps(app: tauri::AppHandle, fps: String) -> Result<(), String> {
+    let normalized = match fps.as_str() {
+        "60" => "60",
+        "120" => "120",
+        _ => "30",
+    };
+    let mut cfg = read_config(&app);
+    cfg["recordingFps"] = serde_json::json!(normalized);
+    write_config(&app, &cfg);
+    Ok(())
+}
+
+#[tauri::command]
+async fn get_recording_quality(app: tauri::AppHandle) -> Result<String, String> {
+    let cfg = read_config(&app);
+    Ok(cfg.get("recordingQuality")
+        .and_then(|v| v.as_str())
+        .unwrap_or("720p")
+        .to_string())
+}
+
+#[tauri::command]
+async fn set_recording_quality(app: tauri::AppHandle, quality: String) -> Result<(), String> {
+    let normalized = match quality.as_str() {
+        "1080p" => "1080p",
+        "1440p" => "1440p",
+        "480p" => "480p",
+        "4k" => "4k",
+        _ => "720p",
+    };
+    let mut cfg = read_config(&app);
+    cfg["recordingQuality"] = serde_json::json!(normalized);
+    write_config(&app, &cfg);
+    Ok(())
+}
+
 /// Outcome of waiting for the in-game clock.
 enum GameStartWait {
     Started(f64), // gameTime in seconds when recording starts
@@ -2975,9 +3021,9 @@ unsafe fn blit_client(
 /// (show → !show) or when the game window moves/resizes. When DDA times out
 /// while the game is in the foreground the previous content is rewritten
 /// as-is — correct CFR behaviour that avoids turning static scenes black.
-fn run_video_capture(mut stdin: std::process::ChildStdin, hwnd_hint: isize, cw: u32, ch: u32) {
+fn run_video_capture(mut stdin: std::process::ChildStdin, hwnd_hint: isize, cw: u32, ch: u32, fps: u32) {
     let mut canvas = vec![0u8; cw as usize * ch as usize * 4];
-    let frame_dur = std::time::Duration::from_millis(33);
+    let frame_dur = std::time::Duration::from_millis(1000 / fps as u64);
     let mut next_tick = std::time::Instant::now();
     let mut missing_since: Option<std::time::Instant> = None;
     let mut prev_show = false;
@@ -3364,12 +3410,28 @@ async fn start_recording(app: tauri::AppHandle) -> Result<String, String> {
         start_focus_watchdog(hwnd);
     }
 
+    // Recording quality and FPS from user settings.
+    let rec_fps = cfg.get("recordingFps")
+        .and_then(|v| v.as_str())
+        .unwrap_or("30")
+        .to_string();
+    let rec_quality = cfg.get("recordingQuality")
+        .and_then(|v| v.as_str())
+        .unwrap_or("720p")
+        .to_string();
+    let rec_height: Option<u32> = match rec_quality.as_str() {
+        "480p" => Some(480),
+        "720p" => Some(720),
+        "1080p" => Some(1080),
+        _ => None, // 1440p and 4k: native resolution, no scale filter
+    };
+
     let mut ffmpeg_args = if let Some((cw, ch)) = video_plan {
         vec![
             "-f".to_string(), "rawvideo".to_string(),
             "-pixel_format".to_string(), "bgra".to_string(),
             "-video_size".to_string(), format!("{}x{}", cw, ch),
-            "-framerate".to_string(), "30".to_string(),
+            "-framerate".to_string(), rec_fps.clone(),
             "-i".to_string(), "pipe:0".to_string(),
         ]
     } else {
@@ -3377,7 +3439,7 @@ async fn start_recording(app: tauri::AppHandle) -> Result<String, String> {
             .ok_or_else(|| "League of Legends window not found".to_string())?;
         vec![
             "-f".to_string(), "gdigrab".to_string(),
-            "-framerate".to_string(), "30".to_string(),
+            "-framerate".to_string(), rec_fps.clone(),
             "-draw_mouse".to_string(), "1".to_string(),
             "-offset_x".to_string(), x.to_string(),
             "-offset_y".to_string(), y.to_string(),
@@ -3385,6 +3447,15 @@ async fn start_recording(app: tauri::AppHandle) -> Result<String, String> {
             "-i".to_string(), "desktop".to_string(),
         ]
     };
+
+    // Scale filter: downscale to the user-selected resolution when needed.
+    // -2 ensures the width stays even (required by most encoders).
+    if let Some(target_h) = rec_height {
+        ffmpeg_args.extend([
+            "-vf".to_string(),
+            format!("scale=-2:{}", target_h),
+        ]);
+    }
 
     // Audio per user setting (default: game-only via process loopback).
     let mode = audio_mode_from_cfg(&cfg);
@@ -3490,11 +3561,6 @@ async fn start_recording(app: tauri::AppHandle) -> Result<String, String> {
 
     let stdin = child.stdin.take();
 
-    // ffmpeg is up: let the capture threads connect their pipes and roll.
-    for g in &audio_gates {
-        g.open();
-    }
-
     // In DDA mode ffmpeg's stdin IS the video feed: hand it to the capture
     // thread (stop_recording ends the recording by closing it). Legacy
     // gdigrab keeps stdin stored so stop can send 'q'.
@@ -3503,8 +3569,9 @@ async fn start_recording(app: tauri::AppHandle) -> Result<String, String> {
         let (cw_dda, ch_dda) = video_plan.unwrap_or((0, 0));
         if let Some(si) = stdin {
             let plan_hwnd = hwnd;
+            let fps_val: u32 = rec_fps.parse().unwrap_or(30);
             tauri::async_runtime::spawn_blocking(move || {
-                run_video_capture(si, plan_hwnd, cw_dda, ch_dda)
+                run_video_capture(si, plan_hwnd, cw_dda, ch_dda, fps_val)
             });
         }
         // DDA init can kick an exclusive-fullscreen game out of exclusive
@@ -3512,6 +3579,13 @@ async fn start_recording(app: tauri::AppHandle) -> Result<String, String> {
         start_focus_watchdog(hwnd);
     } else {
         proc_stdin = stdin;
+    }
+
+    // Open audio gates AFTER the DDA thread is running so both video and
+    // audio start capturing at the same time — eliminates the initial A/V
+    // offset that occurred when audio started before the first video frame.
+    for g in &audio_gates {
+        g.open();
     }
 
     {
@@ -3990,6 +4064,10 @@ pub fn run() {
             list_audio_output_devices,
             get_audio_output_device,
             set_audio_output_device,
+            get_recording_fps,
+            set_recording_fps,
+            get_recording_quality,
+            set_recording_quality,
             start_recording,
             stop_recording,
             is_recording,

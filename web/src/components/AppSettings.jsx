@@ -12,6 +12,8 @@ import {
   getAudioMode, setAudioMode,
   getMuteMic, setMuteMic,
   listAudioOutputs, getAudioOutputDevice, setAudioOutputDevice,
+  getRecordingFps, setRecordingFps,
+  getRecordingQuality, setRecordingQuality,
   downloadFfmpeg, onFfmpegProgress,
 } from '../tauri.js'
 
@@ -85,6 +87,8 @@ export default function AppSettings({ theme, onThemeChange, lang, onLangChange, 
   const [muteMic, setMuteMicState] = useState(false)
   const [audioOutputs, setAudioOutputs] = useState([])
   const [audioOutputDevice, setAudioOutputDeviceState] = useState('')
+  const [recordingFps, setRecordingFpsState] = useState('30')
+  const [recordingQuality, setRecordingQualityState] = useState('720p')
   const [ffmpegTest, setFfmpegTest] = useState(null)
   const [confirmPopup, setConfirmPopup] = useState(false)
   const [downloadState, setDownloadState] = useState('confirm')
@@ -107,6 +111,8 @@ export default function AppSettings({ theme, onThemeChange, lang, onLangChange, 
     getAudioMode().then(setAudioModeState)
     getMuteMic().then(setMuteMicState)
     getAudioOutputDevice().then(setAudioOutputDeviceState)
+    getRecordingFps().then(setRecordingFpsState)
+    getRecordingQuality().then(setRecordingQualityState)
     listAudioOutputs().then(setAudioOutputs)
   }, [])
 
@@ -180,6 +186,16 @@ export default function AppSettings({ theme, onThemeChange, lang, onLangChange, 
   const handleAudioOutputDevice = async (id) => {
     setAudioOutputDeviceState(id)
     await setAudioOutputDevice(id)
+  }
+
+  const handleRecordingFps = async (fps) => {
+    setRecordingFpsState(fps)
+    await setRecordingFps(fps)
+  }
+
+  const handleRecordingQuality = async (quality) => {
+    setRecordingQualityState(quality)
+    await setRecordingQuality(quality)
   }
 
   const handleConfirmAutoRecord = async () => {
@@ -319,6 +335,32 @@ export default function AppSettings({ theme, onThemeChange, lang, onLangChange, 
                   >
                     <span className="rt-toggle-knob" />
                   </button>
+                </Row>
+
+                <Row label={t(lang, 'recordingQuality')} desc={t(lang, 'recordingQualityDesc')}>
+                  <select
+                    className="settings-recording-select"
+                    value={recordingQuality}
+                    onChange={(e) => handleRecordingQuality(e.target.value)}
+                  >
+                    <option value="480p">480p</option>
+                    <option value="720p">720p</option>
+                    <option value="1080p">1080p</option>
+                    <option value="1440p">1440p — Native</option>
+                    <option value="4k">4K</option>
+                  </select>
+                </Row>
+
+                <Row label={t(lang, 'recordingFps')} desc={t(lang, 'recordingFpsDesc')}>
+                  <select
+                    className="settings-recording-select"
+                    value={recordingFps}
+                    onChange={(e) => handleRecordingFps(e.target.value)}
+                  >
+                    <option value="30">30 FPS</option>
+                    <option value="60">60 FPS</option>
+                    <option value="120">120 FPS</option>
+                  </select>
                 </Row>
 
                 {audioMode === 'system' && (

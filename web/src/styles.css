@@ -6832,6 +6832,42 @@ body.light .settings-segment.active {
   box-shadow: var(--glow-cyan);
 }
 
+/* Recording quality / FPS dropdowns — polished variant */
+.settings-recording-select {
+  padding: 9px 32px 9px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--bg-2);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s, background 0.15s;
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1L5 5L9 1' stroke='%2357e6ff' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  min-width: 140px;
+}
+
+.settings-recording-select:hover {
+  border-color: rgba(87, 230, 255, 0.35);
+  background-color: color-mix(in srgb, var(--bg-2) 92%, var(--cyan));
+}
+
+.settings-recording-select:focus {
+  border-color: var(--cyan);
+  box-shadow: var(--glow-cyan);
+}
+
+.settings-recording-select option {
+  background: var(--bg-2);
+  color: var(--text);
+}
+
 .rt-toggle-row {
   display: flex;
   align-items: center;

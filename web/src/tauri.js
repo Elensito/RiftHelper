@@ -322,3 +322,27 @@ export async function setAudioOutputDevice(deviceId) {
   const { invoke } = await import('@tauri-apps/api/core')
   try { await invoke('set_audio_output_device', { deviceId }) } catch {}
 }
+
+export async function getRecordingFps() {
+  if (!isTauri()) return '30'
+  const { invoke } = await import('@tauri-apps/api/core')
+  try { return await invoke('get_recording_fps') } catch { return '30' }
+}
+
+export async function setRecordingFps(fps) {
+  if (!isTauri()) return
+  const { invoke } = await import('@tauri-apps/api/core')
+  try { await invoke('set_recording_fps', { fps }) } catch {}
+}
+
+export async function getRecordingQuality() {
+  if (!isTauri()) return '720p'
+  const { invoke } = await import('@tauri-apps/api/core')
+  try { return await invoke('get_recording_quality') } catch { return '720p' }
+}
+
+export async function setRecordingQuality(quality) {
+  if (!isTauri()) return
+  const { invoke } = await import('@tauri-apps/api/core')
+  try { await invoke('set_recording_quality', { quality }) } catch {}
+}
