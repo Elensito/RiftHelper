@@ -1703,6 +1703,374 @@ fn spawn_capture_source(
     (rx, gate, cancel)
 }
 
+/* ==================== Endpoint capture + surgical session muting ==========
+   WASAPI process loopback turned out unreliable for LoL on real machines:
+   the engine delivers a few seconds of audio and then flags every packet
+   SILENT even though the user hears the game fine (verified twice with
+   volumedetect on recorded VODs).  The robust strategy used instead:
+
+   1. Capture the DEFAULT OUTPUT ENDPOINT (rock-solid loopback path).
+   2. While recording, enumerate the endpoint's AUDIO SESSIONS every ~1.5s
+      and MUTE every session whose owning process is not in the allowlist
+      (game tree + Discord trees).  Foreign apps (YouTube/Firefox/Spotify)
+      therefore never reach the mix — zero leakage — and their volume is
+      restored exactly when the recording stops.
+   ========================================================================= */
+
+/// All descendant PIDs of `roots` (the roots themselves included).
+fn collect_tree_pids(roots: &[u32]) -> Vec<u32> {
+    use std::collections::{HashMap, HashSet};
+    use windows::Win32::Foundation::CloseHandle;
+    use windows::Win32::System::Diagnostics::ToolHelp::{
+        CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W,
+        TH32CS_SNAPPROCESS,
+    };
+    let mut parent_of: HashMap<u32, u32> = HashMap::new();
+    unsafe {
+        let snap = match CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) {
+            Ok(h) => h,
+            Err(_) => return roots.to_vec(),
+        };
+        let mut entry = PROCESSENTRY32W::default();
+        entry.dwSize = std::mem::size_of::<PROCESSENTRY32W>() as u32;
+        let mut ok = Process32FirstW(snap, &mut entry).is_ok();
+        while ok {
+            parent_of.insert(entry.th32ProcessID, entry.th32ParentProcessID);
+            entry.dwSize = std::mem::size_of::<PROCESSENTRY32W>() as u32;
+            ok = Process32NextW(snap, &mut entry).is_ok();
+        }
+        let _ = CloseHandle(snap);
+    }
+    let mut out: Vec<u32> = Vec::new();
+    let mut seen: HashSet<u32> = HashSet::new();
+    // children index
+    let mut children: HashMap<u32, Vec<u32>> = HashMap::new();
+    for (&pid, &parent) in &parent_of {
+        children.entry(parent).or_default().push(pid);
+    }
+    let mut queue: std::collections::VecDeque<u32> = roots.iter().copied().collect();
+    while let Some(pid) = queue.pop_front() {
+        if !seen.insert(pid) {
+            continue;
+        }
+        out.push(pid);
+        if let Some(kids) = children.get(&pid) {
+            for k in kids.clone() {
+                queue.push_back(k);
+            }
+        }
+    }
+    out
+}
+
+fn spawn_endpoint_muted_capture(
+    pipe_name: String,
+    include_discord: bool,
+) -> (
+    std::sync::mpsc::Receiver<Result<(String, u32, u16, u16), String>>,
+    Arc<StartGate>,
+    Arc<std::sync::atomic::AtomicBool>,
+) {
+    let (tx, rx) = std::sync::mpsc::channel();
+    let gate = Arc::new(StartGate::new());
+    let cancel = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let gate2 = gate.clone();
+    let cancel2 = cancel.clone();
+    std::thread::spawn(move || unsafe {
+        use windows::Win32::Foundation::{CloseHandle, BOOL};
+        use windows::Win32::Media::Audio::{
+            IAudioCaptureClient, IAudioSessionControl2, IAudioSessionManager,
+            IAudioSessionManager2, AUDCLNT_SHAREMODE_SHARED, WAVEFORMATEX,
+        };
+        use windows::Win32::Storage::FileSystem::{FILE_FLAGS_AND_ATTRIBUTES, FlushFileBuffers};
+        use windows::Win32::System::Com::CoTaskMemFree;
+        use windows::Win32::System::Pipes::{
+            ConnectNamedPipe, CreateNamedPipeW, DisconnectNamedPipe, NAMED_PIPE_MODE,
+        };
+        use windows::Win32::System::Threading::{CreateEventW, SetEvent, WaitForSingleObject};
+
+        const STREAM_FLAGS: u32 = 0x0002_0000 | 0x0004_0000; // LOOPBACK | EVENTCALLBACK
+
+        let fail = |msg: String| {
+            audio_log(&format!("endpoint-muted capture error: {msg}"));
+            let _ = tx.send(Err(msg));
+        };
+
+        audio_log("activating endpoint loopback (muted-session strategy)");
+        let client = match open_endpoint_loopback_client(None) {
+            Ok(c) => c,
+            Err(e) => return fail(e),
+        };
+        let pwfx = match client.GetMixFormat() {
+            Ok(p) if !p.is_null() => p,
+            Ok(_) => return fail("mixformat null".to_string()),
+            Err(e) => return fail(format!("mixformat: {e}")),
+        };
+        let tag = (*pwfx).wFormatTag;
+        let channels = (*pwfx).nChannels.max(1);
+        let rate = (*pwfx).nSamplesPerSec.max(8000);
+        let bits = (*pwfx).wBitsPerSample.max(8);
+        let block_align = ((*pwfx).nBlockAlign as usize).max(1);
+        let extensible = tag == 0xFFFE;
+        let float = tag == 3 || (extensible && bits == 32);
+        let fmt_name = if float { "f32le" } else { "s16le" }.to_string();
+        audio_log(&format!(
+            "endpoint mixformat OK: fmt={fmt_name} rate={rate} ch={channels} bits={bits}"
+        ));
+
+        // Session managers on the default device for the muting sweeps.
+        let (mgr_enum, mgr_vol) = match session_managers_for_default_device() {
+            Some((a, b)) => (a, b),
+            None => return fail("session manager unavailable".to_string()),
+        };
+
+        let ev = match CreateEventW(None, false, false, None) {
+            Ok(h) => h,
+            Err(e) => return fail(format!("event: {e}")),
+        };
+        if let Err(e) = client.Initialize(
+            AUDCLNT_SHAREMODE_SHARED,
+            STREAM_FLAGS,
+            2_000_000,
+            0,
+            pwfx as *const WAVEFORMATEX,
+            None,
+        ) {
+            return fail(format!("init: {e}"));
+        }
+        if let Err(e) = client.SetEventHandle(ev) {
+            return fail(format!("setevent: {e}"));
+        }
+        let cap: IAudioCaptureClient = match client.GetService() {
+            Ok(c) => c,
+            Err(e) => return fail(format!("service: {e}")),
+        };
+        if let Err(e) = client.Start() {
+            return fail(format!("start: {e}"));
+        }
+        audio_log("endpoint muted capture started");
+        let _ = tx.send(Ok((fmt_name, rate, channels, bits)));
+
+        if !gate2.wait_with_cancel(&cancel2) {
+            let _ = client.Stop();
+            return;
+        }
+
+        let wide: Vec<u16> = pipe_name.encode_utf16().chain(Some(0)).collect();
+        let pname = windows::core::PCWSTR::from_raw(wide.as_ptr());
+        let pipe = CreateNamedPipeW(
+            pname,
+            FILE_FLAGS_AND_ATTRIBUTES(0x0000_0002 | 0x0008_0000),
+            NAMED_PIPE_MODE(0),
+            1,
+            262_144,
+            262_144,
+            0,
+            None,
+        );
+        if pipe.is_invalid() {
+            let _ = client.Stop();
+            return fail("createpipe failed".to_string());
+        }
+        if let Err(e) = ConnectNamedPipe(pipe, None) {
+            if (e.code().0 & 0xFFFF) != 536 {
+                let _ = client.Stop();
+                let _ = CloseHandle(pipe);
+                return fail(format!("connect: {e}"));
+            }
+        }
+        audio_log("pipe connected, entering endpoint muted capture loop");
+
+        // ── muting helpers ──
+        fn allowlist(include_discord: bool) -> Vec<u32> {
+            let mut allow = vec![std::process::id()];
+            if let Some(g) = find_lol_window_pid() {
+                allow.extend(collect_tree_pids(&[g]));
+            }
+            if include_discord {
+                for r in find_tree_root_pids("discord", 4) {
+                    allow.extend(collect_tree_pids(&[r]));
+                }
+            }
+            allow
+        }
+
+        /// Parse "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" into a GUID.
+        fn parse_guid(s: &str) -> Option<windows::core::GUID> {
+            let parts: Vec<&str> = s.split('-').collect();
+            if parts.len() != 5 {
+                return None;
+            }
+            let h = |t: &str| u64::from_str_radix(t, 16).ok();
+            let d1 = h(parts[0])? as u32;
+            let d2 = h(parts[1])? as u16;
+            let d3 = h(parts[2])? as u16;
+            let tail = h(parts[3])?;
+            let last = h(parts[4])?;
+            if parts[3].len() != 4 || parts[4].len() != 12 {
+                return None;
+            }
+            let mut d4 = [0u8; 8];
+            d4[0] = (tail >> 8) as u8;
+            d4[1] = (tail & 0xFF) as u8;
+            for i in 0..6 {
+                let byte = (last >> (8 * (5 - i))) & 0xFF;
+                d4[2 + i] = byte as u8;
+            }
+            Some(windows::core::GUID {
+                data1: d1,
+                data2: d2,
+                data3: d3,
+                data4: d4,
+            })
+        }
+
+        unsafe fn session_guid(c2: &IAudioSessionControl2) -> Option<(u32, windows::core::GUID)> {
+            let pid = c2.GetProcessId().ok()?;
+            let ident = c2.GetSessionIdentifier().ok()?;
+            let s = pcwstr_to_string(windows::core::PCWSTR(ident.0));
+            CoTaskMemFree(Some(ident.0 as *const core::ffi::c_void));
+            let start = s.rfind('{')?;
+            let end = s.rfind('}')?;
+            if end <= start {
+                return None;
+            }
+            let guid = parse_guid(&s[start + 1..end])?;
+            Some((pid, guid))
+        }
+
+        fn sweep(
+            menum: &IAudioSessionManager2,
+            mvol: &IAudioSessionManager,
+            include_discord: bool,
+            muted_by_us: &mut Vec<windows::core::GUID>,
+        ) {
+            let allow = allowlist(include_discord);
+            unsafe {
+                use windows::Win32::Foundation::BOOL;
+                let Ok(en) = menum.GetSessionEnumerator() else { return };
+                let Ok(n) = en.GetCount() else { return };
+                for i in 0..n {
+                    let Ok(ctrl) = en.GetSession(i) else { continue };
+                    let Ok(c2) = ctrl.cast::<IAudioSessionControl2>() else { continue };
+                    let Some((pid, guid)) = session_guid(&c2) else { continue };
+                    // pid==0 is the system-notification session; leave it alone.
+                    if pid == 0 || allow.contains(&pid) || muted_by_us.contains(&guid) {
+                        continue;
+                    }
+                    let Ok(vol) = mvol.GetSimpleAudioVolume(Some(&guid), 0) else { continue };
+                    if let Ok(m) = vol.GetMute() {
+                        if !m.as_bool() && vol.SetMute(BOOL(1), std::ptr::null()).is_ok() {
+                            audio_log(&format!("muted foreign audio session (pid={pid})"));
+                            muted_by_us.push(guid);
+                        }
+                    }
+                }
+            }
+        }
+
+        let mut muted_by_us: Vec<windows::core::GUID> = Vec::new();
+        sweep(&mgr_enum, &mgr_vol, include_discord, &mut muted_by_us);
+
+        let restore_mutes = |muted: &Vec<windows::core::GUID>| {
+            for g in muted {
+                if let Ok(vol) = mgr_vol.GetSimpleAudioVolume(Some(g), 0) {
+                    let _ = vol.SetMute(BOOL(0), std::ptr::null());
+                }
+            }
+            if !muted.is_empty() {
+                audio_log(&format!("restored {} foreign session(s)", muted.len()));
+            }
+        };
+
+        let mut stopped = false;
+        let mut consecutive_errors = 0u32;
+        const MAX_CONSECUTIVE_ERRORS: u32 = 100;
+        let mut ticks: u32 = 0;
+        while !stopped {
+            if AUDIO_CAPTURE_STOP.load(std::sync::atomic::Ordering::Relaxed) {
+                break;
+            }
+            // Endpoint EVENTCALLBACK does not always signal on silence; a
+            // short timeout drives reliable pacing regardless.
+            let w = WaitForSingleObject(ev, 10);
+            let _ = w;
+            ticks += 1;
+            if ticks % 150 == 0 {
+                sweep(&mgr_enum, &mgr_vol, include_discord, &mut muted_by_us);
+            }
+            loop {
+                let packets = match cap.GetNextPacketSize() {
+                    Ok(p) => p,
+                    Err(e) => {
+                        consecutive_errors += 1;
+                        if consecutive_errors >= MAX_CONSECUTIVE_ERRORS {
+                            audio_log(&format!("GetNextPacketSize fatal: {e}"));
+                            stopped = true;
+                        }
+                        break;
+                    }
+                };
+                if packets == 0 {
+                    break;
+                }
+                let mut data: *mut u8 = std::ptr::null_mut();
+                let mut frames = 0u32;
+                let mut flags = 0u32;
+                if cap.GetBuffer(&mut data, &mut frames, &mut flags, None, None).is_err() {
+                    consecutive_errors += 1;
+                    if consecutive_errors >= MAX_CONSECUTIVE_ERRORS {
+                        audio_log("GetBuffer fatal");
+                        stopped = true;
+                    }
+                    break;
+                }
+                consecutive_errors = 0;
+                let bytes = frames as usize * block_align;
+                let ok = if flags & 0x2 != 0 || data.is_null() {
+                    let zeros = vec![0u8; bytes];
+                    write_all_pipe(pipe, &zeros)
+                } else {
+                    let slice = std::slice::from_raw_parts(data, bytes);
+                    write_all_pipe(pipe, slice)
+                };
+                let _ = cap.ReleaseBuffer(frames);
+                if !ok {
+                    audio_log("pipe write failed (ffmpeg closed pipe), stopping capture");
+                    stopped = true;
+                    break;
+                }
+            }
+        }
+
+        restore_mutes(&muted_by_us);
+        let _ = SetEvent(ev);
+        let _ = client.Stop();
+        let _ = FlushFileBuffers(pipe);
+        let _ = DisconnectNamedPipe(pipe);
+        let _ = CloseHandle(pipe);
+        let _ = CloseHandle(ev);
+        CoTaskMemFree(Some(pwfx as *const core::ffi::c_void));
+    });
+    (rx, gate, cancel)
+}
+
+unsafe fn session_managers_for_default_device()
+    -> Option<(windows::Win32::Media::Audio::IAudioSessionManager2, windows::Win32::Media::Audio::IAudioSessionManager)>
+{
+    use windows::Win32::Media::Audio::{
+        IAudioSessionManager, IAudioSessionManager2, IMMDeviceEnumerator, MMDeviceEnumerator,
+        eConsole, eRender,
+    };
+    use windows::Win32::System::Com::{CoCreateInstance, CLSCTX_ALL};
+    let enumerator: IMMDeviceEnumerator =
+        CoCreateInstance(&MMDeviceEnumerator, None, CLSCTX_ALL).ok()?;
+    let dev = enumerator.GetDefaultAudioEndpoint(eRender, eConsole).ok()?;
+    let m2: IAudioSessionManager2 = dev.Activate(CLSCTX_ALL, None).ok()?;
+    let m1: IAudioSessionManager = dev.Activate(CLSCTX_ALL, None).ok()?;
+    Some((m2, m1))
+}
+
 fn write_all_pipe(pipe: windows::Win32::Foundation::HANDLE, mut buf: &[u8]) -> bool {
     while !buf.is_empty() {
         let end = buf.len().min(60_000);
@@ -1786,38 +2154,77 @@ fn setup_audio_sources(
         .as_millis();
 
     if matches!(mode, AudioMode::Game | AudioMode::GameDiscord) {
-        if let Some(gpid) = find_lol_window_pid() {
-            audio_log(&format!("game audio: LoL PID={gpid}"));
-            let name = format!(r"\\.\pipe\rh-audio-game-{ts}");
-            add_capture_source(&mut inputs, &mut gates, name, CaptureSource::Process(gpid));
+        // NEW STRATEGY (v1.5.85): capture the default endpoint and mute every
+        // foreign audio session live.  Process loopback delivered engine-
+        // flagged silence after a few seconds of LoL on real machines; the
+        // endpoint path is rock solid, and muting foreign sessions keeps the
+        // recording free of YouTube/Firefox/Spotify without leaking anything.
+        let include_discord = mode == AudioMode::GameDiscord;
+        let gpid = find_lol_window_pid();
+        if let Some(g) = gpid {
+            audio_log(&format!("game audio: LoL PID={g} (endpoint+mute strategy)"));
         } else {
-            audio_log("game audio: LoL PID not found — no window");
+            audio_log("game audio: LoL window not found yet");
         }
-
-        if mode == AudioMode::GameDiscord {
-            // Capture the ROOT(s) of every discord.exe tree on the machine.
-            // Tree-inclusion loopback then covers ALL Discord processes
-            // (main, GPU, renderer, voice) exactly once — no duplicates.
+        if include_discord {
             let dpids = find_tree_root_pids("discord", 4);
-            if dpids.is_empty() {
-                audio_log("discord audio: no Discord process found");
-            }
-            for (i, dpid) in dpids.into_iter().enumerate() {
-                audio_log(&format!("discord audio: root PID={dpid}"));
-                let name = format!(r"\\.\pipe\rh-audio-discord{i}-{ts}");
-                add_capture_source(
-                    &mut inputs,
-                    &mut gates,
-                    name,
-                    CaptureSource::Process(dpid),
-                );
+            audio_log(&format!("discord allowlist roots: {dpids:?}"));
+        }
+
+        let name = format!(r"\\.\pipe\rh-audio-mix-{ts}");
+        let ok = unsafe { create_audio_pipe_checked(&name) };
+        let mut used_strategy = false;
+        if ok {
+            let (rx2, gate2s, cancel2s) =
+                spawn_endpoint_muted_capture(name.clone(), include_discord);
+            match rx2.recv_timeout(std::time::Duration::from_millis(8000)) {
+                Ok(Ok((fmt, rate, ch, _bits))) => {
+                    inputs.push(AudioInput::Pipe(vec![
+                        "-f".into(), fmt,
+                        "-ar".into(), rate.to_string(),
+                        "-ac".into(), ch.to_string(),
+                        "-i".into(), name,
+                    ]));
+                    gates.push(gate2s);
+                    used_strategy = true;
+                }
+                Ok(Err(e)) => {
+                    audio_log(&format!("endpoint muted capture failed: {e}"));
+                    cancel2s.store(true, std::sync::atomic::Ordering::Relaxed);
+                    gate2s.open();
+                }
+                Err(_) => {
+                    audio_log("endpoint muted capture timed out after 8s");
+                    cancel2s.store(true, std::sync::atomic::Ordering::Relaxed);
+                    gate2s.open();
+                }
             }
         }
 
-        // NO endpoint-loopback fallback for Game/GameDiscord: capturing the
-        // whole desktop would leak Firefox/YouTube etc. into recordings.
-        // If process loopback fails we rather record without audio than with
-        // unrelated apps' sound.
+        if !used_strategy {
+            // LEGACY fallback: per-PID WASAPI process loopback (may produce
+            // engine-flagged silence on some machines, but it never leaks).
+            audio_log("falling back to legacy process loopback");
+            if let Some(gpid) = find_lol_window_pid() {
+                let name = format!(r"\\.\pipe\rh-audio-game-{ts}");
+                add_capture_source(&mut inputs, &mut gates, name, CaptureSource::Process(gpid));
+            }
+            if include_discord {
+                let dpids = find_tree_root_pids("discord", 4);
+                for (i, dpid) in dpids.into_iter().enumerate() {
+                    let name = format!(r"\\.\pipe\rh-audio-discord{i}-{ts}");
+                    add_capture_source(
+                        &mut inputs,
+                        &mut gates,
+                        name,
+                        CaptureSource::Process(dpid),
+                    );
+                }
+            }
+        }
+
+        // NO plain endpoint-loopback fallback for Game/GameDiscord: capturing
+        // the whole desktop un-muted would leak Firefox/YouTube into VODs.
     } else if mode == AudioMode::System {
         let id = if output_device_id.trim().is_empty() {
             None
@@ -2248,6 +2655,112 @@ fn probe_media_duration(app: &tauri::AppHandle, video_path: &str) -> Option<f64>
     s.parse::<f64>().ok().filter(|d| d.is_finite() && *d > 1.0)
 }
 
+/* ── Hardware video encoder selection ─────────────────────────────────────
+   Software x264 at 1440p encodes at ~0.9x realtime on typical CPUs.  ffmpeg
+   labels rawvideo frames by COUNT (30fps) while PCM audio is labelled in
+   real time, so any encode rate below 1.0x makes the video timeline run
+   behind the audio one — growing A/V desync, muxer throttling, truncated
+   audio and eventually silent deaths.  A hardware encoder runs at several
+   times realtime and keeps both timelines aligned; probe once per process
+   which accelerator this machine has and cache the choice.
+   ------------------------------------------------------------------------ */
+static VIDEO_ENCODER_ARGS: std::sync::OnceLock<Vec<String>> = std::sync::OnceLock::new();
+
+fn pick_video_encoder(ffmpeg_path: &str) -> Vec<String> {
+    if let Some(v) = VIDEO_ENCODER_ARGS.get() {
+        return v.clone();
+    }
+    let candidates: [(&str, Vec<String>); 3] = [
+        ("h264_nvenc", vec![
+            "-c:v".into(), "h264_nvenc".into(),
+            "-preset".into(), "p1".into(),
+            "-rc".into(), "vbr".into(),
+            "-cq".into(), "24".into(),
+            "-b:v".into(), "0".into(),
+        ]),
+        ("h264_qsv", vec![
+            "-c:v".into(), "h264_qsv".into(),
+            "-preset".into(), "very_fast".into(),
+            "-global_quality".into(), "24".into(),
+        ]),
+        ("h264_amf", vec![
+            "-c:v".into(), "h264_amf".into(),
+            "-quality".into(), "speed".into(),
+            "-rc".into(), "cqp".into(),
+            "-qp_i".into(), "24".into(),
+            "-qp_p".into(), "24".into(),
+        ]),
+    ];
+    for (name, args) in candidates {
+        let probe = Command::new(ffmpeg_path)
+            .args([
+                "-hide_banner", "-v", "error",
+                "-f", "lavfi", "-i", "testsrc2=size=640x360:rate=30",
+                "-frames:v", "10",
+            ])
+            .args(&args)
+            .arg("-f").arg("null").arg("-")
+            .creation_flags(0x08000000)
+            .output();
+        if let Ok(out) = probe {
+            if out.status.success() {
+                audio_log(&format!("video encoder: hardware {name} available"));
+                let _ = VIDEO_ENCODER_ARGS.set(args.clone());
+                return args;
+            }
+        }
+        audio_log(&format!("video encoder: {name} not usable"));
+    }
+    // Fallback: fastest software path.
+    audio_log("video encoder: falling back to libx264 ultrafast");
+    let fallback = vec![
+        "-c:v".into(), "libx264".into(),
+        "-preset".into(), "ultrafast".into(),
+    ];
+    let _ = VIDEO_ENCODER_ARGS.set(fallback.clone());
+    fallback
+}
+
+/// After DDA initializes, Windows can briefly kick a true-exclusive-fullscreen
+/// game out of exclusive mode, which minimizes it — the user experiences this
+/// as "the game minimizes when recording starts".  For the first seconds of
+/// every recording, watch the game window and yank it straight back to the
+/// foreground if anything minimized it.
+fn start_focus_watchdog(hwnd: isize) {
+    if hwnd == 0 {
+        return;
+    }
+    std::thread::spawn(move || {
+        use std::ffi::c_void;
+        type HWND = *mut c_void;
+        type BOOL = i32;
+        extern "system" {
+            fn IsIconic(hWnd: HWND) -> BOOL;
+            fn ShowWindow(hWnd: HWND, nCmdShow: i32) -> BOOL;
+            fn SetForegroundWindow(hWnd: HWND) -> BOOL;
+            fn AttachThreadInput(idAttach: u32, idAttachTo: u32, fAttach: i32) -> BOOL;
+            fn GetCurrentThreadId() -> u32;
+            fn GetWindowThreadProcessId(hWnd: HWND, lpdwProcessId: *mut u32) -> u32;
+        }
+        const SW_RESTORE: i32 = 9;
+        for _ in 0..24 {
+            std::thread::sleep(std::time::Duration::from_millis(250));
+            unsafe {
+                let h = hwnd as HWND;
+                if IsIconic(h) != 0 {
+                    audio_log("focus watchdog: game window minimized — restoring");
+                    let tid = GetCurrentThreadId();
+                    let gtid = GetWindowThreadProcessId(h, std::ptr::null_mut());
+                    let _ = AttachThreadInput(tid, gtid, 1);
+                    let _ = ShowWindow(h, SW_RESTORE);
+                    let _ = SetForegroundWindow(h);
+                    let _ = AttachThreadInput(tid, gtid, 0);
+                }
+            }
+        }
+    });
+}
+
 #[tauri::command]
 async fn start_recording(app: tauri::AppHandle) -> Result<String, String> {
     {
@@ -2429,18 +2942,22 @@ async fn start_recording(app: tauri::AppHandle) -> Result<String, String> {
         ffmpeg_args.extend([
             "-c:a".to_string(), "aac".to_string(),
             "-b:a".to_string(), "128k".to_string(),
-            "-ar".to_string(), "44100".to_string(),
+            "-ar".to_string(), "48000".to_string(),
             "-ac".to_string(), "2".to_string(),
-            "-shortest".to_string(),
         ]);
     }
 
+    ffmpeg_args.extend(pick_video_encoder(&ffmpeg_path));
     ffmpeg_args.extend([
-        "-c:v".to_string(), "libx264".to_string(),
-        "-preset".to_string(), "ultrafast".to_string(),
         "-pix_fmt".to_string(), "yuv420p".to_string(),
         "-movflags".to_string(), "+faststart+frag_keyframe+empty_moov".to_string(),
-        "-max_muxing_queue_size".to_string(), "4096".to_string(),
+        // The rawvideo stream is labelled by frame count while PCM audio is
+        // labelled in real time; when software encoding falls behind, the two
+        // timelines diverge and a tight muxer either throttles the audio input
+        // (freezing it mid-recording) or dies.  These caps make the muxer
+        // tolerate large divergence instead.
+        "-max_muxing_queue_size".to_string(), "8192".to_string(),
+        "-max_interleave_delta".to_string(), "100000000".to_string(),
         "-y".to_string(),
         output_str.clone(),
     ]);
@@ -2489,6 +3006,9 @@ async fn start_recording(app: tauri::AppHandle) -> Result<String, String> {
                 run_video_capture(si, plan_hwnd, cw_dda, ch_dda)
             });
         }
+        // DDA init can kick an exclusive-fullscreen game out of exclusive
+        // mode (visible as a minimize).  Watch and restore for a few seconds.
+        start_focus_watchdog(hwnd);
     } else {
         proc_stdin = stdin;
     }
@@ -2702,6 +3222,46 @@ async fn is_recording() -> Result<bool, String> {    let mut guard = FFMPEG_PROC
     }
 }
 
+/* ── Overlay window control ────────────────────────────────────────────────
+   The overlay is created VISIBLE but parked far offscreen (-34000,-34000)
+   and permanently carries WS_EX_NOACTIVATE|WS_EX_TOOLWINDOW.  Showing it =
+   moving it into place with SWP_NOACTIVATE; hiding it = parking it back
+   offscreen.  There are NO show/hide transitions at all, so nothing can
+   ever activate the popup or steal foreground from fullscreen LoL.
+   ------------------------------------------------------------------------ */
+const OVERLAY_PARK_X: i32 = -34000;
+const OVERLAY_PARK_Y: i32 = -34000;
+
+fn overlay_hwnd(app: &tauri::AppHandle) -> Option<isize> {
+    use tauri::Manager;
+    if let Some(win) = app.get_webview_window("overlay") {
+        if let Ok(h) = win.hwnd() {
+            return Some(h.0 as isize);
+        }
+    }
+    unsafe {
+        use windows::Win32::UI::WindowsAndMessaging::FindWindowW;
+        use windows::core::w;
+        FindWindowW(None, w!("Overlay")).ok().map(|h| h.0 as isize)
+    }
+}
+
+/// Idempotent: strip any ability to take focus, even when clicked.
+unsafe fn apply_overlay_noactivate(hwnd: isize) {
+    use std::ffi::c_void;
+    type HWND = *mut c_void;
+    extern "system" {
+        fn GetWindowLongPtrW(hWnd: HWND, nIndex: i32) -> isize;
+        fn SetWindowLongPtrW(hWnd: HWND, nIndex: i32, dwNewLong: isize) -> isize;
+    }
+    const GWL_EXSTYLE: i32 = -20;
+    const WS_EX_NOACTIVATE: isize = 0x0800_0000;
+    const WS_EX_TOOLWINDOW: isize = 0x0000_0080;
+    let h = hwnd as HWND;
+    let st = GetWindowLongPtrW(h, GWL_EXSTYLE);
+    SetWindowLongPtrW(h, GWL_EXSTYLE, st | WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW);
+}
+
 #[tauri::command]
 async fn show_overlay(app: tauri::AppHandle, lang: String) -> Result<(), String> {
     use tauri::Manager;
@@ -2718,49 +3278,45 @@ async fn show_overlay(app: tauri::AppHandle, lang: String) -> Result<(), String>
         title_text
     );
 
-    if let Some(win) = app.get_webview_window("overlay") {
-        let _ = win.set_focusable(false);
-        // ALL window manipulation via raw Win32 with explicit NOACTIVATE.
-        // Tauri's set_always_on_top/set_position/show can activate the
-        // window and steal foreground from fullscreen LoL (minimizing it),
-        // which also made the frontend watchdog think the game had ended
-        // and cut recordings mid-match.  Never call those here.
-        let pos = find_lol_window_rect()
-            .map(|(x, y, w, h)| ((x + w - 360).max(0), (y + h / 2 - 45).max(0)))
-            .unwrap_or((0, 0));
+    if let Some(oh) = overlay_hwnd(&app) {
         unsafe {
             use windows::Win32::UI::WindowsAndMessaging::{
-                SetWindowPos, FindWindowW, ShowWindow,
-                HWND_TOPMOST, SWP_NOSIZE, SWP_NOACTIVATE, SWP_SHOWWINDOW, SW_SHOWNOACTIVATE,
+                SetWindowPos, HWND_TOPMOST, SWP_NOSIZE, SWP_NOACTIVATE, SWP_SHOWWINDOW,
             };
-            use windows::core::w;
-            if let Ok(oh) = FindWindowW(None, w!("Overlay")) {
-                let _ = ShowWindow(oh, SW_SHOWNOACTIVATE);
-                let _ = SetWindowPos(
-                    oh,
-                    HWND_TOPMOST,
-                    pos.0, pos.1, 0, 0,
-                    SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW,
-                );
+            apply_overlay_noactivate(oh);
+            // Update content BEFORE it becomes visible.
+            if let Some(win) = app.get_webview_window("overlay") {
+                let _ = win.eval(&js);
             }
+            let pos = find_lol_window_rect()
+                .map(|(x, y, w, h)| ((x + w - 360).max(0), (y + h / 2 - 45).max(0)))
+                .unwrap_or((0, 0));
+            // Slide the parked window into place WITHOUT activation.
+            let _ = SetWindowPos(
+                windows::Win32::Foundation::HWND(oh as *mut _),
+                HWND_TOPMOST,
+                pos.0, pos.1, 0, 0,
+                SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW,
+            );
         }
-        let _ = win.eval(&js);
-        // Increment generation so a previous timer won't hide this overlay.
+        // Generation counter so a stale auto-hide timer never parks a newer
+        // overlay that was just shown.
         let gen = OVERLAY_GEN.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
         std::thread::spawn(move || {
             std::thread::sleep(std::time::Duration::from_secs(5));
-            // Only hide if no newer overlay has been shown.
             if OVERLAY_GEN.load(std::sync::atomic::Ordering::SeqCst) != gen {
                 return;
             }
-            // Hide via Win32 too — w.hide() can go through paths that mess
-            // with z-order/activation on re-show later.
             unsafe {
-                use windows::Win32::UI::WindowsAndMessaging::{FindWindowW, ShowWindow, SW_HIDE};
-                use windows::core::w;
-                if let Ok(oh) = FindWindowW(None, w!("Overlay")) {
-                    let _ = ShowWindow(oh, SW_HIDE);
-                }
+                use windows::Win32::UI::WindowsAndMessaging::{
+                    SetWindowPos, HWND_TOPMOST, SWP_NOSIZE, SWP_NOACTIVATE,
+                };
+                let _ = SetWindowPos(
+                windows::Win32::Foundation::HWND(oh as *mut _),
+                    HWND_TOPMOST,
+                    OVERLAY_PARK_X, OVERLAY_PARK_Y, 0, 0,
+                    SWP_NOSIZE | SWP_NOACTIVATE,
+                );
             }
         });
     }
@@ -2769,16 +3325,19 @@ async fn show_overlay(app: tauri::AppHandle, lang: String) -> Result<(), String>
 
 #[tauri::command]
 async fn hide_overlay(app: tauri::AppHandle) -> Result<(), String> {
-    use tauri::Manager;
-    if app.get_webview_window("overlay").is_some() {
-        // Win32-only, matching show_overlay: never route through Tauri
-        // window methods that could alter z-order or activation.
+    if let Some(oh) = overlay_hwnd(&app) {
+        // Invalidate pending timers and park offscreen — never hide().
+        OVERLAY_GEN.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         unsafe {
-            use windows::Win32::UI::WindowsAndMessaging::{FindWindowW, ShowWindow, SW_HIDE};
-            use windows::core::w;
-            if let Ok(oh) = FindWindowW(None, w!("Overlay")) {
-                let _ = ShowWindow(oh, SW_HIDE);
-            }
+            use windows::Win32::UI::WindowsAndMessaging::{
+                SetWindowPos, HWND_TOPMOST, SWP_NOSIZE, SWP_NOACTIVATE,
+            };
+            let _ = SetWindowPos(
+                windows::Win32::Foundation::HWND(oh as *mut _),
+                HWND_TOPMOST,
+                OVERLAY_PARK_X, OVERLAY_PARK_Y, 0, 0,
+                SWP_NOSIZE | SWP_NOACTIVATE,
+            );
         }
     }
     Ok(())
@@ -2944,6 +3503,12 @@ pub fn run() {
             use tauri::menu::{MenuBuilder, MenuItemBuilder};
 
             let window = app.get_webview_window("main").unwrap();
+
+            // Overlay is born parked offscreen; make it permanently
+            // unfocusable so it can never steal foreground from the game.
+            if let Some(oh) = overlay_hwnd(&app.handle()) {
+                unsafe { apply_overlay_noactivate(oh) };
+            }
 
             {
                 let mut cfg = read_config(&app.handle());
