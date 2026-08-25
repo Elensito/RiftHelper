@@ -2548,72 +2548,63 @@ fn setup_audio_sources(
 
     if matches!(mode, AudioMode::Game | AudioMode::GameDiscord) {
         let include_discord = mode == AudioMode::GameDiscord;
-        let gpid = find_lol_window_pid();
-        if let Some(g) = gpid {
-            audio_log(&format!("game audio: LoL PID={g} (endpoint+polling, NO muting)"));
-        } else {
-            audio_log("game audio: LoL window not found yet");
-        }
 
-        // v1.5.88: Session muting REMOVED — it poisons the WASAPI loopback
-        // engine on real machines.  Capturing all desktop audio instead
-        // (same approach as Ascent/OBS).  Foreign apps may leak into
-        // recordings but at least game audio is captured.
-
-        let name = format!(r"\\.\pipe\rh-audio-mix-{ts}");
-        let ok = unsafe { create_audio_pipe_checked(&name) };
+        // PRIMARY: Per-process WASAPI loopback via ActivateAudioInterfaceAsync.
+        // This captures ONLY audio from the target process tree — no leakage
+        // from YouTube/Firefox/etc.  Requires Windows 10 Build 19041+.
         let mut used_strategy = false;
-        if ok {
-            let (rx2, gate2s, cancel2s) =
-                spawn_endpoint_loopback_capture(name.clone());
-            match rx2.recv_timeout(std::time::Duration::from_millis(8000)) {
-                Ok(Ok((fmt, rate, ch, _bits))) => {
-                    inputs.push(AudioInput::Pipe(vec![
-                        "-f".into(), fmt,
-                        "-ar".into(), rate.to_string(),
-                        "-ac".into(), ch.to_string(),
-                        "-i".into(), name,
-                    ]));
-                    gates.push(gate2s);
-                    used_strategy = true;
-                }
-                Ok(Err(e)) => {
-                    audio_log(&format!("endpoint loopback capture failed: {e}"));
-                    cancel2s.store(true, std::sync::atomic::Ordering::Relaxed);
-                    gate2s.open();
-                }
-                Err(_) => {
-                    audio_log("endpoint loopback capture timed out after 8s");
-                    cancel2s.store(true, std::sync::atomic::Ordering::Relaxed);
-                    gate2s.open();
-                }
+        if let Some(gpid) = find_lol_window_pid() {
+            audio_log(&format!("process loopback: League PID={gpid} (INCLUDE tree)"));
+            let name = format!(r"\\.\pipe\rh-audio-game-{ts}");
+            if add_capture_source(&mut inputs, &mut gates, name, CaptureSource::Process(gpid)) {
+                used_strategy = true;
+            }
+        } else {
+            audio_log("process loopback: LoL window not found yet");
+        }
+        if include_discord {
+            let dpids = find_tree_root_pids("discord", 4);
+            if dpids.is_empty() {
+                audio_log("process loopback: Discord PIDs not found");
+            }
+            for (i, dpid) in dpids.into_iter().enumerate() {
+                audio_log(&format!("process loopback: Discord PID={dpid} (INCLUDE tree)"));
+                let name = format!(r"\\.\pipe\rh-audio-discord{i}-{ts}");
+                add_capture_source(&mut inputs, &mut gates, name, CaptureSource::Process(dpid));
             }
         }
 
+        // FALLBACK: Endpoint loopback (captures ALL desktop audio).
+        // Only used when process loopback fails (old Windows, or PID not found).
         if !used_strategy {
-            // LEGACY fallback: per-PID WASAPI process loopback (may produce
-            // engine-flagged silence on some machines, but it never leaks).
-            audio_log("falling back to legacy process loopback");
-            if let Some(gpid) = find_lol_window_pid() {
-                let name = format!(r"\\.\pipe\rh-audio-game-{ts}");
-                add_capture_source(&mut inputs, &mut gates, name, CaptureSource::Process(gpid));
-            }
-            if include_discord {
-                let dpids = find_tree_root_pids("discord", 4);
-                for (i, dpid) in dpids.into_iter().enumerate() {
-                    let name = format!(r"\\.\pipe\rh-audio-discord{i}-{ts}");
-                    add_capture_source(
-                        &mut inputs,
-                        &mut gates,
-                        name,
-                        CaptureSource::Process(dpid),
-                    );
+            audio_log("process loopback unavailable — falling back to endpoint loopback");
+            let name = format!(r"\\.\pipe\rh-audio-mix-{ts}");
+            if unsafe { create_audio_pipe_checked(&name) } {
+                let (rx2, gate2s, cancel2s) =
+                    spawn_endpoint_loopback_capture(name.clone());
+                match rx2.recv_timeout(std::time::Duration::from_millis(8000)) {
+                    Ok(Ok((fmt, rate, ch, _bits))) => {
+                        inputs.push(AudioInput::Pipe(vec![
+                            "-f".into(), fmt,
+                            "-ar".into(), rate.to_string(),
+                            "-ac".into(), ch.to_string(),
+                            "-i".into(), name,
+                        ]));
+                        gates.push(gate2s);
+                    }
+                    Ok(Err(e)) => {
+                        audio_log(&format!("endpoint fallback failed: {e}"));
+                        cancel2s.store(true, std::sync::atomic::Ordering::Relaxed);
+                        gate2s.open();
+                    }
+                    Err(_) => {
+                        audio_log("endpoint fallback timed out after 8s");
+                        cancel2s.store(true, std::sync::atomic::Ordering::Relaxed);
+                        gate2s.open();
+                    }
                 }
             }
         }
-
-        // NO plain endpoint-loopback fallback for Game/GameDiscord: capturing
-        // the whole desktop un-muted would leak Firefox/YouTube into VODs.
     } else if mode == AudioMode::System {
         let id = if output_device_id.trim().is_empty() {
             None
