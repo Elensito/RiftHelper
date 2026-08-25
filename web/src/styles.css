@@ -7225,7 +7225,8 @@ body.sidebar-expanded .vod-player-view {
      keeping the control deck visible. */
   transform: translateZ(0);
   backface-visibility: hidden;
-  isolation: isolate;
+  /* Let mouse events pass through to .vod-video-container so :hover works. */
+  pointer-events: none;
 }
 
 .vod-video-placeholder {
@@ -7549,8 +7550,13 @@ body.sidebar-expanded .vod-player-view {
   letter-spacing: 0.02em;
   white-space: nowrap;
   line-height: 1;
-  opacity: 0.9;
+  opacity: 0;
   text-shadow: 0 0 4px currentColor;
+  transition: opacity 0.15s ease;
+  pointer-events: none;
+}
+.vtl-ev:hover .vtl-ev-label {
+  opacity: 0.9;
 }
 .vtl-ev::after {
   content: '';

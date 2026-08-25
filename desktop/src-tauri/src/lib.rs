@@ -1481,8 +1481,10 @@ fn spawn_capture_source(
         use windows::Win32::System::Threading::{CreateEventW, SetEvent, WaitForSingleObject};
 
         const STREAM_FLAGS_ENDPOINT: u32 = 0x0002_0000 | 0x0004_0000; // LOOPBACK | EVENTCALLBACK (endpoint only)
-        // Process loopback requires LOOPBACK + EVENTCALLBACK + AUTOCONVERTPCM.
-        const STREAM_FLAGS_PROCESS: u32 = 0x0002_0000 | 0x0004_0000 | 0x8000_0000;
+        // Process loopback: EVENTCALLBACK + AUTOCONVERTPCM only.
+        // LOOPBACK (0x20000) is ONLY for endpoint loopback and causes
+        // intermittent failures when used with process loopback activation.
+        const STREAM_FLAGS_PROCESS: u32 = 0x0004_0000 | 0x8000_0000;
 
         let fail = |msg: String| {
             audio_log(&format!("capture thread error: {msg}"));
@@ -1612,6 +1614,8 @@ fn spawn_capture_source(
         audio_log("pipe connected, entering capture loop");
 
         let mut stopped = false;
+        let mut consecutive_errors = 0u32;
+        const MAX_CONSECUTIVE_ERRORS: u32 = 100;
         while !stopped {
             if AUDIO_CAPTURE_STOP.load(std::sync::atomic::Ordering::Relaxed) {
                 break;
@@ -1623,8 +1627,13 @@ fn spawn_capture_source(
             loop {
                 let packets = match cap.GetNextPacketSize() {
                     Ok(p) => p,
-                    Err(_) => {
-                        stopped = true;
+                    Err(e) => {
+                        consecutive_errors += 1;
+                        audio_log(&format!("GetNextPacketSize error ({consecutive_errors}/{MAX_CONSECUTIVE_ERRORS}): {e}"));
+                        if consecutive_errors >= MAX_CONSECUTIVE_ERRORS {
+                            audio_log("too many consecutive errors, stopping capture");
+                            stopped = true;
+                        }
                         break;
                     }
                 };
@@ -1635,9 +1644,15 @@ fn spawn_capture_source(
                 let mut frames = 0u32;
                 let mut flags = 0u32;
                 if cap.GetBuffer(&mut data, &mut frames, &mut flags, None, None).is_err() {
-                    stopped = true;
+                    consecutive_errors += 1;
+                    audio_log(&format!("GetBuffer error ({consecutive_errors}/{MAX_CONSECUTIVE_ERRORS})"));
+                    if consecutive_errors >= MAX_CONSECUTIVE_ERRORS {
+                        audio_log("too many consecutive errors, stopping capture");
+                        stopped = true;
+                    }
                     break;
                 }
+                consecutive_errors = 0;
                 let bytes = frames as usize * block_align;
                 let ok = if flags & 0x2 != 0 || data.is_null() {
                     let zeros = vec![0u8; bytes];
@@ -1648,8 +1663,18 @@ fn spawn_capture_source(
                 };
                 let _ = cap.ReleaseBuffer(frames);
                 if !ok {
+                    audio_log("pipe write failed (ffmpeg closed pipe), stopping capture");
                     stopped = true;
                     break;
+                }
+            }
+            // After transient errors, write silence to keep pipe alive
+            // so ffmpeg doesn't see EOF and the other audio input keeps working.
+            if consecutive_errors > 0 && consecutive_errors < MAX_CONSECUTIVE_ERRORS {
+                let silence = vec![0u8; 4096];
+                if !write_all_pipe(pipe, &silence) {
+                    audio_log("pipe write failed during silence fill, stopping");
+                    stopped = true;
                 }
             }
         }
@@ -1762,14 +1787,21 @@ fn setup_audio_sources(
         }
 
         if mode == AudioMode::GameDiscord {
-            for (i, dpid) in find_process_pids_by_image("discord", 2).into_iter().enumerate() {
-                let name = format!(r"\\.\pipe\rh-audio-discord{i}-{ts}");
+            // Only capture the FIRST Discord process (main voice process).
+            // Multiple Discord processes are unreliable for process loopback
+            // and cause intermittent audio failures.  Limiting to 1 keeps
+            // the amix filter simple and avoids orphaned pipes.
+            if let Some(dpid) = find_process_pids_by_image("discord", 1).into_iter().next() {
+                audio_log(&format!("discord audio: PID={dpid}"));
+                let name = format!(r"\\.\pipe\rh-audio-discord-{ts}");
                 add_capture_source(
                     &mut inputs,
                     &mut gates,
                     name,
                     CaptureSource::Process(dpid),
                 );
+            } else {
+                audio_log("discord audio: no Discord process found");
             }
         }
 
