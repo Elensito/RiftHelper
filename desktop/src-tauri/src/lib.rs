@@ -1258,35 +1258,48 @@ fn find_lol_window_pid() -> Option<u32> {
     result.lock().ok().and_then(|mut g| g.take())
 }
 
-/// PIDs whose image name contains `needle` (case-insensitive), skipping updaters.
-fn find_process_pids_by_image(needle_lower: &str, max: usize) -> Vec<u32> {
+/// Root PIDs of process trees whose image name contains `needle`
+/// (case-insensitive), skipping updaters.  A PID is a root when none of its
+/// ancestors shares the same image name.  Combined with
+/// PROCESS_LOOPBACK_MODE_INCLUDE_TARGET_PROCESS_TREE this covers the whole
+/// app exactly once — capturing parents AND children separately would
+/// duplicate their audio in the mix.
+fn find_tree_root_pids(needle_lower: &str, max: usize) -> Vec<u32> {
+    use std::collections::HashMap;
     use windows::Win32::Foundation::CloseHandle;
     use windows::Win32::System::Diagnostics::ToolHelp::{
         CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W,
         TH32CS_SNAPPROCESS,
     };
-    let mut out = Vec::new();
+    let mut pids: HashMap<u32, u32> = HashMap::new(); // pid -> parent pid
     unsafe {
         let snap = match CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) {
             Ok(h) => h,
-            Err(_) => return out,
+            Err(_) => return Vec::new(),
         };
         let mut entry = PROCESSENTRY32W::default();
         entry.dwSize = std::mem::size_of::<PROCESSENTRY32W>() as u32;
         let mut ok = Process32FirstW(snap, &mut entry).is_ok();
-        while ok && out.len() < max {
+        while ok {
             let name = String::from_utf16_lossy(&entry.szExeFile)
                 .trim_end_matches('\0')
                 .to_lowercase();
             if !name.is_empty() && name.contains(needle_lower) && !name.contains("updater") {
-                out.push(entry.th32ProcessID);
+                pids.insert(entry.th32ProcessID, entry.th32ParentProcessID);
             }
             entry.dwSize = std::mem::size_of::<PROCESSENTRY32W>() as u32;
             ok = Process32NextW(snap, &mut entry).is_ok();
         }
         let _ = CloseHandle(snap);
     }
-    out
+    let mut roots: Vec<u32> = pids
+        .iter()
+        .filter(|(_, &parent)| !pids.contains_key(&parent))
+        .map(|(&pid, _)| pid)
+        .collect();
+    roots.sort_unstable();
+    roots.truncate(max);
+    roots
 }
 
 struct StartGate {
@@ -1791,16 +1804,15 @@ fn setup_audio_sources(
         }
 
         if mode == AudioMode::GameDiscord {
-            // Up to 2 Discord PIDs (main + helper share the image name; the
-            // mix filter below adapts to the actual count).  Snapshot order
-            // isn't guaranteed to be the voice process, so capturing both
-            // makes voice audio reliable.
-            let dpids = find_process_pids_by_image("discord", 2);
+            // Capture the ROOT(s) of every discord.exe tree on the machine.
+            // Tree-inclusion loopback then covers ALL Discord processes
+            // (main, GPU, renderer, voice) exactly once — no duplicates.
+            let dpids = find_tree_root_pids("discord", 4);
             if dpids.is_empty() {
                 audio_log("discord audio: no Discord process found");
             }
             for (i, dpid) in dpids.into_iter().enumerate() {
-                audio_log(&format!("discord audio: PID={dpid}"));
+                audio_log(&format!("discord audio: root PID={dpid}"));
                 let name = format!(r"\\.\pipe\rh-audio-discord{i}-{ts}");
                 add_capture_source(
                     &mut inputs,
