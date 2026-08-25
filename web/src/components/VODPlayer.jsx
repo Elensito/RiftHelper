@@ -300,7 +300,7 @@ function NeonTimeline({ matchId, puuid, lang, duration, current, onSeek, localDa
               onMouseEnter={() => setCursor(null)}
               onClick={(e) => {
                 e.stopPropagation()
-                onSeek(Math.max(0, ev.vsec - 5))
+                onSeek(Math.max(0, ev.vsec - 15))
               }}
             >
               <Icon />
@@ -519,11 +519,30 @@ export default function VODPlayer({ vod, lang, onBack, puuid, summoner, showTeam
   }, [volume, muted, videoUrl])
 
   /* Video element events */
+  const didInitialSeekRef = useRef(false)
   useEffect(() => {
+    didInitialSeekRef.current = false
     const vid = videoRef.current
     if (!vid) return
     const onTime = () => setCurrent(vid.currentTime)
-    const onLoaded = () => setDuration(vid.duration || vod.duration || 0)
+    const onLoaded = () => {
+      const dur = vid.duration || vod.duration || 0
+      setDuration(dur)
+      /* Auto-seek past the loading screen: gameTimeOffset is negative when
+         recording started before the game.  Seek to video time that
+         corresponds to game time ~10s so the VOD starts with action. */
+      if (!didInitialSeekRef.current && dur > 0) {
+        didInitialSeekRef.current = true
+        const gto = mv.gameTimeOffset || 0
+        if (gto < 0) {
+          const target = Math.max(0, 10 - gto)
+          if (target < dur - 5) {
+            vid.currentTime = target
+            setCurrent(target)
+          }
+        }
+      }
+    }
     const onEnd = () => setPlaying(false)
     vid.addEventListener('timeupdate', onTime)
     vid.addEventListener('loadedmetadata', onLoaded)

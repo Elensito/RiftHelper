@@ -1058,10 +1058,12 @@ fn audio_mode_from_cfg(cfg: &serde_json::Value) -> AudioMode {
 
 /// Where a loopback capture pulls audio from.
 enum CaptureSource {
-    /// WASAPI process-loopback of a single PID tree.
+    /// WASAPI process-loopback of a specific PID tree.
     Process(u32),
     /// Render-endpoint loopback (None = whatever the system default is now).
     Endpoint(Option<String>),
+    /// WASAPI capture from the default microphone (capture endpoint).
+    Microphone,
 }
 
 fn pcwstr_to_string(p: windows::core::PCWSTR) -> String {
@@ -1216,6 +1218,28 @@ unsafe fn open_endpoint_loopback_client(
     device
         .Activate::<windows::Win32::Media::Audio::IAudioClient>(CLSCTX_ALL, None)
         .map_err(|e| format!("activate endpoint: {e}"))
+}
+
+/// Open the default microphone (capture endpoint) for WASAPI capture.
+/// Returns an IAudioClient that can be initialized in shared mode and read
+/// via IAudioCaptureClient — this captures the user's mic input so their
+/// own voice appears in recordings alongside game/Discord audio.
+unsafe fn open_default_mic_client() -> Result<windows::Win32::Media::Audio::IAudioClient, String> {
+    use windows::Win32::Media::Audio::{IMMDeviceEnumerator, MMDeviceEnumerator, eCapture, eConsole};
+    use windows::Win32::System::Com::{CoCreateInstance, CoInitializeEx, CLSCTX_ALL, COINIT_MULTITHREADED};
+
+    let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
+    let enumerator: IMMDeviceEnumerator =
+        CoCreateInstance(&MMDeviceEnumerator, None, CLSCTX_ALL).map_err(|e| format!("mmdev: {e}"))?;
+
+    let device = enumerator
+        .GetDefaultAudioEndpoint(eCapture, eConsole)
+        .map_err(|e| format!("default capture endpoint: {e}"))?;
+
+    audio_log("default mic device obtained");
+    device
+        .Activate::<windows::Win32::Media::Audio::IAudioClient>(CLSCTX_ALL, None)
+        .map_err(|e| format!("activate mic: {e}"))
 }
 
 /// PID of the visible "League of Legends (TM) Client" window (the actual game).
@@ -1496,13 +1520,9 @@ fn spawn_capture_source(
 
         const STREAM_FLAGS_ENDPOINT: u32 = 0x0002_0000; // LOOPBACK only — polling mode
         // Process loopback: LOOPBACK | EVENTCALLBACK | AUTOCONVERTPCM | SRC_DEFAULT_QUALITY.
-        // The LOOPBACK bit is empirically REQUIRED (v1.5.80 removed it and
-        // Initialize failed with 0x88890021).  We request the engine's native
-        // format (float32 @48k stereo) so AUTOCONVERTPCM has nothing to do —
-        // requesting s16le@44.1k through this activation path produced
-        // near-silent buzz (float bits misread as int16).
         const STREAM_FLAGS_PROCESS: u32 =
             0x0002_0000 | 0x0004_0000 | 0x8000_0000 | 0x0800_0000;
+        const STREAM_FLAGS_MIC: u32 = 0; // plain capture, no loopback flags
 
         let fail = |msg: String| {
             audio_log(&format!("capture thread error: {msg}"));
@@ -1512,6 +1532,7 @@ fn spawn_capture_source(
         let stream_flags = match &source {
             CaptureSource::Process(_) => STREAM_FLAGS_PROCESS,
             CaptureSource::Endpoint(_) => STREAM_FLAGS_ENDPOINT,
+            CaptureSource::Microphone => STREAM_FLAGS_MIC,
         };
 
         audio_log(&format!("activating capture source: stream_flags=0x{stream_flags:08X}"));
@@ -1530,12 +1551,17 @@ fn spawn_capture_source(
                     Err(e) => return fail(e),
                 }
             }
+            CaptureSource::Microphone => {
+                audio_log("activating default microphone capture");
+                match open_default_mic_client() {
+                    Ok(c) => c,
+                    Err(e) => return fail(e),
+                }
+            }
         };
 
-        // GetMixFormat is NOT supported for process loopback clients, and
-        // requesting s16le@44100 through this activation path yields
-        // near-silent buzz.  Use the engine's NATIVE format directly:
-        // IEEE float 32-bit @48000 Hz stereo (WASAPI shared-mode mix format).
+        // GetMixFormat is NOT supported for process loopback clients.
+        // Microphone and Endpoint can use it normally.
         let is_process = matches!(&source, CaptureSource::Process(_));
         let (pwfx, owned_pwfx): (*mut WAVEFORMATEX, Option<*mut u8>) = if is_process {
             let fmt = Box::into_raw(Box::new(WAVEFORMATEX {
@@ -1567,7 +1593,7 @@ fn spawn_capture_source(
         audio_log(&format!("mixformat OK: fmt={fmt_name} rate={rate} ch={channels} bits={bits}"));
 
         // Event + SetEventHandle only needed for process loopback (EVENTCALLBACK flag).
-        // Endpoint mode uses polling with GetCurrentPadding.
+        // Endpoint and Microphone mode use polling with GetCurrentPadding.
         let ev = if is_process {
             match CreateEventW(None, false, false, None) {
                 Ok(h) => Some(h),
@@ -1653,7 +1679,7 @@ fn spawn_capture_source(
                     continue;
                 }
             } else {
-                // Endpoint loopback: polling with GetCurrentPadding (event unreliable).
+                // Endpoint loopback + Microphone: polling with GetCurrentPadding.
                 match client.GetCurrentPadding() {
                     Ok(0) => {
                         std::thread::sleep(std::time::Duration::from_millis(2));
@@ -2543,6 +2569,7 @@ fn add_capture_source(
 fn setup_audio_sources(
     mode: AudioMode,
     output_device_id: String,
+    mute_mic: bool,
 ) -> (Vec<AudioInput>, Vec<Arc<StartGate>>) {
     let mut inputs: Vec<AudioInput> = Vec::new();
     let mut gates: Vec<Arc<StartGate>> = Vec::new();
@@ -2609,6 +2636,17 @@ fn setup_audio_sources(
                         gate2s.open();
                     }
                 }
+            }
+        }
+
+        // Microphone capture: records the user's own voice so they appear
+        // in the recording alongside game/Discord audio. Uses the default
+        // WASAPI capture endpoint (microphone). Best-effort: if no mic is
+        // available the recording continues without it.
+        if !mute_mic {
+            let mic_name = format!(r"\\.\pipe\rh-audio-mic-{ts}");
+            if add_capture_source(&mut inputs, &mut gates, mic_name, CaptureSource::Microphone) {
+                audio_log("mic capture added to recording");
             }
         }
     } else if mode == AudioMode::System {
@@ -3323,7 +3361,7 @@ async fn start_recording(app: tauri::AppHandle) -> Result<String, String> {
         .unwrap_or("")
         .to_string();
     let (audio_inputs, audio_gates) =
-        tauri::async_runtime::spawn_blocking(move || setup_audio_sources(mode, out_dev))
+        tauri::async_runtime::spawn_blocking(move || setup_audio_sources(mode, out_dev, mute_mic))
             .await
             .map_err(|e| e.to_string())?;
 
