@@ -300,7 +300,7 @@ function NeonTimeline({ matchId, puuid, lang, duration, current, onSeek, localDa
               onMouseEnter={() => setCursor(null)}
               onClick={(e) => {
                 e.stopPropagation()
-                onSeek(Math.max(0, ev.vsec - 15))
+                onSeek(Math.max(0, ev.vsec - 5))
               }}
             >
               <Icon />
