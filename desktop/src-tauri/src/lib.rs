@@ -1481,10 +1481,14 @@ fn spawn_capture_source(
         use windows::Win32::System::Threading::{CreateEventW, SetEvent, WaitForSingleObject};
 
         const STREAM_FLAGS_ENDPOINT: u32 = 0x0002_0000 | 0x0004_0000; // LOOPBACK | EVENTCALLBACK (endpoint only)
-        // Process loopback: EVENTCALLBACK + AUTOCONVERTPCM only.
-        // LOOPBACK (0x20000) is ONLY for endpoint loopback and causes
-        // intermittent failures when used with process loopback activation.
-        const STREAM_FLAGS_PROCESS: u32 = 0x0004_0000 | 0x8000_0000;
+        // Process loopback: LOOPBACK | EVENTCALLBACK | AUTOCONVERTPCM.
+        // v1.5.80 removed the LOOPBACK bit based on the docs, but Windows
+        // empirically REQUIRES it here: without it Initialize fails with
+        // AUDCLNT_E_UNSUPPORTED_FORMAT (0x88890021), both captures die and
+        // the system-audio fallback leaked Firefox/YouTube into recordings.
+        // Logs prove 0x80060000 initializes fine every time; past
+        // intermittency came from transient packet errors (now retried).
+        const STREAM_FLAGS_PROCESS: u32 = 0x0002_0000 | 0x0004_0000 | 0x8000_0000;
 
         let fail = |msg: String| {
             audio_log(&format!("capture thread error: {msg}"));
@@ -1787,37 +1791,30 @@ fn setup_audio_sources(
         }
 
         if mode == AudioMode::GameDiscord {
-            // Only capture the FIRST Discord process (main voice process).
-            // Multiple Discord processes are unreliable for process loopback
-            // and cause intermittent audio failures.  Limiting to 1 keeps
-            // the amix filter simple and avoids orphaned pipes.
-            if let Some(dpid) = find_process_pids_by_image("discord", 1).into_iter().next() {
+            // Up to 2 Discord PIDs (main + helper share the image name; the
+            // mix filter below adapts to the actual count).  Snapshot order
+            // isn't guaranteed to be the voice process, so capturing both
+            // makes voice audio reliable.
+            let dpids = find_process_pids_by_image("discord", 2);
+            if dpids.is_empty() {
+                audio_log("discord audio: no Discord process found");
+            }
+            for (i, dpid) in dpids.into_iter().enumerate() {
                 audio_log(&format!("discord audio: PID={dpid}"));
-                let name = format!(r"\\.\pipe\rh-audio-discord-{ts}");
+                let name = format!(r"\\.\pipe\rh-audio-discord{i}-{ts}");
                 add_capture_source(
                     &mut inputs,
                     &mut gates,
                     name,
                     CaptureSource::Process(dpid),
                 );
-            } else {
-                audio_log("discord audio: no Discord process found");
             }
         }
 
-        // FALLBACK: if process loopback produced no inputs (broken PROPVARIANT,
-        // wrong device path, etc.), fall back to endpoint loopback so the user
-        // at least gets system audio.  Better noisy audio than silent recordings.
-        if inputs.is_empty() {
-            audio_log("process loopback produced no inputs — falling back to endpoint loopback (system audio)");
-            let name = format!(r"\\.\pipe\rh-audio-system-{ts}");
-            add_capture_source(
-                &mut inputs,
-                &mut gates,
-                name,
-                CaptureSource::Endpoint(None),
-            );
-        }
+        // NO endpoint-loopback fallback for Game/GameDiscord: capturing the
+        // whole desktop would leak Firefox/YouTube etc. into recordings.
+        // If process loopback fails we rather record without audio than with
+        // unrelated apps' sound.
     } else if mode == AudioMode::System {
         let id = if output_device_id.trim().is_empty() {
             None
@@ -2392,14 +2389,25 @@ async fn start_recording(app: tauri::AppHandle) -> Result<String, String> {
         let mic_filter = mute_mic && matches!(mode, AudioMode::System);
         if audio_inputs.len() >= 2 {
             // Mix game + discord trees into one track (normalize=0 keeps level).
-            let filter = if mic_filter {
-                "[1:a]aformat=sample_rates=48000:channel_layouts=stereo,afftdn=nf=-25[a1];[2:a]aformat=sample_rates=48000:channel_layouts=stereo,afftdn=nf=-25[a2];[a1][a2]amix=inputs=2:duration=longest:normalize=0[aout]"
-            } else {
-                "[1:a]aformat=sample_rates=48000:channel_layouts=stereo[a1];[2:a]aformat=sample_rates=48000:channel_layouts=stereo[a2];[a1][a2]amix=inputs=2:duration=longest:normalize=0[aout]"
-            };
+            // Filter adapts to the actual input count so every pipe is consumed.
+            let n = audio_inputs.len();
+            let mut parts: Vec<String> = Vec::new();
+            let mut labels: Vec<String> = Vec::new();
+            for i in 1..=n {
+                let dn = if mic_filter { ",afftdn=nf=-25" } else { "" };
+                parts.push(format!(
+                    "[{i}:a]aformat=sample_rates=48000:channel_layouts=stereo{dn}[a{i}]"
+                ));
+                labels.push(format!("[a{i}]"));
+            }
+            let filter = format!(
+                "{};{}amix=inputs={n}:duration=longest:normalize=0[aout]",
+                parts.join(";"),
+                labels.concat()
+            );
             ffmpeg_args.extend([
                 "-filter_complex".to_string(),
-                filter.to_string(),
+                filter,
                 "-map".to_string(), "0:v:0".to_string(),
                 "-map".to_string(), "[aout]".to_string(),
             ]);

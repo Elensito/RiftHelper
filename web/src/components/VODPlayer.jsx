@@ -210,15 +210,6 @@ function NeonTimeline({ matchId, puuid, lang, duration, current, onSeek, localDa
     return `${ev.time} · ${base}${side}`
   }, [lang])
 
-  const labelForShort = useCallback((ev) => {
-    if (ev.kind === 'kill-me') return t(lang, 'vtlKills')
-    if (ev.kind === 'death-me') return t(lang, 'vtlDeaths')
-    if (ev.kind === 'assist-me') return t(lang, 'vtlAssists')
-    if (ev.kind === 'tower') return t(lang, 'evTower')
-    if (ev.kind === 'inhib') return t(lang, 'evInhibitor')
-    return t(lang, 'evBaron')
-  }, [lang])
-
   const secAtClientX = useCallback((clientX, clientY) => {
     const el = trackRef.current
     if (!el || !tlDuration) return null
@@ -300,7 +291,6 @@ function NeonTimeline({ matchId, puuid, lang, duration, current, onSeek, localDa
               }}
             >
               <Icon />
-              <span className="vtl-ev-label">{ev.time} · {labelForShort(ev)}</span>
             </button>
           )
         })}

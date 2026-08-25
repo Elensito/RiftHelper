@@ -91,10 +91,14 @@ export default function AppSettings({ theme, onThemeChange, lang, onLangChange, 
   const [downloadPercent, setDownloadPercent] = useState(0)
   const [downloadedMB, setDownloadedMB] = useState(0)
   const [totalMB, setTotalMB] = useState(0)
+  const [appVersion, setAppVersion] = useState('')
   const unlistenRef = useRef(null)
 
   useEffect(() => {
     if (!isTauri()) return
+    import('@tauri-apps/api/app').then(({ getVersion }) => {
+      getVersion().then(setAppVersion).catch(() => {})
+    }).catch(() => {})
     getCloseBehavior().then(setCloseBehaviorState)
     isAutostartEnabled().then(setAutostart)
     getFfmpegPath().then(setFfmpegPathState)
@@ -411,6 +415,7 @@ export default function AppSettings({ theme, onThemeChange, lang, onLangChange, 
         </div>
 
         <div className="rt-settings-footer">
+          <span className="settings-version">RiftHelper{appVersion ? ` v${appVersion}` : ''}</span>
           <button className="rt-btn rt-btn-primary" onClick={onClose}>{t(lang, 'close')}</button>
         </div>
       </div>

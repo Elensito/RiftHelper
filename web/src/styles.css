@@ -6902,10 +6902,19 @@ body.light .settings-segment.active {
 .rt-settings-footer {
   display: flex;
   justify-content: flex-end;
+  align-items: center;
   gap: 10px;
   padding: 16px 22px;
   border-top: 1px solid var(--border);
   flex-shrink: 0;
+}
+
+.settings-version {
+  margin-right: auto;
+  font-size: 12px;
+  font-family: var(--font-mono, monospace);
+  color: var(--muted);
+  opacity: 0.8;
 }
 
 /* ── App Settings neon enhancements ── */
@@ -7526,8 +7535,7 @@ body.sidebar-expanded .vod-player-view {
   position: absolute;
   bottom: 50%;
   z-index: 5;
-  width: auto;
-  min-width: 26px;
+  width: 26px;
   height: 26px;
   margin-bottom: 7px;
   margin-left: -13px;
@@ -7535,28 +7543,14 @@ body.sidebar-expanded .vod-player-view {
   border: 1px solid;
   display: inline-flex;
   align-items: center;
-  gap: 3px;
+  justify-content: center;
   cursor: pointer;
-  padding: 0 5px;
+  padding: 0;
   background: linear-gradient(180deg, rgba(16, 19, 36, 0.95), rgba(10, 12, 26, 0.98));
   backdrop-filter: blur(4px);
   transition: transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.18s;
   /* stem connects the marker to the rail; length depends on lane */
   --stem-h: 7px;
-}
-.vtl-ev-label {
-  font-size: 9px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  white-space: nowrap;
-  line-height: 1;
-  opacity: 0;
-  text-shadow: 0 0 4px currentColor;
-  transition: opacity 0.15s ease;
-  pointer-events: none;
-}
-.vtl-ev:hover .vtl-ev-label {
-  opacity: 0.9;
 }
 .vtl-ev::after {
   content: '';
@@ -7686,8 +7680,7 @@ body.sidebar-expanded .vod-player-view {
 
 @media (max-width: 900px) {
   .vtl-track { height: 56px; }
-  .vtl-ev { min-width: 22px; height: 22px; margin-left: -11px; padding: 0 3px; }
-  .vtl-ev-label { display: none; }
+  .vtl-ev { width: 22px; height: 22px; margin-left: -11px; }
   .vtl-legend { gap: 10px; }
 }
 
