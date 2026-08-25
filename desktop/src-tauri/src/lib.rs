@@ -1402,6 +1402,8 @@ unsafe fn activate_process_loopback_client(
     // layout on x64 is: vt(u16) + reserved(6) + cbSize(u32) + pad(4) + pBlobData(ptr).
     let mut propvar: windows::core::PROPVARIANT =
         std::mem::zeroed();
+    // Safety: PROPVARIANT must be at least 24 bytes for our layout to work.
+    const _: () = assert!(std::mem::size_of::<windows::core::PROPVARIANT>() >= 24);
     let pv_raw = &mut propvar as *mut _ as *mut u8;
     // offset 0 = vt (VARTYPE = u16, LE). VT_BLOB = 65
     *(pv_raw as *mut u16) = 65u16;
@@ -1431,7 +1433,7 @@ unsafe fn activate_process_loopback_client(
     )
     .map_err(|e| format!("activate: {e}"))?;
 
-    let waited = WaitForSingleObject(event, 4000);
+    let waited = WaitForSingleObject(event, 8000);
     let hr = result_flag.load(std::sync::atomic::Ordering::SeqCst);
     let client = client_slot.lock().ok().and_then(|mut g| g.take());
     let _ = CloseHandle(event);
@@ -1440,10 +1442,15 @@ unsafe fn activate_process_loopback_client(
     // to CoTaskMemFree our stack-allocated pBlobData pointer (which would crash).
     *(pv_raw as *mut u16) = 0u16;
     if waited != WAIT_OBJECT_0 {
+        audio_log(&format!("process loopback activation timed out for PID={pid}"));
         return Err("audio activation timed out".to_string());
     }
     if hr != 0 {
+        audio_log(&format!("process loopback activation failed: hr=0x{hr:08X} for PID={pid}"));
         return Err(format!("audio activation failed: hr=0x{hr:08X}"));
+    }
+    if client.is_some() {
+        audio_log(&format!("process loopback activation OK for PID={pid}"));
     }
     client.ok_or_else(|| "audio activation returned no client".to_string())
 }
@@ -1766,12 +1773,18 @@ fn setup_audio_sources(
             }
         }
 
-        // No fallback to endpoint loopback here: process loopback should
-        // capture ONLY the target process audio. Falling back to system-wide
-        // endpoint loopback would capture YouTube, browser, etc. which the
-        // user does NOT want in "League Only" or "Game+Discord" modes.
+        // FALLBACK: if process loopback produced no inputs (broken PROPVARIANT,
+        // wrong device path, etc.), fall back to endpoint loopback so the user
+        // at least gets system audio.  Better noisy audio than silent recordings.
         if inputs.is_empty() {
-            audio_log("process loopback produced no inputs — no audio (not falling back to system)");
+            audio_log("process loopback produced no inputs — falling back to endpoint loopback (system audio)");
+            let name = format!(r"\\.\pipe\rh-audio-system-{ts}");
+            add_capture_source(
+                &mut inputs,
+                &mut gates,
+                name,
+                CaptureSource::Endpoint(None),
+            );
         }
     } else if mode == AudioMode::System {
         let id = if output_device_id.trim().is_empty() {
