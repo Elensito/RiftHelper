@@ -7700,10 +7700,6 @@ body.sidebar-expanded .vod-player-view {
   pointer-events: none;
   z-index: 20;
 }
-.vtl-ev.death[data-tip]:hover::before {
-  bottom: auto;
-  top: calc(100% + 8px);
-}
 
 /* loading shimmer / empty state */
 .vtl-shimmer {
