@@ -104,11 +104,11 @@ fn fmt_mmss(sec: f64) -> String {
     format!("{}:{:02}", total / 60, total % 60)
 }
 
-fn start_event_capture(output_path: String) {
+fn start_event_capture(events_path: String) {
     let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
     let handle_stop = Arc::clone(&stop);
     let builder = std::thread::Builder::new().name("lcd-events".into());
-    let spawned = builder.spawn(move || run_event_capture(output_path, handle_stop));
+    let spawned = builder.spawn(move || run_event_capture(events_path, handle_stop));
     if let Ok(handle) = spawned {
         let mut guard = EVENT_CAPTURE.lock().unwrap_or_else(|e| e.into_inner());
         *guard = Some(EventCaptureHandle { stop });
@@ -124,18 +124,16 @@ fn stop_event_capture() {
     }
 }
 
-/* Extracts a thumbnail frame from the still-being-written mp4 a few seconds
-   in. The file is fragmented while ffmpeg runs, so seeking by index is
+/* Extracts a thumbnail frame from the still-being-written mp4 ~1 minute in.
+   The file is fragmented while ffmpeg runs, so seeking by index is
    impossible: we seek from the END of the decode chain (-i before -ss) and
    retry a few times until enough video data has been written. Failures are
    silently ignored and the VOD keeps its placeholder. */
-fn start_thumbnail_worker(output_path: String, ffmpeg_path: String) {
+fn start_thumbnail_worker(output_path: String, thumb_path: String, ffmpeg_path: String) {
     let spawned = std::thread::Builder::new().name("vod-thumb".into()).spawn(move || {
-        let mut thumb = std::path::PathBuf::from(&output_path);
-        thumb.set_extension("thumb.jpg");
-        for delay in [7u64, 6, 9] {
+        for delay in [55u64, 60, 70, 90] {
             std::thread::sleep(std::time::Duration::from_secs(delay));
-            if thumb.exists() {
+            if std::path::Path::new(&thumb_path).exists() {
                 return;
             }
             if std::fs::metadata(&output_path).map(|m| m.len()).unwrap_or(0) < 400 * 1024 {
@@ -145,16 +143,16 @@ fn start_thumbnail_worker(output_path: String, ffmpeg_path: String) {
                 .args([
                     "-y".to_string(),
                     "-i".to_string(), output_path.clone(),
-                    "-ss".to_string(), "4".to_string(),
+                    "-ss".to_string(), "50".to_string(),
                     "-frames:v".to_string(), "1".to_string(),
                     "-q:v".to_string(), "4".to_string(),
                 ])
-                .arg(&thumb)
+                .arg(&thumb_path)
                 .creation_flags(0x08000000)
                 .stdout(std::process::Stdio::null())
                 .stderr(std::process::Stdio::null())
                 .status();
-            if thumb.exists() {
+            if std::path::Path::new(&thumb_path).exists() {
                 return;
             }
             if status.map(|s| !s.success()).unwrap_or(true) {
@@ -168,7 +166,7 @@ fn start_thumbnail_worker(output_path: String, ffmpeg_path: String) {
     }
 }
 
-fn run_event_capture(output_path: String, stop: Arc<std::sync::atomic::AtomicBool>) {
+fn run_event_capture(events_path: String, stop: Arc<std::sync::atomic::AtomicBool>) {
     let client = match lcd_client() {
         Some(c) => c,
         None => return,
@@ -441,8 +439,7 @@ fn run_event_capture(output_path: String, stop: Arc<std::sync::atomic::AtomicBoo
         "events": events_json,
     });
 
-    let mut events_file = std::path::PathBuf::from(&output_path);
-    events_file.set_extension("events.json");
+    let events_file = std::path::PathBuf::from(&events_path);
     if let Ok(json) = serde_json::to_string_pretty(&payload) {
         let _ = std::fs::write(&events_file, json);
     }
@@ -2489,6 +2486,15 @@ fn write_all_pipe(pipe: windows::Win32::Foundation::HANDLE, mut buf: &[u8]) -> b
 }
 
 /// One resolved ffmpeg audio input (a named pipe with raw PCM).
+/// Given a video path like `...\RiftHelper\vods\recording-XXX.mp4`, return
+/// the associated file path in the correct subdirectory.
+fn vod_sibling(video_path: &str, subdir: &str, ext: &str) -> std::path::PathBuf {
+    let p = std::path::Path::new(video_path);
+    let stem = p.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
+    let parent = p.parent().and_then(|pp| pp.parent()).unwrap_or(p);
+    parent.join(subdir).join(format!("{}.{}", stem, ext))
+}
+
 enum AudioInput {
     /// args already contain -f/-ar/-ac/-i for a named pipe
     Pipe(Vec<String>),
@@ -3169,13 +3175,29 @@ async fn start_recording(app: tauri::AppHandle) -> Result<String, String> {
         .unwrap_or_else(default_recordings_folder);
     std::fs::create_dir_all(&recordings_folder).map_err(|e| e.to_string())?;
 
+    // Organized subdirectories: vods, thumbnails, logs, timeline
+    let base = std::path::Path::new(&recordings_folder);
+    let vods_dir = base.join("vods");
+    let thumbs_dir = base.join("thumbnails");
+    let logs_dir = base.join("logs");
+    let timeline_dir = base.join("timeline");
+    std::fs::create_dir_all(&vods_dir).map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(&thumbs_dir).map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(&logs_dir).map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(&timeline_dir).map_err(|e| e.to_string())?;
+
     let ts = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs();
-    let filename = format!("recording-{}.mp4", ts);
-    let output_path = std::path::Path::new(&recordings_folder).join(&filename);
+    let stem = format!("recording-{}", ts);
+    let output_path = vods_dir.join(format!("{}.mp4", stem));
     let output_str = output_path.to_string_lossy().to_string();
+    let thumb_path = thumbs_dir.join(format!("{}.thumb.jpg", stem));
+    let thumb_str = thumb_path.to_string_lossy().to_string();
+    let events_path = timeline_dir.join(format!("{}.events.json", stem));
+    let events_str = events_path.to_string_lossy().to_string();
+    let log_path = logs_dir.join(format!("{}.ffmpeg.log", stem));
 
     // The in-game detection can fire during champ select, before the LoL
     // window exists: poll for it instead of failing permanently.
@@ -3370,9 +3392,7 @@ async fn start_recording(app: tauri::AppHandle) -> Result<String, String> {
         output_str.clone(),
     ]);
 
-    // Log ffmpeg stderr to a file next to the recording so we can debug
-    // silent recordings, audio failures, etc.
-    let log_path = std::path::Path::new(&output_str).with_extension("ffmpeg.log");
+    // Log ffmpeg stderr to a file in the logs/ subdirectory.
     let ffmpeg_log_file = std::fs::File::create(&log_path)
         .map(std::process::Stdio::from)
         .unwrap_or(std::process::Stdio::null());
@@ -3431,10 +3451,10 @@ async fn start_recording(app: tauri::AppHandle) -> Result<String, String> {
     }
 
     // Instant-timeline source: poll the Live Client Data API while the
-    // recording runs and dump sibling .events.json when it ends.
-    start_event_capture(output_str.clone());
-    // Thumbnail frame a few seconds into the recording.
-    start_thumbnail_worker(output_str.clone(), ffmpeg_path.clone());
+    // recording runs and dump events.json in the timeline/ subdirectory.
+    start_event_capture(events_str);
+    // Thumbnail frame ~1 minute into the recording.
+    start_thumbnail_worker(output_str.clone(), thumb_str, ffmpeg_path.clone());
 
     let result = serde_json::json!({
         "path": output_str,
@@ -3502,20 +3522,14 @@ async fn stop_recording(app: tauri::AppHandle) -> Result<Option<VodFile>, String
 }
 
 /// Removes a VOD and all its associated files from disk (mp4, events.json,
-/// thumbnail). Called from the frontend when the user deletes a VOD.
+/// thumbnail, ffmpeg log). Called from the frontend when the user deletes a VOD.
 #[tauri::command]
 fn delete_vod(video_path: String) -> Result<(), String> {
     let base = std::path::Path::new(&video_path);
     let _ = std::fs::remove_file(base);
-    let mut ev = base.to_path_buf();
-    ev.set_extension("events.json");
-    let _ = std::fs::remove_file(ev);
-    let mut th = base.to_path_buf();
-    th.set_extension("thumb.jpg");
-    let _ = std::fs::remove_file(th);
-    let mut log = base.to_path_buf();
-    log.set_extension("ffmpeg.log");
-    let _ = std::fs::remove_file(log);
+    let _ = std::fs::remove_file(vod_sibling(&video_path, "timeline", "events.json"));
+    let _ = std::fs::remove_file(vod_sibling(&video_path, "thumbnails", "thumb.jpg"));
+    let _ = std::fs::remove_file(vod_sibling(&video_path, "logs", "ffmpeg.log"));
     Ok(())
 }
 
@@ -3592,8 +3606,7 @@ fn is_lol_window_open() -> bool {
 /// timeline), or None when the capture file does not exist.
 #[tauri::command]
 fn read_vod_events(video_path: String) -> Option<String> {
-    let mut p = std::path::PathBuf::from(&video_path);
-    p.set_extension("events.json");
+    let p = vod_sibling(&video_path, "timeline", "events.json");
     std::fs::read_to_string(&p).ok().filter(|s| !s.trim().is_empty())
 }
 
@@ -3608,8 +3621,7 @@ fn get_last_game_mode() -> Option<String> {
 /// Path of the extracted thumbnail for a recording, when it already exists.
 #[tauri::command]
 fn get_vod_thumb(video_path: String) -> Option<String> {
-    let mut p = std::path::PathBuf::from(&video_path);
-    p.set_extension("thumb.jpg");
+    let p = vod_sibling(&video_path, "thumbnails", "thumb.jpg");
     if p.is_file() {
         Some(p.to_string_lossy().to_string())
     } else {

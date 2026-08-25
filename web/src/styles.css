@@ -7575,6 +7575,26 @@ body.sidebar-expanded .vod-player-view {
 .vtl-ev.lane-2 { --lane-shift: 30px; }
 .vtl-ev.lane-3 { --lane-shift: 45px; }
 
+/* event count badge (clustered multi-kill / multi-event) */
+.vtl-ev-badge {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  min-width: 14px;
+  height: 14px;
+  border-radius: 7px;
+  background: var(--bg);
+  color: inherit;
+  font-size: 8px;
+  font-weight: 800;
+  line-height: 14px;
+  text-align: center;
+  padding: 0 3px;
+  border: 1px solid currentColor;
+  pointer-events: none;
+  box-shadow: 0 0 6px currentColor;
+}
+
 /* personal kills — neon cyan, above rail */
 .vtl-ev.kill {
   color: #00e5ff;

@@ -175,17 +175,30 @@ function NeonTimeline({ matchId, puuid, lang, duration, current, onSeek, localDa
       for (const o of out) o.ally = o.team === myTeam
     }
 
-    // Collision-free lanes: sort by time, stack overlapping markers
     out.sort((a, b) => a.sec - b.sec)
+
+    // Cluster: merge same-kind events within 10s into a single marker
+    const clustered = []
+    for (const o of out) {
+      const last = clustered.length > 0 ? clustered[clustered.length - 1] : null
+      if (last && last.kind === o.kind && last.ally === o.ally && Math.abs(o.sec - last.sec) <= 10) {
+        last.count = (last.count || 1) + 1
+        last.endSec = o.sec
+      } else {
+        clustered.push({ ...o, count: 1 })
+      }
+    }
+
+    // Collision-free lanes: stack overlapping markers
     const minGap = Math.max(8, tlDuration * 0.022)
     const laneEnds = [-Infinity]
-    for (const o of out) {
+    for (const o of clustered) {
       let lane = laneEnds.findIndex(end => o.vsec - end >= minGap)
       if (lane === -1) lane = laneEnds.length < 4 ? laneEnds.length : 0
       laneEnds[lane] = o.vsec
       o.lane = lane
     }
-    return out.slice(0, 120)
+    return clustered.slice(0, 120)
   }, [data, tlDuration, scale, gameTimeOffset])
 
   const pct = (sec) => Math.min(100, Math.max(0, (sec / tlDuration) * 100))
@@ -291,6 +304,7 @@ function NeonTimeline({ matchId, puuid, lang, duration, current, onSeek, localDa
               }}
             >
               <Icon />
+              {ev.count > 1 && <span className="vtl-ev-badge">{ev.count}</span>}
             </button>
           )
         })}
@@ -753,18 +767,6 @@ export default function VODPlayer({ vod, lang, onBack, puuid, summoner, showTeam
                 onClick={(e) => e.stopPropagation()}
                 onMouseEnter={() => bumpUi()}
               >
-                <div className="vod-seek" ref={seekRef} onClick={seekFromEvent}>
-                  <div className="vod-seek-rail" />
-                  <div className="vod-seek-fill" style={{ width: duration ? `${(currentTime / duration) * 100}%` : '0%' }} />
-                  {clipStart !== null && (
-                    <div className="vod-clip-region" style={{
-                      left: `${duration ? (Math.min(clipStart, clipEnd ?? currentTime) / duration) * 100 : 0}%`,
-                      width: `${duration ? (Math.abs((clipEnd ?? currentTime) - clipStart) / duration) * 100 : 0}%`,
-                    }} />
-                  )}
-                  <div className="vod-seek-thumb" style={{ left: duration ? `${(currentTime / duration) * 100}%` : '0%' }} />
-                </div>
-
                 <div className="vod-deck-row">
                   <button className="vod-ctrl-btn vod-playpause" onClick={(e) => { e.stopPropagation(); togglePlay() }} title={playing ? 'Pause' : 'Play'}>
                     {playing ? (
