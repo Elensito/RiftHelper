@@ -2949,11 +2949,20 @@ unsafe fn blit_client(
     let copy_w = sw.min(cw);
     let copy_h = sh.min((canvas.len() / (cw as usize * 4)) as u32);
     let src = mapped.pData as *const u8;
-    let pitch = mapped.RowPitch as usize;
-    for row in 0..copy_h as usize {
-        let sp = src.add((sy as usize + row) * pitch + sx as usize * 4);
-        let dp = row * cw as usize * 4;
-        std::ptr::copy_nonoverlapping(sp, canvas[dp..].as_mut_ptr(), copy_w as usize * 4);
+    let src_pitch = mapped.RowPitch as usize;
+    let dst_pitch = cw as usize * 4;
+    let copy_bytes = copy_w as usize * 4;
+    // Fast path: source and destination pitches match — single bulk copy.
+    if sx == 0 && src_pitch == dst_pitch && copy_w == cw {
+        let total = copy_h as usize * dst_pitch;
+        let src_base = src.add(sy as usize * src_pitch);
+        std::ptr::copy_nonoverlapping(src_base, canvas.as_mut_ptr(), total.min(canvas.len()));
+    } else {
+        for row in 0..copy_h as usize {
+            let sp = src.add((sy as usize + row) * src_pitch + sx as usize * 4);
+            let dp = row * dst_pitch;
+            std::ptr::copy_nonoverlapping(sp, canvas[dp..].as_mut_ptr(), copy_bytes);
+        }
     }
 }
 
@@ -2963,15 +2972,16 @@ unsafe fn blit_client(
 ///
 /// The canvas retains the last known content between successful DDA frames.
 /// `canvas.fill(0)` is ONLY applied when transitioning from visible→hidden
-/// (show → !show). When DDA times out while the game is in the foreground
-/// the previous content is rewritten as-is — correct CFR behaviour that
-/// avoids turning practice-tool-like static scenes entirely black.
+/// (show → !show) or when the game window moves/resizes. When DDA times out
+/// while the game is in the foreground the previous content is rewritten
+/// as-is — correct CFR behaviour that avoids turning static scenes black.
 fn run_video_capture(mut stdin: std::process::ChildStdin, hwnd_hint: isize, cw: u32, ch: u32) {
     let mut canvas = vec![0u8; cw as usize * ch as usize * 4];
     let frame_dur = std::time::Duration::from_millis(33);
     let mut next_tick = std::time::Instant::now();
     let mut missing_since: Option<std::time::Instant> = None;
     let mut prev_show = false;
+    let mut last_rect: Option<(i32, i32, u32, u32)> = None;
 
     'outer: while !VIDEO_CAPTURE_STOP.load(std::sync::atomic::Ordering::SeqCst) {
         let hwnd = if hwnd_hint != 0 && lol_window_alive(hwnd_hint) {
@@ -3040,7 +3050,13 @@ fn run_video_capture(mut stdin: std::process::ChildStdin, hwnd_hint: isize, cw: 
                             if pipe.ctx.Map(&pipe.staging, 0, D3D11_MAP_READ, 0, Some(&mut mapped)).is_ok() {
                                 if show {
                                     if let Some((rx, ry, rw, rh)) = lol_client_rect(hwnd) {
-                                        canvas.fill(0);
+                                        let cur_rect = (rx, ry, rw, rh);
+                                        // Only zero the full canvas when the window
+                                        // moves or resizes — not every frame.
+                                        if last_rect != Some(cur_rect) {
+                                            canvas.fill(0);
+                                            last_rect = Some(cur_rect);
+                                        }
                                         blit_client(&pipe, &mapped, rx, ry, rw, rh, &mut canvas, cw);
                                     }
                                 }
