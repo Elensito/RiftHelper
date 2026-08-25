@@ -437,8 +437,8 @@ export default function VODPlayer({ vod, lang, onBack, puuid, summoner, showTeam
   const liveRef = useRef({})
   liveRef.current = { playing, currentTime }
 
-  /* Deck auto-hide: visible while paused or on mouse activity; hides after
-     5s without mouse movement while playing (YouTube-style) */
+  /* Deck always visible when a VOD is loaded; cursor hides during playback
+     after 5s of mouse inactivity (YouTube-style) */
   const [uiActive, setUiActive] = useState(true)
   const uiTimerRef = useRef(null)
   const bumpUi = useCallback(() => {
@@ -530,7 +530,7 @@ export default function VODPlayer({ vod, lang, onBack, puuid, summoner, showTeam
   }, [playing, uiActive])
 
   const hasVideo = hasVideoLive
-  const showDeck = hasVideo && uiActive
+  const showDeck = hasVideo
 
   const togglePlay = useCallback(() => {
     const vid = videoRef.current

@@ -33,7 +33,9 @@ struct FFmpegProcess {
 static FFMPEG_PROC: Mutex<Option<FFmpegProcess>> = Mutex::new(None);
 static FFMPEG_OUTPUT: Mutex<Option<String>> = Mutex::new(None);
 static AUDIO_CAPTURE_STOP: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+#[allow(dead_code)]
 static SESSION_MUTER_STOP: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+#[allow(dead_code)]
 static MUTER_STOP_HANDLE: std::sync::OnceLock<Arc<std::sync::atomic::AtomicBool>> = std::sync::OnceLock::new();
 
 /// Append a line to the audio debug log at %APPDATA%\com.rifthelper.desktop\rift-helper-audio.log
@@ -1800,6 +1802,7 @@ fn collect_tree_pids(roots: &[u32]) -> Vec<u32> {
 //    the background muter thread can use them). ──────────────────────────────
 
 /// PIDs whose audio must NOT be muted (LoL tree + optional Discord tree + self).
+#[allow(dead_code)]
 fn audio_allowlist(include_discord: bool) -> Vec<u32> {
     let mut allow = vec![std::process::id()];
     if let Some(g) = find_lol_window_pid() {
@@ -1814,6 +1817,7 @@ fn audio_allowlist(include_discord: bool) -> Vec<u32> {
 }
 
 /// Parse "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" into a GUID.
+#[allow(dead_code)]
 fn parse_guid_str(s: &str) -> Option<windows::core::GUID> {
     let parts: Vec<&str> = s.split('-').collect();
     if parts.len() != 5 {
@@ -1844,6 +1848,7 @@ fn parse_guid_str(s: &str) -> Option<windows::core::GUID> {
 }
 
 /// Extract (PID, GUID) from an IAudioSessionControl2.
+#[allow(dead_code)]
 unsafe fn session_guid_from_control(
     c2: &windows::Win32::Media::Audio::IAudioSessionControl2,
 ) -> Option<(u32, windows::core::GUID)> {
@@ -1861,6 +1866,7 @@ unsafe fn session_guid_from_control(
 }
 
 /// Mute every foreign audio session on the default render endpoint.
+#[allow(dead_code)]
 unsafe fn sweep_muting(
     menum: &windows::Win32::Media::Audio::IAudioSessionManager2,
     mvol: &windows::Win32::Media::Audio::IAudioSessionManager,
@@ -1891,6 +1897,7 @@ unsafe fn sweep_muting(
 
 /// Background thread that mutes foreign audio sessions every ~1.5 s.
 /// Returns a stop signal and a gate that opens once muting is active.
+#[allow(dead_code)]
 fn spawn_session_muter(include_discord: bool) -> (Arc<std::sync::atomic::AtomicBool>, Arc<StartGate>) {
     let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
     let gate = Arc::new(StartGate::new());
@@ -2543,21 +2550,15 @@ fn setup_audio_sources(
         let include_discord = mode == AudioMode::GameDiscord;
         let gpid = find_lol_window_pid();
         if let Some(g) = gpid {
-            audio_log(&format!("game audio: LoL PID={g} (endpoint+polling+muter)"));
+            audio_log(&format!("game audio: LoL PID={g} (endpoint+polling, NO muting)"));
         } else {
             audio_log("game audio: LoL window not found yet");
         }
-        if include_discord {
-            let dpids = find_tree_root_pids("discord", 4);
-            audio_log(&format!("discord allowlist roots: {dpids:?}"));
-        }
 
-        // Start the background session muter (separate thread).
-        let (muter_stop, muter_gate) = spawn_session_muter(include_discord);
-        SESSION_MUTER_STOP.store(false, std::sync::atomic::Ordering::SeqCst);
-        let _ = MUTER_STOP_HANDLE.set(muter_stop);
-        // Wait for muter to finish its first sweep before starting capture.
-        let _ = muter_gate.wait_with_cancel(&std::sync::atomic::AtomicBool::new(false));
+        // v1.5.88: Session muting REMOVED — it poisons the WASAPI loopback
+        // engine on real machines.  Capturing all desktop audio instead
+        // (same approach as Ascent/OBS).  Foreign apps may leak into
+        // recordings but at least game audio is captured.
 
         let name = format!(r"\\.\pipe\rh-audio-mix-{ts}");
         let ok = unsafe { create_audio_pipe_checked(&name) };
@@ -3486,10 +3487,6 @@ async fn stop_recording(app: tauri::AppHandle) -> Result<Option<VodFile>, String
         }
         *guard = None;
         AUDIO_CAPTURE_STOP.store(true, std::sync::atomic::Ordering::SeqCst);
-        SESSION_MUTER_STOP.store(true, std::sync::atomic::Ordering::SeqCst);
-        if let Some(s) = MUTER_STOP_HANDLE.get() {
-            s.store(true, std::sync::atomic::Ordering::SeqCst);
-        }
         FFMPEG_OUTPUT.lock().map_err(|e| e.to_string())?.take()
     };
     // Small delay to let the file system flush
