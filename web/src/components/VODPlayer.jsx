@@ -528,19 +528,12 @@ export default function VODPlayer({ vod, lang, onBack, puuid, summoner, showTeam
     const onLoaded = () => {
       const dur = vid.duration || vod.duration || 0
       setDuration(dur)
-      /* Auto-seek past the loading screen: gameTimeOffset is negative when
-         recording started before the game.  Seek to video time that
-         corresponds to game time ~10s so the VOD starts with action. */
+      /* The recording starts after wait_for_game_start + a resync, so
+         gameTimeOffset already reflects the actual first-frame game time.
+         No auto-seek needed — video time 0 already corresponds to the
+         correct game time.  Just reset to start on video change. */
       if (!didInitialSeekRef.current && dur > 0) {
         didInitialSeekRef.current = true
-        const gto = mv.gameTimeOffset || 0
-        if (gto < 0) {
-          const target = Math.max(0, 10 - gto)
-          if (target < dur - 5) {
-            vid.currentTime = target
-            setCurrent(target)
-          }
-        }
       }
     }
     const onEnd = () => setPlaying(false)

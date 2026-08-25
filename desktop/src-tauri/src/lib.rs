@@ -956,7 +956,7 @@ fn wait_for_game_start(max_secs: u64) -> GameStartWait {
     // Loading screens in ranked can take 1-5+ minutes, but gameTime only
     // starts counting once the game session begins (after loading).
     // A value of 15s gives plenty of margin.
-    const LOADING_GRACE_SECS: f64 = 15.0;
+    const LOADING_GRACE_SECS: f64 = 10.0;
 
     let client = match reqwest::blocking::Client::builder()
         .danger_accept_invalid_certs(true)
@@ -1030,6 +1030,25 @@ fn wait_for_game_start(max_secs: u64) -> GameStartWait {
         std::thread::sleep(std::time::Duration::from_millis(300));
     }
     GameStartWait::Timeout
+}
+
+/// Single-shot query of the Live Client Data API gameTime. Used to resync
+/// the video-to-game offset right before the first frame is captured,
+/// closing the setup gap between wait_for_game_start() returning and the
+/// actual recording start.
+fn query_current_game_time() -> Option<f64> {
+    let client = reqwest::blocking::Client::builder()
+        .danger_accept_invalid_certs(true)
+        .build()
+        .ok()?;
+    let data: serde_json::Value = client
+        .get("https://127.0.0.1:2999/liveclientdata/gamestats")
+        .timeout(std::time::Duration::from_millis(800))
+        .send()
+        .ok()?
+        .json()
+        .ok()?;
+    data.get("gameTime").and_then(|t| t.as_f64())
 }
 
 /* ── Audio capture ────────────────────────────────────────────
@@ -3490,13 +3509,26 @@ async fn start_recording(app: tauri::AppHandle) -> Result<String, String> {
 
     // Instant-timeline source: poll the Live Client Data API while the
     // recording runs and dump events.json in the timeline/ subdirectory.
+
+    // RESYNC: query gameTime again right now — after DDA, window, audio, and
+    // ffmpeg are all set up.  The gap between wait_for_game_start() returning
+    // and this point can be 5-15s during which the game clock advanced.
+    // Using the earlier value would shift every timeline event.
+    let actual_game_time = query_current_game_time().unwrap_or(game_start_time);
+    if (actual_game_time - game_start_time).abs() > 0.5 {
+        audio_log(&format!(
+            "game time resynced: was {game_start_time:.1}s, now {actual_game_time:.1}s (setup gap ~{:.1}s)",
+            actual_game_time - game_start_time
+        ));
+    }
+
     start_event_capture(events_str);
     // Thumbnail frame ~1 minute into the recording.
     start_thumbnail_worker(output_str.clone(), thumb_str, ffmpeg_path.clone());
 
     let result = serde_json::json!({
         "path": output_str,
-        "gameTime": game_start_time,
+        "gameTime": actual_game_time,
     });
     Ok(result.to_string())
 }
