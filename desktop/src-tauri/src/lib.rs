@@ -1494,14 +1494,14 @@ fn spawn_capture_source(
         use windows::Win32::System::Threading::{CreateEventW, SetEvent, WaitForSingleObject};
 
         const STREAM_FLAGS_ENDPOINT: u32 = 0x0002_0000 | 0x0004_0000; // LOOPBACK | EVENTCALLBACK (endpoint only)
-        // Process loopback: LOOPBACK | EVENTCALLBACK | AUTOCONVERTPCM.
-        // v1.5.80 removed the LOOPBACK bit based on the docs, but Windows
-        // empirically REQUIRES it here: without it Initialize fails with
-        // AUDCLNT_E_UNSUPPORTED_FORMAT (0x88890021), both captures die and
-        // the system-audio fallback leaked Firefox/YouTube into recordings.
-        // Logs prove 0x80060000 initializes fine every time; past
-        // intermittency came from transient packet errors (now retried).
-        const STREAM_FLAGS_PROCESS: u32 = 0x0002_0000 | 0x0004_0000 | 0x8000_0000;
+        // Process loopback: LOOPBACK | EVENTCALLBACK | AUTOCONVERTPCM | SRC_DEFAULT_QUALITY.
+        // The LOOPBACK bit is empirically REQUIRED (v1.5.80 removed it and
+        // Initialize failed with 0x88890021).  We request the engine's native
+        // format (float32 @48k stereo) so AUTOCONVERTPCM has nothing to do —
+        // requesting s16le@44.1k through this activation path produced
+        // near-silent buzz (float bits misread as int16).
+        const STREAM_FLAGS_PROCESS: u32 =
+            0x0002_0000 | 0x0004_0000 | 0x8000_0000 | 0x0800_0000;
 
         let fail = |msg: String| {
             audio_log(&format!("capture thread error: {msg}"));
@@ -1531,28 +1531,28 @@ fn spawn_capture_source(
             }
         };
 
-        // GetMixFormat is NOT supported for process loopback clients.
-        // Try it first; on failure, fall back to a hardcoded PCM 16-bit stereo 44100 Hz format.
+        // GetMixFormat is NOT supported for process loopback clients, and
+        // requesting s16le@44100 through this activation path yields
+        // near-silent buzz.  Use the engine's NATIVE format directly:
+        // IEEE float 32-bit @48000 Hz stereo (WASAPI shared-mode mix format).
         let is_process = matches!(&source, CaptureSource::Process(_));
-        let pwfx_raw = client.GetMixFormat();
-        let (pwfx, owned_pwfx): (*mut WAVEFORMATEX, Option<*mut u8>) = match pwfx_raw {
-            Ok(p) if !p.is_null() => (p, None),
-            _ if is_process => {
-                audio_log("GetMixFormat not supported for process loopback — using hardcoded PCM 16-bit 44100Hz stereo");
-                // Allocate a WAVEFORMATEX on the heap (CoTaskMemFree compatible via CoTaskMemAlloc)
-                let fmt = Box::into_raw(Box::new(WAVEFORMATEX {
-                    wFormatTag: 1, // WAVE_FORMAT_PCM
-                    nChannels: 2,
-                    nSamplesPerSec: 44100,
-                    nAvgBytesPerSec: 44100 * 2 * 2,
-                    nBlockAlign: 4,
-                    wBitsPerSample: 16,
-                    cbSize: 0,
-                }));
-                (fmt, Some(fmt as *mut u8))
+        let (pwfx, owned_pwfx): (*mut WAVEFORMATEX, Option<*mut u8>) = if is_process {
+            let fmt = Box::into_raw(Box::new(WAVEFORMATEX {
+                wFormatTag: 3, // WAVE_FORMAT_IEEE_FLOAT
+                nChannels: 2,
+                nSamplesPerSec: 48000,
+                nAvgBytesPerSec: 48000 * 2 * 4,
+                nBlockAlign: 8,
+                wBitsPerSample: 32,
+                cbSize: 0,
+            }));
+            (fmt, Some(fmt as *mut u8))
+        } else {
+            match client.GetMixFormat() {
+                Ok(p) if !p.is_null() => (p, None),
+                Ok(_) => return fail("mixformat null".to_string()),
+                Err(e) => return fail(format!("mixformat: {e}")),
             }
-            Ok(_) => return fail("mixformat null".to_string()),
-            Err(e) => return fail(format!("mixformat: {e}")),
         };
         let tag = (*pwfx).wFormatTag;
         let channels = (*pwfx).nChannels.max(1);
@@ -1611,8 +1611,8 @@ fn spawn_capture_source(
             FILE_FLAGS_AND_ATTRIBUTES(0x0000_0002 | 0x0008_0000), // OUTBOUND | FIRST_PIPE_INSTANCE
             NAMED_PIPE_MODE(0), // TYPE_BYTE | READMODE_BYTE | WAIT
             1,
-            65536,
-            65536,
+            262_144, // 256KB out buffer: slack against video-encode stalls
+            262_144,
             0,
             None,
         );
@@ -1683,15 +1683,6 @@ fn spawn_capture_source(
                     audio_log("pipe write failed (ffmpeg closed pipe), stopping capture");
                     stopped = true;
                     break;
-                }
-            }
-            // After transient errors, write silence to keep pipe alive
-            // so ffmpeg doesn't see EOF and the other audio input keeps working.
-            if consecutive_errors > 0 && consecutive_errors < MAX_CONSECUTIVE_ERRORS {
-                let silence = vec![0u8; 4096];
-                if !write_all_pipe(pipe, &silence) {
-                    audio_log("pipe write failed during silence fill, stopping");
-                    stopped = true;
                 }
             }
         }
@@ -2626,8 +2617,47 @@ fn verify_vod(video_path: String) -> Result<serde_json::Value, String> {
 /// Cheap WinAPI check used by the frontend watchdog to detect the end of a
 /// game the moment the "League of Legends (TM) Client" window disappears.
 #[tauri::command]
+/// True while the game window EXISTS — regardless of minimized / occluded /
+/// exclusive-fullscreen state.  Deliberately ignores visibility and rect:
+/// a minimized LoL reports GetWindowRect at (-32000,-32000) and DDA-style
+/// visibility checks fail, which made the recording watchdog think the game
+/// had ended and cut VODs mid-match whenever something stole foreground.
+/// The window is destroyed by Windows only when the game process exits,
+/// which is exactly the signal we want.
 fn is_lol_window_open() -> bool {
-    find_lol_window_rect().is_some()
+    use std::ffi::c_void;
+    type HWND = *mut c_void;
+    type BOOL = i32;
+    type LPARAM = isize;
+    type WNDENUMPROC = Option<unsafe extern "system" fn(HWND, LPARAM) -> BOOL>;
+
+    extern "system" {
+        fn EnumWindows(lpEnumFunc: WNDENUMPROC, lParam: LPARAM) -> BOOL;
+        fn GetWindowTextW(hWnd: HWND, lpString: *mut u16, nMaxCount: i32) -> i32;
+    }
+
+    unsafe extern "system" fn callback(hwnd: HWND, lparam: LPARAM) -> BOOL {
+        let mut buf = [0u16; 256];
+        let len = GetWindowTextW(hwnd, buf.as_mut_ptr(), 256);
+        if len > 0 {
+            let title = String::from_utf16_lossy(&buf[..len as usize]);
+            if title.contains("League of Legends (TM) Client") {
+                let slot = &*(lparam as *const Mutex<bool>);
+                if let Ok(mut guard) = slot.lock() {
+                    *guard = true;
+                }
+                return 0;
+            }
+        }
+        1
+    }
+
+    let result: Mutex<bool> = Mutex::new(false);
+    let ptr = &result as *const Mutex<bool> as LPARAM;
+    unsafe {
+        let _ = EnumWindows(Some(callback), ptr);
+    }
+    result.lock().map(|g| *g).unwrap_or(false)
 }
 
 /// Returns the locally captured LCD events for a recording (instant
@@ -2689,24 +2719,19 @@ async fn show_overlay(app: tauri::AppHandle, lang: String) -> Result<(), String>
     );
 
     if let Some(win) = app.get_webview_window("overlay") {
-        let _ = win.set_always_on_top(true);
         let _ = win.set_focusable(false);
-        if let Some((x, y, w, h)) = find_lol_window_rect() {
-            let overlay_x = x + w - 360;
-            let overlay_y = y + (h / 2) - 45;
-            let _ = win.set_position(tauri::Position::Physical(tauri::PhysicalPosition {
-                x: overlay_x.max(x),
-                y: overlay_y.max(y),
-            }));
-        }
-        // Show overlay WITHOUT activating it to prevent LoL from losing focus and minimizing.
-        // Use SetWindowPos with HWND_TOPMOST + SWP_NOACTIVATE instead of Tauri's win.show().
-        // Find overlay HWND by title "Overlay" to avoid windows crate version mismatch with Tauri.
+        // ALL window manipulation via raw Win32 with explicit NOACTIVATE.
+        // Tauri's set_always_on_top/set_position/show can activate the
+        // window and steal foreground from fullscreen LoL (minimizing it),
+        // which also made the frontend watchdog think the game had ended
+        // and cut recordings mid-match.  Never call those here.
+        let pos = find_lol_window_rect()
+            .map(|(x, y, w, h)| ((x + w - 360).max(0), (y + h / 2 - 45).max(0)))
+            .unwrap_or((0, 0));
         unsafe {
             use windows::Win32::UI::WindowsAndMessaging::{
                 SetWindowPos, FindWindowW, ShowWindow,
-                HWND_TOPMOST, SWP_NOMOVE, SWP_NOSIZE, SWP_NOACTIVATE, SW_SHOWNOACTIVATE,
-                SetForegroundWindow,
+                HWND_TOPMOST, SWP_NOSIZE, SWP_NOACTIVATE, SWP_SHOWWINDOW, SW_SHOWNOACTIVATE,
             };
             use windows::core::w;
             if let Ok(oh) = FindWindowW(None, w!("Overlay")) {
@@ -2714,32 +2739,27 @@ async fn show_overlay(app: tauri::AppHandle, lang: String) -> Result<(), String>
                 let _ = SetWindowPos(
                     oh,
                     HWND_TOPMOST,
-                    0, 0, 0, 0,
-                    SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
+                    pos.0, pos.1, 0, 0,
+                    SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW,
                 );
             }
-            let _ = win.eval(&js);
-            if let Ok(hwnd) = FindWindowW(None, w!("League of Legends (TM) Client")) {
-                let _ = SetForegroundWindow(hwnd);
-            }
         }
+        let _ = win.eval(&js);
         // Increment generation so a previous timer won't hide this overlay.
         let gen = OVERLAY_GEN.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
-        let handle = app.clone();
         std::thread::spawn(move || {
             std::thread::sleep(std::time::Duration::from_secs(5));
             // Only hide if no newer overlay has been shown.
             if OVERLAY_GEN.load(std::sync::atomic::Ordering::SeqCst) != gen {
                 return;
             }
-            if let Some(w) = handle.get_webview_window("overlay") {
-                let _ = w.eval("if (window.__rhExit) window.__rhExit();");
-                std::thread::sleep(std::time::Duration::from_millis(750));
-                if OVERLAY_GEN.load(std::sync::atomic::Ordering::SeqCst) != gen {
-                    return;
-                }
-                if let Some(w) = handle.get_webview_window("overlay") {
-                    let _ = w.hide();
+            // Hide via Win32 too — w.hide() can go through paths that mess
+            // with z-order/activation on re-show later.
+            unsafe {
+                use windows::Win32::UI::WindowsAndMessaging::{FindWindowW, ShowWindow, SW_HIDE};
+                use windows::core::w;
+                if let Ok(oh) = FindWindowW(None, w!("Overlay")) {
+                    let _ = ShowWindow(oh, SW_HIDE);
                 }
             }
         });
@@ -2750,8 +2770,16 @@ async fn show_overlay(app: tauri::AppHandle, lang: String) -> Result<(), String>
 #[tauri::command]
 async fn hide_overlay(app: tauri::AppHandle) -> Result<(), String> {
     use tauri::Manager;
-    if let Some(win) = app.get_webview_window("overlay") {
-        let _ = win.hide();
+    if app.get_webview_window("overlay").is_some() {
+        // Win32-only, matching show_overlay: never route through Tauri
+        // window methods that could alter z-order or activation.
+        unsafe {
+            use windows::Win32::UI::WindowsAndMessaging::{FindWindowW, ShowWindow, SW_HIDE};
+            use windows::core::w;
+            if let Ok(oh) = FindWindowW(None, w!("Overlay")) {
+                let _ = ShowWindow(oh, SW_HIDE);
+            }
+        }
     }
     Ok(())
 }

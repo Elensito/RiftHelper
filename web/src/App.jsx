@@ -379,7 +379,9 @@ export default function App() {
         }
         if (!inGame && wasInGameRef.current === true) {
           consecutiveNotInGame += 1
-          if (consecutiveNotInGame >= 2) {
+          /* 3 misses = 45s: a spurious live-game hiccup must never cut a
+             recording mid-match; real game ends stay false for good */
+          if (consecutiveNotInGame >= 3) {
             await finalizeRecording()
           }
         } else if (inGame) {
@@ -391,9 +393,11 @@ export default function App() {
     poll()
     const id = setInterval(poll, 15000)
 
-    /* Fast watchdog while recording: poll the LoL window every 1.5s via
-       WinAPI so the end of the game is detected within ~3s of the client
-       closing, instead of waiting for the 15s backend live-game poll */
+    /* Fast watchdog while recording: the backend reports whether the game
+       window still EXISTS (minimized/occluded counts as open — v1.5.84).
+       Require ~15s of continuous absence so a focus steal or minimize can
+       never finalize the recording; a real game end destroys the window
+       immediately, so detection stays fast. */
     let wdMisses = 0
     const wd = setInterval(async () => {
       if (!recordingActiveRef.current || !recordingStartRef.current || !wasInGameRef.current) {
@@ -404,7 +408,7 @@ export default function App() {
         const open = await isLolWindowOpen()
         if (open) { wdMisses = 0; return }
         wdMisses += 1
-        if (wdMisses >= 2) {
+        if (wdMisses >= 10) {
           wdMisses = 0
           await finalizeRecording()
         }
