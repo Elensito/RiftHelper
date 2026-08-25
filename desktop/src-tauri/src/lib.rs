@@ -33,6 +33,8 @@ struct FFmpegProcess {
 static FFMPEG_PROC: Mutex<Option<FFmpegProcess>> = Mutex::new(None);
 static FFMPEG_OUTPUT: Mutex<Option<String>> = Mutex::new(None);
 static AUDIO_CAPTURE_STOP: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+static SESSION_MUTER_STOP: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+static MUTER_STOP_HANDLE: std::sync::OnceLock<Arc<std::sync::atomic::AtomicBool>> = std::sync::OnceLock::new();
 
 /// Append a line to the audio debug log at %APPDATA%\com.rifthelper.desktop\rift-helper-audio.log
 /// so we can diagnose audio capture failures that `eprintln!` can't show (GUI app has no console).
@@ -1493,7 +1495,7 @@ fn spawn_capture_source(
         };
         use windows::Win32::System::Threading::{CreateEventW, SetEvent, WaitForSingleObject};
 
-        const STREAM_FLAGS_ENDPOINT: u32 = 0x0002_0000 | 0x0004_0000; // LOOPBACK | EVENTCALLBACK (endpoint only)
+        const STREAM_FLAGS_ENDPOINT: u32 = 0x0002_0000; // LOOPBACK only — polling mode
         // Process loopback: LOOPBACK | EVENTCALLBACK | AUTOCONVERTPCM | SRC_DEFAULT_QUALITY.
         // The LOOPBACK bit is empirically REQUIRED (v1.5.80 removed it and
         // Initialize failed with 0x88890021).  We request the engine's native
@@ -1565,16 +1567,22 @@ fn spawn_capture_source(
 
         audio_log(&format!("mixformat OK: fmt={fmt_name} rate={rate} ch={channels} bits={bits}"));
 
-        let ev = match CreateEventW(None, false, false, None) {
-            Ok(h) => h,
-            Err(e) => return fail(format!("event: {e}")),
+        // Event + SetEventHandle only needed for process loopback (EVENTCALLBACK flag).
+        // Endpoint mode uses polling with GetCurrentPadding.
+        let ev = if is_process {
+            match CreateEventW(None, false, false, None) {
+                Ok(h) => Some(h),
+                Err(e) => return fail(format!("event: {e}")),
+            }
+        } else {
+            None
         };
 
         audio_log(&format!("calling Initialize with stream_flags=0x{stream_flags:08X}..."));
         if let Err(e) = client.Initialize(
             AUDCLNT_SHAREMODE_SHARED,
             stream_flags,
-            2_000_000, // ~200ms buffer (100ns units)
+            if is_process { 2_000_000 } else { 5_000_000 },
             0,
             pwfx as *const WAVEFORMATEX,
             None,
@@ -1582,8 +1590,10 @@ fn spawn_capture_source(
             return fail(format!("init: {e}"));
         }
         audio_log("Initialize OK");
-        if let Err(e) = client.SetEventHandle(ev) {
-            return fail(format!("setevent: {e}"));
+        if let Some(e) = ev {
+            if let Err(e) = client.SetEventHandle(e) {
+                return fail(format!("setevent: {e}"));
+            }
         }
         let cap: IAudioCaptureClient = match client.GetService() {
             Ok(c) => c,
@@ -1637,9 +1647,30 @@ fn spawn_capture_source(
             if AUDIO_CAPTURE_STOP.load(std::sync::atomic::Ordering::Relaxed) {
                 break;
             }
-            let w = WaitForSingleObject(ev, 200);
-            if w != WAIT_OBJECT_0 {
-                continue;
+            if is_process {
+                // Process loopback: event-driven (the event fires reliably).
+                let w = WaitForSingleObject(ev.unwrap(), 200);
+                if w != WAIT_OBJECT_0 {
+                    continue;
+                }
+            } else {
+                // Endpoint loopback: polling with GetCurrentPadding (event unreliable).
+                match client.GetCurrentPadding() {
+                    Ok(0) => {
+                        std::thread::sleep(std::time::Duration::from_millis(2));
+                        continue;
+                    }
+                    Ok(_) => {}
+                    Err(e) => {
+                        consecutive_errors += 1;
+                        if consecutive_errors >= MAX_CONSECUTIVE_ERRORS {
+                            audio_log(&format!("GetCurrentPadding fatal: {e}"));
+                            stopped = true;
+                        }
+                        std::thread::sleep(std::time::Duration::from_millis(5));
+                        continue;
+                    }
+                }
             }
             loop {
                 let packets = match cap.GetNextPacketSize() {
@@ -1687,12 +1718,14 @@ fn spawn_capture_source(
             }
         }
 
-        let _ = SetEvent(ev); // unblock any pending wait
+        if let Some(e) = ev {
+            let _ = SetEvent(e);
+            let _ = CloseHandle(e);
+        }
         let _ = client.Stop();
         let _ = FlushFileBuffers(pipe);
         let _ = DisconnectNamedPipe(pipe);
         let _ = CloseHandle(pipe);
-        let _ = CloseHandle(ev);
         if let Some(ptr) = owned_pwfx {
             // We heap-allocated via Box::into_raw — reclaim it.
             drop(Box::from_raw(ptr as *mut WAVEFORMATEX));
@@ -1763,6 +1796,352 @@ fn collect_tree_pids(roots: &[u32]) -> Vec<u32> {
     out
 }
 
+// ── Audio-session muting helpers (top-level so both the capture thread and
+//    the background muter thread can use them). ──────────────────────────────
+
+/// PIDs whose audio must NOT be muted (LoL tree + optional Discord tree + self).
+fn audio_allowlist(include_discord: bool) -> Vec<u32> {
+    let mut allow = vec![std::process::id()];
+    if let Some(g) = find_lol_window_pid() {
+        allow.extend(collect_tree_pids(&[g]));
+    }
+    if include_discord {
+        for r in find_tree_root_pids("discord", 4) {
+            allow.extend(collect_tree_pids(&[r]));
+        }
+    }
+    allow
+}
+
+/// Parse "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" into a GUID.
+fn parse_guid_str(s: &str) -> Option<windows::core::GUID> {
+    let parts: Vec<&str> = s.split('-').collect();
+    if parts.len() != 5 {
+        return None;
+    }
+    let h = |t: &str| u64::from_str_radix(t, 16).ok();
+    let d1 = h(parts[0])? as u32;
+    let d2 = h(parts[1])? as u16;
+    let d3 = h(parts[2])? as u16;
+    let tail = h(parts[3])?;
+    let last = h(parts[4])?;
+    if parts[3].len() != 4 || parts[4].len() != 12 {
+        return None;
+    }
+    let mut d4 = [0u8; 8];
+    d4[0] = (tail >> 8) as u8;
+    d4[1] = (tail & 0xFF) as u8;
+    for i in 0..6 {
+        let byte = (last >> (8 * (5 - i))) & 0xFF;
+        d4[2 + i] = byte as u8;
+    }
+    Some(windows::core::GUID {
+        data1: d1,
+        data2: d2,
+        data3: d3,
+        data4: d4,
+    })
+}
+
+/// Extract (PID, GUID) from an IAudioSessionControl2.
+unsafe fn session_guid_from_control(
+    c2: &windows::Win32::Media::Audio::IAudioSessionControl2,
+) -> Option<(u32, windows::core::GUID)> {
+    let pid = c2.GetProcessId().ok()?;
+    let ident = c2.GetSessionIdentifier().ok()?;
+    let s = pcwstr_to_string(windows::core::PCWSTR(ident.0));
+    windows::Win32::System::Com::CoTaskMemFree(Some(ident.0 as *const core::ffi::c_void));
+    let start = s.rfind('{')?;
+    let end = s.rfind('}')?;
+    if end <= start {
+        return None;
+    }
+    let guid = parse_guid_str(&s[start + 1..end])?;
+    Some((pid, guid))
+}
+
+/// Mute every foreign audio session on the default render endpoint.
+unsafe fn sweep_muting(
+    menum: &windows::Win32::Media::Audio::IAudioSessionManager2,
+    mvol: &windows::Win32::Media::Audio::IAudioSessionManager,
+    include_discord: bool,
+    muted_by_us: &mut Vec<windows::core::GUID>,
+) {
+    use windows::Win32::Foundation::BOOL;
+    use windows::Win32::Media::Audio::IAudioSessionControl2;
+    let allow = audio_allowlist(include_discord);
+    let Ok(en) = menum.GetSessionEnumerator() else { return };
+    let Ok(n) = en.GetCount() else { return };
+    for i in 0..n {
+        let Ok(ctrl) = en.GetSession(i) else { continue };
+        let Ok(c2) = ctrl.cast::<IAudioSessionControl2>() else { continue };
+        let Some((pid, guid)) = session_guid_from_control(&c2) else { continue };
+        if pid == 0 || allow.contains(&pid) || muted_by_us.contains(&guid) {
+            continue;
+        }
+        let Ok(vol) = mvol.GetSimpleAudioVolume(Some(&guid), 0) else { continue };
+        if let Ok(m) = vol.GetMute() {
+            if !m.as_bool() && vol.SetMute(BOOL(1), std::ptr::null()).is_ok() {
+                audio_log(&format!("muted foreign audio session (pid={pid})"));
+                muted_by_us.push(guid);
+            }
+        }
+    }
+}
+
+/// Background thread that mutes foreign audio sessions every ~1.5 s.
+/// Returns a stop signal and a gate that opens once muting is active.
+fn spawn_session_muter(include_discord: bool) -> (Arc<std::sync::atomic::AtomicBool>, Arc<StartGate>) {
+    let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let gate = Arc::new(StartGate::new());
+    let stop2 = stop.clone();
+    let gate2 = gate.clone();
+    std::thread::spawn(move || unsafe {
+        use windows::Win32::Foundation::BOOL;
+        use windows::Win32::System::Com::CoInitializeEx;
+        use windows::Win32::System::Com::COINIT_MULTITHREADED;
+        let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
+        let (mgr_enum, mgr_vol) = match session_managers_for_default_device() {
+            Some((a, b)) => (a, b),
+            None => {
+                audio_log("session muter: no session managers, exiting");
+                gate2.open();
+                return;
+            }
+        };
+        let mut muted_by_us: Vec<windows::core::GUID> = Vec::new();
+        sweep_muting(&mgr_enum, &mgr_vol, include_discord, &mut muted_by_us);
+        gate2.open();
+        audio_log("session muter started, will sweep every 1.5s");
+        while !stop2.load(std::sync::atomic::Ordering::Relaxed)
+            && !SESSION_MUTER_STOP.load(std::sync::atomic::Ordering::Relaxed)
+        {
+            std::thread::sleep(std::time::Duration::from_millis(1500));
+            if stop2.load(std::sync::atomic::Ordering::Relaxed)
+                || SESSION_MUTER_STOP.load(std::sync::atomic::Ordering::Relaxed)
+            {
+                break;
+            }
+            sweep_muting(&mgr_enum, &mgr_vol, include_discord, &mut muted_by_us);
+        }
+        for g in &muted_by_us {
+            if let Ok(vol) = mgr_vol.GetSimpleAudioVolume(Some(g), 0) {
+                let _ = vol.SetMute(BOOL(0), std::ptr::null());
+            }
+        }
+        if !muted_by_us.is_empty() {
+            audio_log(&format!(
+                "session muter: restored {} foreign session(s)",
+                muted_by_us.len()
+            ));
+        }
+        audio_log("session muter stopped");
+    });
+    (stop, gate)
+}
+
+/// Pure endpoint loopback capture (polling, no EVENTCALLBACK, no muting).
+/// Session muting is handled by spawn_session_muter on a separate thread.
+fn spawn_endpoint_loopback_capture(
+    pipe_name: String,
+) -> (
+    std::sync::mpsc::Receiver<Result<(String, u32, u16, u16), String>>,
+    Arc<StartGate>,
+    Arc<std::sync::atomic::AtomicBool>,
+) {
+    let (tx, rx) = std::sync::mpsc::channel();
+    let gate = Arc::new(StartGate::new());
+    let cancel = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let gate2 = gate.clone();
+    let cancel2 = cancel.clone();
+    std::thread::spawn(move || unsafe {
+        use windows::Win32::Foundation::CloseHandle;
+        use windows::Win32::Media::Audio::{
+            IAudioCaptureClient, AUDCLNT_SHAREMODE_SHARED, WAVEFORMATEX,
+        };
+        use windows::Win32::Storage::FileSystem::{
+            FILE_FLAGS_AND_ATTRIBUTES, FlushFileBuffers,
+        };
+        use windows::Win32::System::Com::CoTaskMemFree;
+        use windows::Win32::System::Pipes::{
+            ConnectNamedPipe, CreateNamedPipeW, DisconnectNamedPipe, NAMED_PIPE_MODE,
+        };
+
+        // ── KEY FIX: NO EVENTCALLBACK ──
+        // The event callback never fires reliably on this machine's WASAPI
+        // loopback; after ~1 s the engine delivers AUDCLNT_BUFFERFLAGS_SILENT
+        // for every packet.  Polling with GetCurrentPadding is rock-solid.
+        const STREAM_FLAGS: u32 = 0x0002_0000; // AUDCLNT_STREAMFLAGS_LOOPBACK only
+
+        let fail = |msg: String| {
+            audio_log(&format!("endpoint-loopback error: {msg}"));
+            let _ = tx.send(Err(msg));
+        };
+
+        audio_log("activating endpoint loopback (polling mode, no EVENTCALLBACK)");
+        let client = match open_endpoint_loopback_client(None) {
+            Ok(c) => c,
+            Err(e) => return fail(e),
+        };
+        let pwfx = match client.GetMixFormat() {
+            Ok(p) if !p.is_null() => p,
+            Ok(_) => return fail("mixformat null".to_string()),
+            Err(e) => return fail(format!("mixformat: {e}")),
+        };
+        let tag = (*pwfx).wFormatTag;
+        let channels = (*pwfx).nChannels.max(1);
+        let rate = (*pwfx).nSamplesPerSec.max(8000);
+        let bits = (*pwfx).wBitsPerSample.max(8);
+        let block_align = ((*pwfx).nBlockAlign as usize).max(1);
+        let extensible = tag == 0xFFFE;
+        let float = tag == 3 || (extensible && bits == 32);
+        let fmt_name = if float { "f32le" } else { "s16le" }.to_string();
+        audio_log(&format!(
+            "endpoint mixformat: fmt={fmt_name} rate={rate} ch={channels} bits={bits}"
+        ));
+
+        // 500 ms buffer — avoids overflow during video-encode stalls.
+        if let Err(e) = client.Initialize(
+            AUDCLNT_SHAREMODE_SHARED,
+            STREAM_FLAGS,
+            5_000_000,
+            0,
+            pwfx as *const WAVEFORMATEX,
+            None,
+        ) {
+            return fail(format!("init: {e}"));
+        }
+        let cap: IAudioCaptureClient = match client.GetService() {
+            Ok(c) => c,
+            Err(e) => return fail(format!("service: {e}")),
+        };
+        if let Err(e) = client.Start() {
+            return fail(format!("start: {e}"));
+        }
+        audio_log("endpoint loopback started (polling)");
+        let _ = tx.send(Ok((fmt_name, rate, channels, bits)));
+
+        if !gate2.wait_with_cancel(&cancel2) {
+            let _ = client.Stop();
+            return;
+        }
+
+        let wide: Vec<u16> = pipe_name.encode_utf16().chain(Some(0)).collect();
+        let pname = windows::core::PCWSTR::from_raw(wide.as_ptr());
+        let pipe = CreateNamedPipeW(
+            pname,
+            FILE_FLAGS_AND_ATTRIBUTES(0x0000_0002 | 0x0008_0000),
+            NAMED_PIPE_MODE(0),
+            1,
+            524_288,
+            524_288,
+            0,
+            None,
+        );
+        if pipe.is_invalid() {
+            let _ = client.Stop();
+            return fail("createpipe failed".to_string());
+        }
+        if let Err(e) = ConnectNamedPipe(pipe, None) {
+            if (e.code().0 & 0xFFFF) != 536 {
+                let _ = client.Stop();
+                let _ = CloseHandle(pipe);
+                return fail(format!("connect: {e}"));
+            }
+        }
+        audio_log("pipe connected, entering endpoint loopback poll loop");
+
+        let mut stopped = false;
+        let mut consecutive_errors = 0u32;
+        const MAX_ERR: u32 = 100;
+        let mut pkt_count: u32 = 0;
+        while !stopped {
+            if AUDIO_CAPTURE_STOP.load(std::sync::atomic::Ordering::Relaxed)
+                || cancel2.load(std::sync::atomic::Ordering::Relaxed)
+            {
+                break;
+            }
+            // Poll: check how many frames are buffered.
+            match client.GetCurrentPadding() {
+                Ok(0) => {
+                    std::thread::sleep(std::time::Duration::from_millis(2));
+                    continue;
+                }
+                Ok(_) => {}
+                Err(e) => {
+                    consecutive_errors += 1;
+                    if consecutive_errors >= MAX_ERR {
+                        audio_log(&format!("GetCurrentPadding fatal: {e}"));
+                        stopped = true;
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(5));
+                    continue;
+                }
+            }
+            loop {
+                let packets = match cap.GetNextPacketSize() {
+                    Ok(p) => p,
+                    Err(e) => {
+                        consecutive_errors += 1;
+                        if consecutive_errors >= MAX_ERR {
+                            audio_log(&format!("GetNextPacketSize fatal: {e}"));
+                            stopped = true;
+                        }
+                        break;
+                    }
+                };
+                if packets == 0 {
+                    break;
+                }
+                let mut data: *mut u8 = std::ptr::null_mut();
+                let mut frames = 0u32;
+                let mut flags = 0u32;
+                if cap
+                    .GetBuffer(&mut data, &mut frames, &mut flags, None, None)
+                    .is_err()
+                {
+                    consecutive_errors += 1;
+                    if consecutive_errors >= MAX_ERR {
+                        audio_log("GetBuffer fatal");
+                        stopped = true;
+                    }
+                    break;
+                }
+                consecutive_errors = 0;
+                pkt_count += 1;
+                if pkt_count <= 5 || pkt_count % 500 == 0 {
+                    audio_log(&format!(
+                        "audio pkt #{pkt_count}: flags=0x{flags:02x} frames={frames}"
+                    ));
+                }
+                let bytes = frames as usize * block_align;
+                let ok = if flags & 0x2 != 0 || data.is_null() {
+                    let zeros = vec![0u8; bytes];
+                    write_all_pipe(pipe, &zeros)
+                } else {
+                    let slice = std::slice::from_raw_parts(data, bytes);
+                    write_all_pipe(pipe, slice)
+                };
+                let _ = cap.ReleaseBuffer(frames);
+                if !ok {
+                    audio_log("pipe write failed, stopping capture");
+                    stopped = true;
+                    break;
+                }
+            }
+        }
+
+        let _ = client.Stop();
+        let _ = FlushFileBuffers(pipe);
+        let _ = DisconnectNamedPipe(pipe);
+        let _ = CloseHandle(pipe);
+        CoTaskMemFree(Some(pwfx as *const core::ffi::c_void));
+    });
+    (rx, gate, cancel)
+}
+
+/// Legacy endpoint capture with inline muting (kept for fallback reference).
+#[allow(dead_code)]
 fn spawn_endpoint_muted_capture(
     pipe_name: String,
     include_discord: bool,
@@ -2161,15 +2540,10 @@ fn setup_audio_sources(
         .as_millis();
 
     if matches!(mode, AudioMode::Game | AudioMode::GameDiscord) {
-        // NEW STRATEGY (v1.5.85): capture the default endpoint and mute every
-        // foreign audio session live.  Process loopback delivered engine-
-        // flagged silence after a few seconds of LoL on real machines; the
-        // endpoint path is rock solid, and muting foreign sessions keeps the
-        // recording free of YouTube/Firefox/Spotify without leaking anything.
         let include_discord = mode == AudioMode::GameDiscord;
         let gpid = find_lol_window_pid();
         if let Some(g) = gpid {
-            audio_log(&format!("game audio: LoL PID={g} (endpoint+mute strategy)"));
+            audio_log(&format!("game audio: LoL PID={g} (endpoint+polling+muter)"));
         } else {
             audio_log("game audio: LoL window not found yet");
         }
@@ -2178,12 +2552,19 @@ fn setup_audio_sources(
             audio_log(&format!("discord allowlist roots: {dpids:?}"));
         }
 
+        // Start the background session muter (separate thread).
+        let (muter_stop, muter_gate) = spawn_session_muter(include_discord);
+        SESSION_MUTER_STOP.store(false, std::sync::atomic::Ordering::SeqCst);
+        let _ = MUTER_STOP_HANDLE.set(muter_stop);
+        // Wait for muter to finish its first sweep before starting capture.
+        let _ = muter_gate.wait_with_cancel(&std::sync::atomic::AtomicBool::new(false));
+
         let name = format!(r"\\.\pipe\rh-audio-mix-{ts}");
         let ok = unsafe { create_audio_pipe_checked(&name) };
         let mut used_strategy = false;
         if ok {
             let (rx2, gate2s, cancel2s) =
-                spawn_endpoint_muted_capture(name.clone(), include_discord);
+                spawn_endpoint_loopback_capture(name.clone());
             match rx2.recv_timeout(std::time::Duration::from_millis(8000)) {
                 Ok(Ok((fmt, rate, ch, _bits))) => {
                     inputs.push(AudioInput::Pipe(vec![
@@ -2196,12 +2577,12 @@ fn setup_audio_sources(
                     used_strategy = true;
                 }
                 Ok(Err(e)) => {
-                    audio_log(&format!("endpoint muted capture failed: {e}"));
+                    audio_log(&format!("endpoint loopback capture failed: {e}"));
                     cancel2s.store(true, std::sync::atomic::Ordering::Relaxed);
                     gate2s.open();
                 }
                 Err(_) => {
-                    audio_log("endpoint muted capture timed out after 8s");
+                    audio_log("endpoint loopback capture timed out after 8s");
                     cancel2s.store(true, std::sync::atomic::Ordering::Relaxed);
                     gate2s.open();
                 }
@@ -3105,6 +3486,10 @@ async fn stop_recording(app: tauri::AppHandle) -> Result<Option<VodFile>, String
         }
         *guard = None;
         AUDIO_CAPTURE_STOP.store(true, std::sync::atomic::Ordering::SeqCst);
+        SESSION_MUTER_STOP.store(true, std::sync::atomic::Ordering::SeqCst);
+        if let Some(s) = MUTER_STOP_HANDLE.get() {
+            s.store(true, std::sync::atomic::Ordering::SeqCst);
+        }
         FFMPEG_OUTPUT.lock().map_err(|e| e.to_string())?.take()
     };
     // Small delay to let the file system flush
