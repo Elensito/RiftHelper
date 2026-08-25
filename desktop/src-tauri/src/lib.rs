@@ -1987,6 +1987,7 @@ fn spawn_endpoint_muted_capture(
         let mut consecutive_errors = 0u32;
         const MAX_CONSECUTIVE_ERRORS: u32 = 100;
         let mut ticks: u32 = 0;
+        let mut pkt_count: u32 = 0;
         while !stopped {
             if AUDIO_CAPTURE_STOP.load(std::sync::atomic::Ordering::Relaxed) {
                 break;
@@ -2026,6 +2027,12 @@ fn spawn_endpoint_muted_capture(
                     break;
                 }
                 consecutive_errors = 0;
+                pkt_count += 1;
+                if pkt_count <= 5 || pkt_count % 500 == 0 {
+                    audio_log(&format!(
+                        "audio pkt #{pkt_count}: flags=0x{flags:02x} frames={frames}"
+                    ));
+                }
                 let bytes = frames as usize * block_align;
                 let ok = if flags & 0x2 != 0 || data.is_null() {
                     let zeros = vec![0u8; bytes];
@@ -2743,12 +2750,12 @@ fn start_focus_watchdog(hwnd: isize) {
             fn GetWindowThreadProcessId(hWnd: HWND, lpdwProcessId: *mut u32) -> u32;
         }
         const SW_RESTORE: i32 = 9;
-        for _ in 0..24 {
+        for _ in 0..120 {
             std::thread::sleep(std::time::Duration::from_millis(250));
             unsafe {
                 let h = hwnd as HWND;
                 if IsIconic(h) != 0 {
-                    audio_log("focus watchdog: game window minimized — restoring");
+                    audio_log("focus watchdog: game window minimized - restoring");
                     let tid = GetCurrentThreadId();
                     let gtid = GetWindowThreadProcessId(h, std::ptr::null_mut());
                     let _ = AttachThreadInput(tid, gtid, 1);
@@ -2860,6 +2867,34 @@ async fn start_recording(app: tauri::AppHandle) -> Result<String, String> {
         None => None,
     };
     VIDEO_MODE_DDA.store(video_plan.is_some(), std::sync::atomic::Ordering::SeqCst);
+
+    // DuplicateOutput kicks an exclusive-fullscreen game out of exclusive mode
+    // (visible as a minimize).  Restore immediately so the WASAPI endpoint
+    // loopback captures real game audio instead of silence, and the overlay
+    // can position correctly over the visible window.
+    if hwnd != 0 {
+        unsafe {
+            use std::ffi::c_void;
+            type HWND = *mut c_void;
+            extern "system" {
+                fn IsIconic(hWnd: HWND) -> i32;
+                fn ShowWindow(hWnd: HWND, nCmdShow: i32) -> i32;
+                fn SetForegroundWindow(hWnd: HWND) -> i32;
+            }
+            const SW_RESTORE: i32 = 9;
+            let h = hwnd as HWND;
+            if IsIconic(h) != 0 {
+                let _ = ShowWindow(h, SW_RESTORE);
+                let _ = SetForegroundWindow(h);
+                audio_log("dda kicked game to background - restored immediately");
+            }
+        }
+        // Give the game engine time to resume audio production.
+        std::thread::sleep(std::time::Duration::from_millis(300));
+        // Start focus watchdog early (before ffmpeg spawn) to guard against
+        // re-minimize during the rest of the setup.
+        start_focus_watchdog(hwnd);
+    }
 
     let mut ffmpeg_args = if let Some((cw, ch)) = video_plan {
         vec![

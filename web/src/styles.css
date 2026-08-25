@@ -7233,12 +7233,14 @@ body.sidebar-expanded .vod-player-view {
   /* CRITICAL: a plain <video> gets promoted to a Windows hardware overlay
      plane (MPO) by WebView2 once playback starts, painting it ABOVE the whole
      UI regardless of z-index — the control deck ends up behind the video and
-     "never appears" on hover.  Two defenses: force our own compositor layer
-     (translateZ) AND a sub-1 opacity, which Chromium requires to disable
-     overlay projection entirely. */
+     "never appears" on hover.  Three defenses: force our own compositor layer
+     (translateZ + will-change), AND a sub-1 opacity which Chromium requires to
+     disable overlay projection entirely.  0.99 is more aggressive than 0.9999
+     and defeats aggressive GPU drivers that round to 1.0. */
   transform: translateZ(0);
   backface-visibility: hidden;
-  opacity: 0.9999;
+  will-change: transform, opacity;
+  opacity: 0.99;
   /* Let mouse events pass through to .vod-video-container so :hover works. */
   pointer-events: none;
 }
@@ -7701,8 +7703,9 @@ body.sidebar-expanded .vod-player-view {
   transition: opacity 0.22s ease, transform 0.25s cubic-bezier(0.22, 1, 0.36, 1);
   /* must sit above the composited <video> layer while playing */
   z-index: 30;
-  /* keep promoted on its own layer so it never fights the video plane */
+  /* Force its own compositing layer so it renders above the video MPO plane */
   will-change: transform, opacity;
+  backdrop-filter: blur(0.01px);
 }
 .vod-video-container:hover .vod-deck,
 .vod-deck.visible,
