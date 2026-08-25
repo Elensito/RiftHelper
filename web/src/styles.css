@@ -6274,6 +6274,117 @@ button.p-name:hover {
   font-family: monospace;
 }
 
+/* Storage usage bar */
+.rt-storage {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 16px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  margin-bottom: 24px;
+}
+
+.rt-storage-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.rt-storage-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.rt-storage-icon {
+  color: var(--cyan);
+  flex-shrink: 0;
+}
+
+.rt-storage-icon.warn {
+  color: #f0b429;
+}
+
+.rt-storage-icon.danger {
+  color: var(--red);
+}
+
+.rt-storage-label {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.rt-storage-drive {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+  padding: 1px 6px;
+  background: rgba(0, 229, 255, 0.06);
+  border: 1px solid rgba(0, 229, 255, 0.12);
+  border-radius: 4px;
+}
+
+.rt-storage-text {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.rt-storage-bar {
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.06);
+  overflow: hidden;
+  position: relative;
+}
+
+.rt-storage-fill {
+  height: 100%;
+  border-radius: 3px;
+  background: linear-gradient(90deg, var(--cyan), #57e6ff);
+  transition: width 0.6s cubic-bezier(0.22, 1, 0.36, 1);
+  position: relative;
+}
+
+.rt-storage-fill::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(90deg, transparent 50%, rgba(255,255,255,0.12) 50%);
+  background-size: 8px 100%;
+}
+
+.rt-storage-fill.warn {
+  background: linear-gradient(90deg, #f0b429, #ffd166);
+}
+
+.rt-storage-fill.warn::after {
+  background: linear-gradient(90deg, transparent 50%, rgba(255,255,255,0.1) 50%);
+  background-size: 8px 100%;
+}
+
+.rt-storage-fill.danger {
+  background: linear-gradient(90deg, var(--red), #ff6b8a);
+}
+
+.rt-storage-fill.danger::after {
+  background: linear-gradient(90deg, transparent 50%, rgba(255,255,255,0.1) 50%);
+  background-size: 8px 100%;
+}
+
+.rt-storage-free {
+  font-size: 11px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
 .rt-empty {
   display: flex;
   flex-direction: column;

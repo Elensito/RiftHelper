@@ -1,6 +1,6 @@
 ﻿import { useState, useEffect, useCallback, useRef } from 'react'
 import { t } from '../i18n.js'
-import { isTauri, showInFolder, getAudioMode, vodThumbUrl } from '../tauri.js'
+import { isTauri, showInFolder, getAudioMode, vodThumbUrl, getDiskUsage } from '../tauri.js'
 import { deleteRecordingBlob } from '../video-recorder.js'
 import { deleteVodFiles } from '../tauri.js'
 
@@ -84,6 +84,7 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
     try { return JSON.parse(localStorage.getItem(CLIPS_STORAGE_KEY) || '[]') } catch { return [] }
   })
   const [contextMenu, setContextMenu] = useState(null)
+  const [diskUsage, setDiskUsage] = useState(null)
   const [settings, setSettings] = useState(() => {
     const s = loadSettings()
     return {
@@ -97,6 +98,15 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
   })
 
   useEffect(() => { saveSettings(settings) }, [settings])
+
+  useEffect(() => {
+    if (!isTauri()) return
+    getDiskUsage().then(setDiskUsage).catch(() => {})
+    const interval = setInterval(() => {
+      getDiskUsage().then(setDiskUsage).catch(() => {})
+    }, 30000)
+    return () => clearInterval(interval)
+  }, [])
 
   /* Rust config is the source of truth for the recording audio mode */
   useEffect(() => {
@@ -211,6 +221,39 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
           {settings.autoRecord ? t(lang, 'autoRecordingOn') : t(lang, 'autoRecordingOff')}
         </span>
       </div>
+
+      {diskUsage && (() => {
+        const totalGB = diskUsage.totalBytes / (1024 ** 3)
+        const usedGB = diskUsage.usedBytes / (1024 ** 3)
+        const freeGB = diskUsage.freeBytes / (1024 ** 3)
+        const pct = Math.min(100, (usedGB / totalGB) * 100)
+        const fmtGB = (gb) => gb >= 1000 ? `${(gb / 1000).toFixed(1)} TB` : `${Math.round(gb)} GB`
+        const isLow = pct > 90
+        const isWarn = pct > 75
+        return (
+          <div className="rt-storage">
+            <div className="rt-storage-header">
+              <div className="rt-storage-info">
+                <svg className={`rt-storage-icon ${isLow ? 'danger' : isWarn ? 'warn' : ''}`} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <ellipse cx="12" cy="5" rx="9" ry="3" />
+                  <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3" />
+                  <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5" />
+                </svg>
+                <span className="rt-storage-label">{t(lang, 'storageUsage')}</span>
+                <span className="rt-storage-drive">{diskUsage.drive}</span>
+              </div>
+              <span className="rt-storage-text">{fmtGB(usedGB)} / {fmtGB(totalGB)}</span>
+            </div>
+            <div className="rt-storage-bar">
+              <div
+                className={`rt-storage-fill ${isLow ? 'danger' : isWarn ? 'warn' : ''}`}
+                style={{ width: `${pct}%` }}
+              />
+            </div>
+            <span className="rt-storage-free">{fmtGB(freeGB)} {t(lang, 'storageUsageDesc')}</span>
+          </div>
+        )
+      })()}
 
       {subTab === 'recordings' ? (
         vods.length === 0 ? (

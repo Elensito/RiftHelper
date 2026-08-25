@@ -984,6 +984,54 @@ async fn set_recording_quality(app: tauri::AppHandle, quality: String) -> Result
     Ok(())
 }
 
+#[tauri::command]
+async fn get_disk_usage(app: tauri::AppHandle) -> Result<serde_json::Value, String> {
+    let cfg = read_config(&app);
+    let folder = cfg.get("recordingsFolder")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string())
+        .unwrap_or_else(default_recordings_folder);
+    // Walk up from the recordings folder until we find an existing root path.
+    let root = std::path::Path::new(&folder);
+    let root = if root.exists() {
+        root
+    } else {
+        // Walk parents to find the first existing ancestor.
+        root.parent().unwrap_or(root)
+    };
+    // On Windows, GetDiskFreeSpaceExW needs the root of the drive (e.g. "C:\").
+    let root_str = root.to_string_lossy().to_string();
+    let drive_root = if root_str.len() >= 2 && root_str.as_bytes()[1] == b':' {
+        format!("{}\\", &root_str[..2])
+    } else {
+        root_str.clone()
+    };
+    unsafe {
+        use windows::Win32::Storage::FileSystem::GetDiskFreeSpaceExW;
+        use windows::core::PCWSTR;
+        let wide: Vec<u16> = drive_root.encode_utf16().chain(std::iter::once(0)).collect();
+        let mut free_bytes_avail: u64 = 0;
+        let mut total_bytes: u64 = 0;
+        let mut _total_free: u64 = 0;
+        let ok = GetDiskFreeSpaceExW(
+            PCWSTR(wide.as_ptr()),
+            Some(&mut free_bytes_avail as *mut u64),
+            Some(&mut total_bytes as *mut u64),
+            Some(&mut _total_free as *mut u64),
+        );
+        if ok.is_ok() && total_bytes > 0 {
+            let used = total_bytes - free_bytes_avail;
+            return Ok(serde_json::json!({
+                "totalBytes": total_bytes,
+                "usedBytes": used,
+                "freeBytes": free_bytes_avail,
+                "drive": drive_root,
+            }));
+        }
+    }
+    Err("Failed to get disk usage".to_string())
+}
+
 /// Outcome of waiting for the in-game clock.
 enum GameStartWait {
     Started(f64), // gameTime in seconds when recording starts
@@ -3448,15 +3496,6 @@ async fn start_recording(app: tauri::AppHandle) -> Result<String, String> {
         ]
     };
 
-    // Scale filter: downscale to the user-selected resolution when needed.
-    // -2 ensures the width stays even (required by most encoders).
-    if let Some(target_h) = rec_height {
-        ffmpeg_args.extend([
-            "-vf".to_string(),
-            format!("scale=-2:{}", target_h),
-        ]);
-    }
-
     // Audio per user setting (default: game-only via process loopback).
     let mode = audio_mode_from_cfg(&cfg);
     let mute_mic = cfg.get("muteMic")
@@ -3518,6 +3557,16 @@ async fn start_recording(app: tauri::AppHandle) -> Result<String, String> {
             "-b:a".to_string(), "128k".to_string(),
             "-ar".to_string(), "48000".to_string(),
             "-ac".to_string(), "2".to_string(),
+        ]);
+    }
+
+    // Scale filter: downscale to the user-selected resolution when needed.
+    // MUST be after all -i inputs — placing it between inputs causes ffmpeg
+    // to treat it as an input option and error out.
+    if let Some(target_h) = rec_height {
+        ffmpeg_args.extend([
+            "-vf".to_string(),
+            format!("scale=-2:{}", target_h),
         ]);
     }
 
@@ -4068,6 +4117,7 @@ pub fn run() {
             set_recording_fps,
             get_recording_quality,
             set_recording_quality,
+            get_disk_usage,
             start_recording,
             stop_recording,
             is_recording,

@@ -346,3 +346,9 @@ export async function setRecordingQuality(quality) {
   const { invoke } = await import('@tauri-apps/api/core')
   try { await invoke('set_recording_quality', { quality }) } catch {}
 }
+
+export async function getDiskUsage() {
+  if (!isTauri()) return null
+  const { invoke } = await import('@tauri-apps/api/core')
+  try { return await invoke('get_disk_usage') } catch { return null }
+}
