@@ -586,7 +586,9 @@ export default function VODPlayer({ vod, lang, onBack, puuid, summoner, showTeam
   }, [playing, uiActive])
 
   const hasVideo = hasVideoLive
-  const showDeck = hasVideo
+  /* Deck visible when paused (always) or during playback when UI is active
+     (mouse moved within last 5s).  Gives YouTube-style auto-hide behavior. */
+  const showDeck = hasVideo && (!playing || uiActive)
 
   const togglePlay = useCallback(() => {
     const vid = videoRef.current

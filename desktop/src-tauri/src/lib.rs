@@ -1737,19 +1737,25 @@ fn spawn_capture_source(
             Ok(c) => c,
             Err(e) => return fail(format!("service: {e}")),
         };
-        audio_log("GetService OK, calling Start...");
+        // Do NOT call client.Start() here — defer until after the gate opens
+        // so WASAPI doesn't buffer audio before the pipe is connected.
+        // Format info is already available from Initialize + GetMixFormat.
+
+        // Report format so the caller can assemble ffmpeg args, then wait for
+        // ffmpeg to be spawned before starting capture and connecting the pipe.
+        let _ = tx.send(Ok((fmt_name.clone(), rate, channels, bits)));
+        if !gate2.wait_with_cancel(&cancel2) {
+            return;
+        }
+
+        // Start capture NOW — after the gate opens, so audio and video begin
+        // capturing at the same real-world time.  Eliminates the initial A/V
+        // offset caused by WASAPI buffering before the pipe was connected.
+        audio_log("gate opened — calling client.Start()...");
         if let Err(e) = client.Start() {
             return fail(format!("start: {e}"));
         }
         audio_log(&format!("audio capture started: fmt={fmt_name} rate={rate} ch={channels} bits={bits}"));
-
-        // Report format so the caller can assemble ffmpeg args, then wait for
-        // ffmpeg to be spawned before connecting the pipe.
-        let _ = tx.send(Ok((fmt_name.clone(), rate, channels, bits)));
-        if !gate2.wait_with_cancel(&cancel2) {
-            let _ = client.Stop();
-            return;
-        }
 
         // Connect the server-side pipe handle (client = ffmpeg).
         let wide: Vec<u16> = pipe_name.encode_utf16().chain(Some(0)).collect();
@@ -2158,16 +2164,19 @@ fn spawn_endpoint_loopback_capture(
             Ok(c) => c,
             Err(e) => return fail(format!("service: {e}")),
         };
+        // Do NOT call client.Start() here — defer until after the gate opens.
+        let _ = tx.send(Ok((fmt_name, rate, channels, bits)));
+
+        if !gate2.wait_with_cancel(&cancel2) {
+            return;
+        }
+
+        // Start capture NOW — after the gate opens.
+        audio_log("gate opened — calling client.Start() for endpoint loopback...");
         if let Err(e) = client.Start() {
             return fail(format!("start: {e}"));
         }
         audio_log("endpoint loopback started (polling)");
-        let _ = tx.send(Ok((fmt_name, rate, channels, bits)));
-
-        if !gate2.wait_with_cancel(&cancel2) {
-            let _ = client.Stop();
-            return;
-        }
 
         let wide: Vec<u16> = pipe_name.encode_utf16().chain(Some(0)).collect();
         let pname = windows::core::PCWSTR::from_raw(wide.as_ptr());
@@ -3111,6 +3120,10 @@ fn run_video_capture(mut stdin: std::process::ChildStdin, hwnd_hint: isize, cw: 
                 continue;
             }
         };
+        // Reset pacing clock after DDA setup — the setup takes non-trivial
+        // time; without this reset the first burst of frames is paced too
+        // fast, causing an initial A/V timing mismatch.
+        next_tick = std::time::Instant::now();
 
         // Inner loop: reuse the duplication pipeline until it goes stale.
         loop {
