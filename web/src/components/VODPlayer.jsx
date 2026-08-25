@@ -27,10 +27,11 @@ const IconSkull = () => (
 
 const IconTower = () => (
   <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M6 21V8h12v13" />
-    <path d="M4 21h16" />
-    <path d="M6 8V5h2.5v2h3V5h3v2H17V8" />
-    <path d="M11 21v-4h2v4" />
+    <path d="M6 21h12" />
+    <path d="M8 21V11h8v10" />
+    <path d="M8 11V7h2v4M14 11V7h2v4" />
+    <path d="M6 7h2V5h8v2h2" />
+    <rect x="10.5" y="14" width="3" height="3" rx="0.5" />
   </svg>
 )
 
@@ -92,6 +93,7 @@ function NeonTimeline({ matchId, puuid, lang, duration, current, onSeek, localDa
   const [data, setData] = useState(null)
   const [status, setStatus] = useState(matchId ? 'loading' : 'empty')
   const [cursor, setCursor] = useState(null)
+  const [filteredKinds, setFilteredKinds] = useState(() => new Set(['kill-me', 'death-me', 'assist-me', 'tower', 'inhib', 'baron']))
 
   useEffect(() => {
     /* Locally captured LCD events (instant timeline): use them as-is and
@@ -177,9 +179,12 @@ function NeonTimeline({ matchId, puuid, lang, duration, current, onSeek, localDa
 
     out.sort((a, b) => a.sec - b.sec)
 
+    // Filter by active event kinds
+    const visible = out.filter(o => filteredKinds.has(o.kind))
+
     // Cluster: merge same-kind events within 10s into a single marker
     const clustered = []
-    for (const o of out) {
+    for (const o of visible) {
       const last = clustered.length > 0 ? clustered[clustered.length - 1] : null
       if (last && last.kind === o.kind && last.ally === o.ally && Math.abs(o.sec - last.sec) <= 10) {
         last.count = (last.count || 1) + 1
@@ -199,7 +204,7 @@ function NeonTimeline({ matchId, puuid, lang, duration, current, onSeek, localDa
       o.lane = lane
     }
     return clustered.slice(0, 120)
-  }, [data, tlDuration, scale, gameTimeOffset])
+  }, [data, tlDuration, scale, gameTimeOffset, filteredKinds])
 
   const pct = (sec) => Math.min(100, Math.max(0, (sec / tlDuration) * 100))
   const stepMin = tlDuration <= 20 * 60 ? 2 : tlDuration <= 35 * 60 ? 5 : 10
@@ -237,6 +242,15 @@ function NeonTimeline({ matchId, puuid, lang, duration, current, onSeek, localDa
 
   const progressPct = pct(current)
 
+  const toggleKind = useCallback((kind) => {
+    setFilteredKinds(prev => {
+      const next = new Set(prev)
+      if (next.has(kind)) next.delete(kind)
+      else next.add(kind)
+      return next
+    })
+  }, [])
+
   return (
     <section className="vtl" aria-label={t(lang, 'vtlTitle')}>
       <div className="vtl-head">
@@ -248,11 +262,27 @@ function NeonTimeline({ matchId, puuid, lang, duration, current, onSeek, localDa
           {t(lang, 'vtlTitle')}
         </span>
         <div className="vtl-legend">
-          <span className="vtl-lg"><i className="lg kill" />{t(lang, 'vtlKills')}</span>
-          <span className="vtl-lg"><i className="lg death" />{t(lang, 'vtlDeaths')}</span>
-          <span className="vtl-lg"><i className="lg assist" />{t(lang, 'vtlAssists')}</span>
-          <span className="vtl-lg"><i className="lg ally" />{t(lang, 'vtlAlly')}</span>
-          <span className="vtl-lg"><i className="lg enemy" />{t(lang, 'vtlEnemy')}</span>
+          {Object.entries(KIND_META).map(([kind, meta]) => {
+            const active = filteredKinds.has(kind)
+            const label =
+              kind === 'kill-me' ? t(lang, 'vtlKills') :
+              kind === 'death-me' ? t(lang, 'vtlDeaths') :
+              kind === 'assist-me' ? t(lang, 'vtlAssists') :
+              kind === 'tower' ? t(lang, 'evTower') :
+              kind === 'inhib' ? t(lang, 'evInhibitor') :
+              t(lang, 'evBaron')
+            return (
+              <button
+                key={kind}
+                className={`vtl-filter ${active ? 'on' : 'off'} ${meta.cls}`}
+                onClick={() => toggleKind(kind)}
+                title={label}
+              >
+                <meta.icon />
+                <span>{label}</span>
+              </button>
+            )
+          })}
         </div>
       </div>
 
