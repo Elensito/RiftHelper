@@ -6498,6 +6498,56 @@ button.p-name:hover {
   padding: 2px 6px;
 }
 
+/* ── Favorite star on VOD cards ───────────────────────────── */
+.rt-card-fav {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 5;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  color: rgba(255, 255, 255, 0.7);
+  cursor: pointer;
+  opacity: 0;
+  transform: scale(0.8);
+  transition: opacity 0.2s ease, transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1), color 0.2s ease, background 0.2s ease;
+}
+.rt-card:hover .rt-card-fav {
+  opacity: 1;
+  transform: scale(1);
+}
+.rt-card-fav.active {
+  opacity: 1;
+  transform: scale(1);
+  color: #f5a623;
+  background: rgba(0, 0, 0, 0.65);
+}
+.rt-card-fav:hover {
+  background: rgba(0, 0, 0, 0.75);
+  color: #f5c542;
+  transform: scale(1.12);
+}
+.rt-card-fav.active:hover {
+  color: #fcd34d;
+}
+@keyframes rt-star-pop {
+  0% { transform: scale(1); }
+  35% { transform: scale(1.35); }
+  70% { transform: scale(0.9); }
+  100% { transform: scale(1); }
+}
+.rt-card-fav.pop svg {
+  animation: rt-star-pop 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
 .rt-card-info {
   padding: 10px 12px;
 }
@@ -6590,10 +6640,116 @@ button.p-name:hover {
   background: rgba(255, 61, 94, 0.15);
 }
 
+.rt-context-disabled {
+  opacity: 0.35;
+  cursor: not-allowed !important;
+  pointer-events: auto;
+}
+.rt-context-disabled:hover {
+  background: none;
+}
+
 .rt-context-sep {
   height: 1px;
   margin: 4px 10px;
   background: var(--border);
+}
+
+/* ── Delete confirmation modal ──────────────────────────── */
+@keyframes rt-modal-in {
+  from { opacity: 0; transform: scale(0.92) translateY(8px); }
+  to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+@keyframes rt-modal-bg-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+.rt-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 5000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  animation: rt-modal-bg-in 0.18s ease;
+}
+.rt-modal {
+  width: 380px;
+  max-width: 90vw;
+  padding: 28px 28px 22px;
+  border-radius: 16px;
+  background: var(--card-solid, #1a1a2e);
+  border: 1px solid var(--border);
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.04);
+  animation: rt-modal-in 0.22s cubic-bezier(0.34, 1.56, 0.64, 1);
+  text-align: center;
+}
+.rt-modal-icon {
+  width: 56px;
+  height: 56px;
+  margin: 0 auto 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: rgba(255, 61, 94, 0.1);
+  border: 1px solid rgba(255, 61, 94, 0.2);
+}
+.rt-modal-title {
+  margin: 0 0 8px;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text);
+}
+.rt-modal-desc {
+  margin: 0 0 14px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+.rt-modal-vod-info {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 8px 14px;
+  margin: 0 auto 18px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  max-width: 280px;
+}
+.rt-modal-vod-info img {
+  width: 22px;
+  height: 22px;
+  border-radius: 4px;
+}
+.rt-modal-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+}
+.rt-btn-danger {
+  background: rgba(255, 61, 94, 0.15);
+  color: var(--red);
+  border: 1px solid rgba(255, 61, 94, 0.3);
+  padding: 8px 20px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, transform 0.15s;
+}
+.rt-btn-danger:hover {
+  background: rgba(255, 61, 94, 0.3);
+  border-color: rgba(255, 61, 94, 0.5);
+  transform: translateY(-1px);
 }
 
 /* ── Settings overlay ── */
@@ -7316,6 +7472,21 @@ body.sidebar-expanded .vod-player-view {
 .vod-topbar-actions {
   display: flex;
   gap: 8px;
+}
+
+.vod-fav-btn {
+  color: rgba(255, 255, 255, 0.6);
+  transition: color 0.2s, transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.vod-fav-btn:hover {
+  color: #f5c542;
+  transform: scale(1.1);
+}
+.vod-fav-btn.active {
+  color: #f5a623;
+}
+.vod-fav-btn.active:hover {
+  color: #fcd34d;
 }
 
 .vod-main {

@@ -7,6 +7,7 @@ import { deleteVodFiles } from '../tauri.js'
 const VOD_STORAGE_KEY = 'rh-vods'
 const VOD_SETTINGS_KEY = 'rh-vod-settings'
 const CLIPS_STORAGE_KEY = 'rh-clips'
+const FAV_STORAGE_KEY = 'rh-vod-favorites'
 
 function loadVods() {
   try {
@@ -26,6 +27,16 @@ function loadSettings() {
 
 function saveSettings(s) {
   localStorage.setItem(VOD_SETTINGS_KEY, JSON.stringify(s))
+}
+
+function loadFavorites() {
+  try {
+    return new Set(JSON.parse(localStorage.getItem(FAV_STORAGE_KEY) || '[]'))
+  } catch { return new Set() }
+}
+
+function saveFavorites(favs) {
+  localStorage.setItem(FAV_STORAGE_KEY, JSON.stringify([...favs]))
 }
 
 function formatDuration(sec) {
@@ -83,7 +94,9 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
   const [clips, setClips] = useState(() => {
     try { return JSON.parse(localStorage.getItem(CLIPS_STORAGE_KEY) || '[]') } catch { return [] }
   })
+  const [favorites, setFavorites] = useState(loadFavorites)
   const [contextMenu, setContextMenu] = useState(null)
+  const [deleteModal, setDeleteModal] = useState(null)
   const [diskUsage, setDiskUsage] = useState(null)
   const [settings, setSettings] = useState(() => {
     const s = loadSettings()
@@ -143,6 +156,17 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
     window.dispatchEvent(new Event('rh-vods-changed'))
     deleteRecordingBlob(id).catch(() => {})
   }, [vods])
+
+  const toggleFavorite = useCallback((id, e) => {
+    e.stopPropagation()
+    setFavorites(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      saveFavorites(next)
+      return next
+    })
+  }, [])
 
   const deleteClip = useCallback((clipId) => {
     const filtered = clips.filter(c => c.id !== clipId)
@@ -267,7 +291,12 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
           </div>
         ) : (
           <div className="rt-grid">
-            {vods.map((vod) => (
+            {[...vods].sort((a, b) => {
+              const fa = favorites.has(a.id) ? 0 : 1
+              const fb = favorites.has(b.id) ? 0 : 1
+              if (fa !== fb) return fa - fb
+              return (b.date || 0) - (a.date || 0)
+            }).map((vod) => (
               <div key={vod.id} className="rt-card" onClick={() => onOpenVod(vod)} onContextMenu={(e) => handleContextMenu(e, vod)}>
                 <div className="rt-card-thumb">
                   {vod.thumbnail ? (
@@ -279,6 +308,15 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
                   {vod.pendingMatch && <span className="rt-card-badge pending">{t(lang, 'pendingBadge')}</span>}
                   {vod.result === 'win' && <span className="rt-card-badge win">W</span>}
                   {vod.result === 'loss' && <span className="rt-card-badge loss">L</span>}
+                  <button
+                    className={`rt-card-fav ${favorites.has(vod.id) ? 'active' : ''}`}
+                    onClick={(e) => toggleFavorite(vod.id, e)}
+                    title={favorites.has(vod.id) ? t(lang, 'removeFavorite') : t(lang, 'addFavorite')}
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill={favorites.has(vod.id) ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+                    </svg>
+                  </button>
                 </div>
                 <div className="rt-card-info">
                   <div className="rt-card-champ">
@@ -376,18 +414,61 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
               {t(lang, 'showInFolder')}
             </button>
           )}
-          <button className="rt-context-item rt-context-danger" onClick={() => {
-            if (confirm(t(lang, 'confirmDeleteVod'))) {
-              deleteVod(contextMenu.vod.id)
-            }
-            setContextMenu(null)
-          }}>
+          <button className="rt-context-item" onClick={() => { toggleFavorite(contextMenu.vod.id, { stopPropagation: () => {} }); setContextMenu(null) }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill={favorites.has(contextMenu.vod.id) ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+            </svg>
+            {favorites.has(contextMenu.vod.id) ? t(lang, 'removeFavorite') : t(lang, 'addFavorite')}
+          </button>
+          <button
+            className={`rt-context-item rt-context-danger ${favorites.has(contextMenu.vod.id) ? 'rt-context-disabled' : ''}`}
+            title={favorites.has(contextMenu.vod.id) ? t(lang, 'cannotDeleteFav') : ''}
+            onClick={() => {
+              if (favorites.has(contextMenu.vod.id)) return
+              setDeleteModal(contextMenu.vod)
+              setContextMenu(null)
+            }}
+          >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <polyline points="3 6 5 6 21 6" />
               <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
             </svg>
             {t(lang, 'deleteVod')}
           </button>
+        </div>
+      )}
+
+      {deleteModal && (
+        <div className="rt-modal-backdrop" onClick={() => setDeleteModal(null)}>
+          <div className="rt-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="rt-modal-icon">
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--red)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="3 6 5 6 21 6" />
+                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                <line x1="10" y1="11" x2="10" y2="17" />
+                <line x1="14" y1="11" x2="14" y2="17" />
+              </svg>
+            </div>
+            <h3 className="rt-modal-title">{t(lang, 'deleteRecording')}</h3>
+            <p className="rt-modal-desc">{t(lang, 'deleteRecordingDesc')}</p>
+            {deleteModal.champion && (
+              <div className="rt-modal-vod-info">
+                {deleteModal.championIcon && <img src={deleteModal.championIcon} alt="" />}
+                <span>{deleteModal.champion}{deleteModal.queue ? ` · ${deleteModal.queue}` : ''}</span>
+              </div>
+            )}
+            <div className="rt-modal-actions">
+              <button className="rt-btn rt-btn-ghost" onClick={() => setDeleteModal(null)}>
+                {t(lang, 'cancel')}
+              </button>
+              <button className="rt-btn rt-btn-danger" onClick={() => {
+                deleteVod(deleteModal.id)
+                setDeleteModal(null)
+              }}>
+                {t(lang, 'deleteVod')}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

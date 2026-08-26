@@ -408,6 +408,27 @@ export default function VODPlayer({ vod, lang, onBack, puuid, summoner, showTeam
   const [videoRetry, setVideoRetry] = useState(0)
   const videoErrorTimerRef = useRef(null)
 
+  const FAV_KEY = 'rh-vod-favorites'
+  const [isFav, setIsFav] = useState(() => {
+    try {
+      const favs = JSON.parse(localStorage.getItem(FAV_KEY) || '[]')
+      return favs.includes(vod.id)
+    } catch { return false }
+  })
+  const toggleFav = useCallback(() => {
+    setIsFav(prev => {
+      try {
+        const favs = JSON.parse(localStorage.getItem(FAV_KEY) || '[]')
+        const idx = favs.indexOf(vod.id)
+        if (idx >= 0) favs.splice(idx, 1)
+        else favs.push(vod.id)
+        localStorage.setItem(FAV_KEY, JSON.stringify(favs))
+        return idx < 0
+      } catch { return !prev }
+    })
+    window.dispatchEvent(new Event('rh-vods-changed'))
+  }, [vod.id])
+
   /* Matches recorded before Riot finished indexing stay "pending": the
      timeline/teams unlock as soon as the resolver patches the VOD. */
   const [vodPatch, setVodPatch] = useState(null)
@@ -757,6 +778,11 @@ export default function VODPlayer({ vod, lang, onBack, puuid, summoner, showTeam
           )}
         </div>
         <div className="vod-topbar-actions">
+          <button className={`rt-btn rt-btn-ghost rt-btn-sm vod-fav-btn ${isFav ? 'active' : ''}`} onClick={toggleFav} title={isFav ? t(lang, 'removeFavorite') : t(lang, 'addFavorite')}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill={isFav ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+            </svg>
+          </button>
           <button className="rt-btn rt-btn-ghost rt-btn-sm" onClick={downloadVod} title={t(lang, 'downloadVod')} disabled={!hasVideo}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
