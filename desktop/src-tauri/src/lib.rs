@@ -124,14 +124,31 @@ fn stop_event_capture() {
     }
 }
 
-/* Extracts a thumbnail frame from the still-being-written mp4 ~1 minute in.
-   The file is fragmented while ffmpeg runs, so seeking by index is
-   impossible: we seek from the END of the decode chain (-i before -ss) and
-   retry a few times until enough video data has been written. Failures are
-   silently ignored and the VOD keeps its placeholder. */
-fn start_thumbnail_worker(output_path: String, thumb_path: String, ffmpeg_path: String) {
+/* Extracts a thumbnail frame targeting ~1 minute of GAME TIME.
+   game_start_secs is the gameTime when recording began (after loading screen).
+   We seek to max(0, 60 − game_start_secs) into the mp4. The file is
+   fragmented while ffmpeg runs, so output-level seeking is used and retries
+   are needed until enough data is written. */
+fn start_thumbnail_worker(
+    output_path: String,
+    thumb_path: String,
+    ffmpeg_path: String,
+    game_start_secs: f64,
+) {
     let spawned = std::thread::Builder::new().name("vod-thumb".into()).spawn(move || {
-        for delay in [55u64, 60, 70, 90] {
+        // Target 60s of game time.  Recording starts at game_start_secs.
+        let seek_secs = (60.0 - game_start_secs).max(0.0);
+        let seek_str = format!("{:.1}", seek_secs);
+        // The mp4 must be long enough to seek into.  Wait at least
+        // seek_secs + headroom before attempting, with a minimum of 40s.
+        let min_wait = (seek_secs + 15.0).max(40.0) as u64;
+        for delay in [
+            min_wait,
+            min_wait + 10,
+            min_wait + 25,
+            min_wait + 50,
+            min_wait + 80,
+        ] {
             std::thread::sleep(std::time::Duration::from_secs(delay));
             if std::path::Path::new(&thumb_path).exists() {
                 return;
@@ -142,10 +159,14 @@ fn start_thumbnail_worker(output_path: String, thumb_path: String, ffmpeg_path: 
             let status = Command::new(&ffmpeg_path)
                 .args([
                     "-y".to_string(),
-                    "-i".to_string(), output_path.clone(),
-                    "-ss".to_string(), "50".to_string(),
-                    "-frames:v".to_string(), "1".to_string(),
-                    "-q:v".to_string(), "4".to_string(),
+                    "-i".to_string(),
+                    output_path.clone(),
+                    "-ss".to_string(),
+                    seek_str.clone(),
+                    "-frames:v".to_string(),
+                    "1".to_string(),
+                    "-q:v".to_string(),
+                    "4".to_string(),
                 ])
                 .arg(&thumb_path)
                 .creation_flags(0x08000000)
@@ -3825,8 +3846,13 @@ async fn start_recording(app: tauri::AppHandle) -> Result<String, String> {
     }
 
     start_event_capture(events_str);
-    // Thumbnail frame ~1 minute into the recording.
-    start_thumbnail_worker(output_str.clone(), thumb_str, ffmpeg_path.clone());
+    // Thumbnail frame targeting ~1 minute of game time.
+    start_thumbnail_worker(
+        output_str.clone(),
+        thumb_str,
+        ffmpeg_path.clone(),
+        actual_game_time,
+    );
 
     let result = serde_json::json!({
         "path": output_str,
