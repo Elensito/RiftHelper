@@ -389,6 +389,7 @@ export default function VODPlayer({ vod, lang, onBack, puuid, summoner, showTeam
      fall back to the puuid stored in the VOD when no profile is loaded */
   const evPuuid = puuid || vod.puuid || ''
   const videoRef = useRef(null)
+  const canvasRef = useRef(null)
   const seekRef = useRef(null)
 
   const [playing, setPlaying] = useState(false)
@@ -577,6 +578,29 @@ export default function VODPlayer({ vod, lang, onBack, puuid, summoner, showTeam
     }
   }, [videoUrl])
 
+  /* Canvas MPO bypass: draw video frames onto a <canvas> element which is
+     never promoted to a hardware overlay plane.  The <video> is hidden
+     off-screen but still drives playback, seeking, and volume. */
+  useEffect(() => {
+    const vid = videoRef.current
+    const cvs = canvasRef.current
+    if (!vid || !cvs) return
+    const ctx = cvs.getContext('2d')
+    let raf
+    const draw = () => {
+      if (vid.readyState >= 2 && vid.videoWidth > 0) {
+        if (cvs.width !== vid.videoWidth || cvs.height !== vid.videoHeight) {
+          cvs.width = vid.videoWidth
+          cvs.height = vid.videoHeight
+        }
+        ctx.drawImage(vid, 0, 0, cvs.width, cvs.height)
+      }
+      raf = requestAnimationFrame(draw)
+    }
+    raf = requestAnimationFrame(draw)
+    return () => cancelAnimationFrame(raf)
+  }, [videoUrl])
+
   /* Auto-hide cursor over video while playing */
   const containerRef = useRef(null)
   useEffect(() => {
@@ -761,7 +785,8 @@ export default function VODPlayer({ vod, lang, onBack, puuid, summoner, showTeam
         >
           <div ref={containerRef} className="vod-video-container" onClick={(e) => { if (hasVideo) togglePlay(e) }}>
             {hasVideo ? (
-              <video ref={videoRef} className="vod-video" src={videoUrl} preload="metadata" onError={(e) => {
+              <>
+              <video ref={videoRef} className="vod-video-hidden" src={videoUrl} preload="metadata" onError={(e) => {
                 console.error('[VODPlayer] video load error:', e.target?.error, 'src:', videoUrl)
                 if (!videoErrorTimerRef.current) {
                   videoErrorTimerRef.current = setTimeout(() => {
@@ -776,6 +801,8 @@ export default function VODPlayer({ vod, lang, onBack, puuid, summoner, showTeam
                 }
                 setVideoError(false)
               }} />
+              <canvas ref={canvasRef} className="vod-video" />
+              </>
             ) : (
               <div className="vod-video-placeholder vod-match-summary">
                 {vod.championIcon && <img className="vod-summary-champ" src={vod.championIcon} alt={vod.champion || ''} />}

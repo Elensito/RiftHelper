@@ -21,7 +21,7 @@ use windows::Win32::Graphics::Direct3D11::{
 };
 use windows::Win32::Graphics::Dxgi::{
     CreateDXGIFactory1, IDXGIFactory1, IDXGIOutput1, IDXGIOutputDuplication, IDXGIResource,
-    DXGI_OUTDUPL_FRAME_INFO,
+    DXGI_OUTDUPL_FRAME_INFO, DXGI_OUTDUPL_POINTER_SHAPE_INFO,
 };
 use windows::Win32::Graphics::Dxgi::Common::{DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_SAMPLE_DESC};
 
@@ -3069,6 +3069,122 @@ unsafe fn blit_client(
     }
 }
 
+/// Composite the mouse cursor onto the BGRA canvas from DDA cursor metadata.
+/// Supports Color (BGRA) and MaskedColor cursor shapes. Monochrome cursors
+/// are rendered as a simple white/black fallback since they're rare in modern
+/// Windows (mostly legacy GDI apps).
+unsafe fn composite_cursor(
+    canvas: &mut [u8],
+    cw: u32,
+    ch: u32,
+    info: &DXGI_OUTDUPL_FRAME_INFO,
+    shape_buf: &[u8],
+    shape_info: &DXGI_OUTDUPL_POINTER_SHAPE_INFO,
+    window_left: i32,
+    window_top: i32,
+) {
+    if info.PointerPosition.Visible.as_bool() == false {
+        return;
+    }
+    if shape_buf.is_empty() || shape_info.Width == 0 || shape_info.Height == 0 {
+        return;
+    }
+
+    let shape_type = shape_info.Type;
+    let hotspot_x = shape_info.HotSpot.x;
+    let hotspot_y = shape_info.HotSpot.y;
+    let pos_x = info.PointerPosition.Position.x;
+    let pos_y = info.PointerPosition.Position.y;
+    let w = shape_info.Width as i32;
+    let h = shape_info.Height as i32;
+    let pitch = shape_info.Pitch as usize;
+
+    // Cursor screen coords → canvas-relative coords (subtract game window origin)
+    let cx = pos_x - window_left - hotspot_x;
+    let cy = pos_y - window_top - hotspot_y;
+
+    if shape_type == 2 || shape_type == 4 {
+        // Color (2) or MaskedColor (4): BGRA pixel data, 4 bytes per pixel.
+        for row in 0..h {
+            let dst_y = cy + row;
+            if dst_y < 0 || dst_y >= ch as i32 {
+                continue;
+            }
+            let src_row = (row as usize) * pitch;
+            for col in 0..w {
+                let dst_x = cx + col;
+                if dst_x < 0 || dst_x >= cw as i32 {
+                    continue;
+                }
+                let src_off = src_row + (col as usize) * 4;
+                if src_off + 3 >= shape_buf.len() {
+                    continue;
+                }
+                let b = shape_buf[src_off];
+                let g = shape_buf[src_off + 1];
+                let r = shape_buf[src_off + 2];
+                let a = shape_buf[src_off + 3];
+                if a == 0 && shape_type == 4 {
+                    continue; // MaskedColor: alpha=0 means transparent
+                }
+                let dst_off = ((dst_y as usize) * cw as usize + dst_x as usize) * 4;
+                if dst_off + 3 >= canvas.len() {
+                    continue;
+                }
+                if a == 255 {
+                    canvas[dst_off] = b;
+                    canvas[dst_off + 1] = g;
+                    canvas[dst_off + 2] = r;
+                    canvas[dst_off + 3] = 255;
+                } else {
+                    // Alpha blend
+                    let alpha = a as u16;
+                    let inv = 255 - alpha;
+                    canvas[dst_off] = ((b as u16 * alpha + canvas[dst_off] as u16 * inv) / 255) as u8;
+                    canvas[dst_off + 1] = ((g as u16 * alpha + canvas[dst_off + 1] as u16 * inv) / 255) as u8;
+                    canvas[dst_off + 2] = ((r as u16 * alpha + canvas[dst_off + 2] as u16 * inv) / 255) as u8;
+                    canvas[dst_off + 3] = 255;
+                }
+            }
+        }
+    } else if shape_type == 1 {
+        // Monochrome: two bitmasks per row — AND mask then XOR mask.
+        // Each row is (width + 31) / 32 * 4 bytes per mask.
+        let row_bytes = ((w as u32 + 31) / 32 * 4) as usize;
+        for row in 0..h {
+            let dst_y = cy + row;
+            if dst_y < 0 || dst_y >= ch as i32 {
+                continue;
+            }
+            let and_row = (row as usize) * row_bytes;
+            let xor_row = and_row + (h as usize) * row_bytes;
+            for col in 0..w {
+                let dst_x = cx + col;
+                if dst_x < 0 || dst_x >= cw as i32 {
+                    continue;
+                }
+                let byte_idx = (col as usize) / 8;
+                let bit_idx = 7 - (col as usize % 8);
+                if and_row + byte_idx >= shape_buf.len() || xor_row + byte_idx >= shape_buf.len() {
+                    continue;
+                }
+                let and_bit = (shape_buf[and_row + byte_idx] >> bit_idx) & 1;
+                let xor_bit = (shape_buf[xor_row + byte_idx] >> bit_idx) & 1;
+                let dst_off = ((dst_y as usize) * cw as usize + dst_x as usize) * 4;
+                if dst_off + 3 >= canvas.len() {
+                    continue;
+                }
+                // Standard cursor compositing: AND=1,XOR=0 → black; AND=0,XOR=1 → white; AND=1,XOR=1 → inverted
+                if and_bit == 1 && xor_bit == 0 {
+                    canvas[dst_off] = 0; canvas[dst_off+1] = 0; canvas[dst_off+2] = 0; canvas[dst_off+3] = 255;
+                } else if and_bit == 0 && xor_bit == 1 {
+                    canvas[dst_off] = 255; canvas[dst_off+1] = 255; canvas[dst_off+2] = 255; canvas[dst_off+3] = 255;
+                }
+            }
+        }
+    }
+}
+
 /// Streams BGRA frames of the game client into ffmpeg's stdin as a rawvideo
 /// feed at ~30fps until VIDEO_CAPTURE_STOP fires. Dropping stdin closes the
 /// pipe: ffmpeg sees video EOF and finalizes the file cleanly.
@@ -3126,6 +3242,9 @@ fn run_video_capture(mut stdin: std::process::ChildStdin, hwnd_hint: isize, cw: 
         next_tick = std::time::Instant::now();
 
         // Inner loop: reuse the duplication pipeline until it goes stale.
+        let mut cursor_shape_buf: Vec<u8> = Vec::new();
+        let mut cursor_shape_info = DXGI_OUTDUPL_POINTER_SHAPE_INFO::default();
+        let mut last_cursor_shape_size: u32 = 0;
         loop {
             if VIDEO_CAPTURE_STOP.load(std::sync::atomic::Ordering::SeqCst) {
                 break 'outer;
@@ -3151,6 +3270,33 @@ fn run_video_capture(mut stdin: std::process::ChildStdin, hwnd_hint: isize, cw: 
                 let mut resource: Option<IDXGIResource> = None;
                 match pipe.dup.AcquireNextFrame(16, &mut info, &mut resource) {
                     Ok(()) => {
+                        // Fetch cursor shape when it changes (shape buffer size differs).
+                        if info.PointerShapeBufferSize > 0
+                            && info.PointerShapeBufferSize != last_cursor_shape_size
+                        {
+                            let mut needed = 0u32;
+                            let mut shape_info = DXGI_OUTDUPL_POINTER_SHAPE_INFO::default();
+                            // First call: probe required buffer size.
+                            let _ = pipe.dup.GetFramePointerShape(
+                                0,
+                                std::ptr::null_mut(),
+                                &mut needed,
+                                &mut shape_info,
+                            );
+                            if needed > 0 {
+                                cursor_shape_buf.resize(needed as usize, 0);
+                                if pipe.dup.GetFramePointerShape(
+                                    needed,
+                                    cursor_shape_buf.as_mut_ptr() as *mut _,
+                                    &mut needed,
+                                    &mut shape_info,
+                                ).is_ok() {
+                                    cursor_shape_info = shape_info;
+                                    last_cursor_shape_size = info.PointerShapeBufferSize;
+                                }
+                            }
+                        }
+
                         if let Ok(tex) = resource.unwrap().cast::<ID3D11Texture2D>() {
                             pipe.ctx.CopyResource(&pipe.staging, &tex);
                             let mut mapped = D3D11_MAPPED_SUBRESOURCE::default();
@@ -3158,13 +3304,17 @@ fn run_video_capture(mut stdin: std::process::ChildStdin, hwnd_hint: isize, cw: 
                                 if show {
                                     if let Some((rx, ry, rw, rh)) = lol_client_rect(hwnd) {
                                         let cur_rect = (rx, ry, rw, rh);
-                                        // Only zero the full canvas when the window
-                                        // moves or resizes — not every frame.
                                         if last_rect != Some(cur_rect) {
                                             canvas.fill(0);
                                             last_rect = Some(cur_rect);
                                         }
                                         blit_client(&pipe, &mapped, rx, ry, rw, rh, &mut canvas, cw);
+                                        // Composite the mouse cursor onto the canvas.
+                                        composite_cursor(
+                                            &mut canvas, cw, ch,
+                                            &info, &cursor_shape_buf, &cursor_shape_info,
+                                            rx, ry,
+                                        );
                                     }
                                 }
                                 pipe.ctx.Unmap(&pipe.staging, 0);

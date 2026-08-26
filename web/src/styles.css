@@ -7373,23 +7373,24 @@ body.sidebar-expanded .vod-player-view {
   background: rgba(255, 255, 255, 0.15);
 }
 
+/* Hidden <video> element — off-screen but still paints for canvas drawImage */
+.vod-video-hidden {
+  position: fixed;
+  top: -9999px;
+  left: -9999px;
+  width: 1px;
+  height: 1px;
+  opacity: 0.01;
+  pointer-events: none;
+  z-index: -1;
+}
+
 .vod-video {
   width: 100%;
   height: 100%;
   object-fit: contain;
-  /* CRITICAL: a plain <video> gets promoted to a Windows hardware overlay
-     plane (MPO) by WebView2 once playback starts, painting it ABOVE the whole
-     UI regardless of z-index — the control deck ends up behind the video and
-     "never appears" on hover.  Defenses: force a compositor layer, sub-1.0
-     opacity (≤0.98 needed on some Intel/AMD drivers to disable MPO), and
-     contain:paint to group it with siblings so the MPO can't promote it
-     independently. */
-  transform: translateZ(0);
-  backface-visibility: hidden;
-  will-change: transform, opacity;
-  opacity: 0.98;
-  contain: paint layout;
-  /* Let mouse events pass through to .vod-video-container so :hover works. */
+  /* Canvas element — never promoted to a hardware overlay plane (MPO),
+     so z-index and hover rules work normally. */
   pointer-events: none;
 }
 
@@ -7891,21 +7892,17 @@ body.sidebar-expanded .vod-player-view {
   padding: 26px 14px 8px;
   background: linear-gradient(180deg, transparent 0%, rgba(5, 6, 12, 0.55) 30%, rgba(4, 5, 10, 0.92) 100%);
   opacity: 0;
-  transform: translateY(10px) translateZ(1px);
+  transform: translateY(10px);
   pointer-events: none;
   transition: opacity 0.22s ease, transform 0.25s cubic-bezier(0.22, 1, 0.36, 1);
-  /* must sit above the composited <video> layer while playing */
   z-index: 30;
-  /* Force its own compositing layer so it renders above the video MPO plane */
-  will-change: transform, opacity;
-  contain: layout;
-  backdrop-filter: blur(0.01px);
+  will-change: opacity;
 }
 .vod-video-container:hover .vod-deck,
 .vod-deck.visible,
 .vod-player-view:fullscreen .vod-deck.visible {
-  opacity: 1 !important;
-  transform: translateY(0) translateZ(1px) !important;
+  opacity: 1;
+  transform: translateY(0);
   pointer-events: auto;
 }
 
