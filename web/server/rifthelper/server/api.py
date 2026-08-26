@@ -245,7 +245,7 @@ def _participant_summary(
             spell_images.add(simage)
         spells.append(
             {
-                "src": f"/assets/spells/{simage}" if simage else None,
+                "src": _asset(f"/assets/spells/{simage}") if simage else None,
                 "name": sp.get("name") or {"en": "", "es": ""},
                 "id": sid,
             }

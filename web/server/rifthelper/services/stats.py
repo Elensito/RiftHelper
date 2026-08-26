@@ -175,7 +175,7 @@ def timeline_metrics(
                 "participant_id": pid,
                 "team": p.get("teamId", 0),
                 "champion": champ.get("name", f"ID {p.get('championId')}"),
-                "champion_icon": f"/assets/champions/{image}" if image else None,
+                "champion_icon": f"{config.SITE_URL}/assets/champions/{image}" if image else None,
                 "is_player": p.get("puuid") == puuid,
                 **series,
             }
@@ -194,7 +194,7 @@ def _player_ref(p: dict, champ_info: dict[int, dict], puuid: str) -> dict:
         "participant_id": p.get("participantId"),
         "team": p.get("teamId", 0),
         "champion": champ.get("name", f"ID {p.get('championId')}"),
-        "champion_icon": f"/assets/champions/{image}" if image else None,
+        "champion_icon": f"{config.SITE_URL}/assets/champions/{image}" if image else None,
         "name": p.get("riotIdGameName") or p.get("summonerName") or "",
         "tag": p.get("riotIdTagline") or "",
         "is_player": p.get("puuid") == puuid,
