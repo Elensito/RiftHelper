@@ -610,8 +610,8 @@ export default function VODPlayer({ vod, lang, onBack, puuid, summoner, showTeam
   }, [playing, uiActive])
 
   const hasVideo = hasVideoLive
-  /* Deck visible when paused (always) or during playback when UI is active
-     (mouse moved within last 5s).  Gives YouTube-style auto-hide behavior. */
+  /* Always show the deck when a video is loaded.  During playback, auto-hide
+     after 5s of mouse inactivity (YouTube-style).  When paused, always visible. */
   const showDeck = hasVideo && (!playing || uiActive)
 
   const togglePlay = useCallback(() => {
@@ -802,6 +802,14 @@ export default function VODPlayer({ vod, lang, onBack, puuid, summoner, showTeam
                 setVideoError(false)
               }} />
               <canvas ref={canvasRef} className="vod-video" />
+              {/* Hover capture layer — guarantees mouse events reach JS
+                  even when canvas pointer-events:none doesn't forward them */}
+              <div className="vod-hover-layer"
+                onMouseEnter={() => bumpUi()}
+                onMouseMove={() => { if (playing) bumpUi() }}
+                onMouseLeave={() => { if (playing) hideUiNow() }}
+                onClick={(e) => { e.stopPropagation(); togglePlay() }}
+              />
               </>
             ) : (
               <div className="vod-video-placeholder vod-match-summary">
@@ -834,7 +842,14 @@ export default function VODPlayer({ vod, lang, onBack, puuid, summoner, showTeam
 
             {hasVideo && (
               <div
-                className={`vod-deck ${showDeck ? 'visible' : ''}`}
+                className="vod-deck"
+                style={{
+                  opacity: showDeck ? 1 : 0,
+                  pointerEvents: showDeck ? 'auto' : 'none',
+                  transform: showDeck ? 'translateY(0)' : 'translateY(10px)',
+                  transition: 'opacity 0.22s ease, transform 0.25s cubic-bezier(0.22, 1, 0.36, 1)',
+                  zIndex: 30,
+                }}
                 onClick={(e) => e.stopPropagation()}
                 onMouseEnter={() => bumpUi()}
               >
