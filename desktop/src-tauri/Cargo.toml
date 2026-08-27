@@ -24,6 +24,13 @@ reqwest = { version = "0.12", features = ["json", "blocking", "stream"] }
 opener = "0.6"
 zip = "2"
 futures-util = "0.3"
+libobs-simple = "8.0.1"
+libobs-bootstrapper = "0.2"
+anyhow = "1"
+log = "0.4"
+env_logger = "0.11"
+libobs-wrapper = "9.0.4"
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.58", features = [
