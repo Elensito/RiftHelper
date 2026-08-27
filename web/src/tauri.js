@@ -347,6 +347,18 @@ export async function setRecordingQuality(quality) {
   try { await invoke('set_recording_quality', { quality }) } catch {}
 }
 
+export async function getUseObsCapture() {
+  if (!isTauri()) return false
+  const { invoke } = await import('@tauri-apps/api/core')
+  try { return await invoke('get_use_obs_capture') } catch { return false }
+}
+
+export async function setUseObsCapture(enabled) {
+  if (!isTauri()) return
+  const { invoke } = await import('@tauri-apps/api/core')
+  try { await invoke('set_use_obs_capture', { enabled }) } catch {}
+}
+
 export async function getDiskUsage() {
   if (!isTauri()) return null
   const { invoke } = await import('@tauri-apps/api/core')

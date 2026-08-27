@@ -25,6 +25,17 @@ use windows::Win32::Graphics::Dxgi::{
 };
 use windows::Win32::Graphics::Dxgi::Common::{DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_SAMPLE_DESC};
 
+/// libobs (OBS)-based game-capture recorder. Optional at build time: the
+/// OBS engine is only used when it has been bootstrapped and enabled.
+mod obs_recorder;
+
+/// Recording engine switcher: true once an OBS session is active, false when
+/// the DDA/ffmpeg pipeline is the active engine.
+static OBS_ACTIVE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+/// Path of the ongoing OBS recording (mirrors FFMPEG_OUTPUT) so stop can
+/// finalize and report the file.
+static OBS_OUTPUT: Mutex<Option<String>> = Mutex::new(None);
+
 struct FFmpegProcess {
     child: Child,
     stdin: Option<std::process::ChildStdin>,
@@ -917,6 +928,22 @@ async fn get_mute_mic(app: tauri::AppHandle) -> Result<bool, String> {
 async fn set_mute_mic(app: tauri::AppHandle, enabled: bool) -> Result<(), String> {
     let mut cfg = read_config(&app);
     cfg["muteMic"] = serde_json::json!(enabled);
+    write_config(&app, &cfg);
+    Ok(())
+}
+
+#[tauri::command]
+async fn get_use_obs_capture(app: tauri::AppHandle) -> Result<bool, String> {
+    let cfg = read_config(&app);
+    Ok(cfg.get("useObsCapture")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false))
+}
+
+#[tauri::command]
+async fn set_use_obs_capture(app: tauri::AppHandle, enabled: bool) -> Result<(), String> {
+    let mut cfg = read_config(&app);
+    cfg["useObsCapture"] = serde_json::json!(enabled);
     write_config(&app, &cfg);
     Ok(())
 }
@@ -3498,6 +3525,125 @@ fn start_focus_watchdog(hwnd: isize) {
     });
 }
 
+/// Start a recording through the OBS game-capture engine (libobs).
+/// All audio modes are supported via OBS WASAPI sources.
+async fn obs_start_recording(
+    _app: &tauri::AppHandle,
+    cfg: &serde_json::Value,
+    game_start_time: f64,
+) -> Result<String, String> {
+    if OBS_ACTIVE.load(std::sync::atomic::Ordering::SeqCst) {
+        return Err("Already recording".to_string());
+    }
+
+    let ffmpeg_path = cfg
+        .get("ffmpegPath")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    if ffmpeg_path.is_empty() {
+        return Err("FFmpeg path not configured".to_string());
+    }
+
+    let recordings_folder = cfg
+        .get("recordingsFolder")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string())
+        .unwrap_or_else(default_recordings_folder);
+    std::fs::create_dir_all(&recordings_folder).map_err(|e| e.to_string())?;
+
+    let base = std::path::Path::new(&recordings_folder);
+    let vods_dir = base.join("vods");
+    let thumbs_dir = base.join("thumbnails");
+    let logs_dir = base.join("logs");
+    let timeline_dir = base.join("timeline");
+    std::fs::create_dir_all(&vods_dir).map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(&thumbs_dir).map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(&logs_dir).map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(&timeline_dir).map_err(|e| e.to_string())?;
+
+    let ts = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    let stem = format!("recording-{}", ts);
+    let output_path = vods_dir.join(format!("{}.mp4", stem));
+    let output_str = output_path.to_string_lossy().to_string();
+    let thumb_str = thumbs_dir.join(format!("{}.thumb.jpg", stem)).to_string_lossy().to_string();
+    let events_str = timeline_dir.join(format!("{}.events.json", stem)).to_string_lossy().to_string();
+
+    // Recording quality and FPS from user settings.
+    let rec_fps: u32 = cfg
+        .get("recordingFps")
+        .and_then(|v| v.as_str())
+        .unwrap_or("30")
+        .parse()
+        .unwrap_or(30);
+    let rec_quality = cfg
+        .get("recordingQuality")
+        .and_then(|v| v.as_str())
+        .unwrap_or("720p")
+        .to_string();
+    let rec_height: u32 = match rec_quality.as_str() {
+        "480p" => 480,
+        "720p" => 720,
+        "1080p" => 1080,
+        _ => 0, // 1440p / 4k: native resolution
+    };
+
+    let out_for_obs = output_str.clone();
+    let audio_mode = match audio_mode_from_cfg(cfg) {
+        AudioMode::System => obs_recorder::ObsAudioMode::System,
+        AudioMode::GameDiscord => obs_recorder::ObsAudioMode::GameDiscord,
+        AudioMode::Game => obs_recorder::ObsAudioMode::Game,
+    };
+    let audio_device = cfg
+        .get("audioOutputDevice")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+    match tauri::async_runtime::spawn_blocking(move || {
+        obs_recorder::start(obs_recorder::ObsRecordingConfig {
+            output_path: out_for_obs,
+            fps: rec_fps,
+            height: rec_height,
+            video_bitrate: match rec_height {
+                1080 => 12000,
+                720 => 6500,
+                480 => 3500,
+                _ => 16000, // native (1440p/4k)
+            },
+            audio_bitrate: 192,
+            audio_mode,
+            audio_output_device: audio_device,
+            capture_window_id: None,
+        })
+    })
+    .await
+    {
+        Ok(Ok(())) => {}
+        Ok(Err(e)) => return Err(e),
+        Err(e) => return Err(e.to_string()),
+    }
+
+    OBS_ACTIVE.store(true, std::sync::atomic::Ordering::SeqCst);
+    *OBS_OUTPUT.lock().map_err(|e| e.to_string())? = Some(output_str.clone());
+
+    // Timeline + thumbnail (identical to the ffmpeg path; both read the mp4).
+    start_event_capture(events_str);
+    start_thumbnail_worker(
+        output_str.clone(),
+        thumb_str,
+        ffmpeg_path,
+        game_start_time,
+    );
+
+    let result = serde_json::json!({
+        "path": output_str,
+        "gameTime": game_start_time,
+    });
+    Ok(result.to_string())
+}
+
 #[tauri::command]
 async fn start_recording(app: tauri::AppHandle) -> Result<String, String> {
     {
@@ -3575,6 +3721,14 @@ async fn start_recording(app: tauri::AppHandle) -> Result<String, String> {
         }
         _ => 0.0, // Timeout: start anyway, no gameTime info
     };
+
+    // ── OBS game-capture engine ────────────────────────────────────────────
+    // When enabled, capture directly with libobs (shared D3D11 texture +
+    // hardware encoder on the GPU) instead of DDA→CPU→rawvideo pipe→ffmpeg.
+    // All three audio modes are supported via OBS WASAPI sources.
+    if cfg.get("useObsCapture").and_then(|v| v.as_bool()).unwrap_or(false) {
+        return obs_start_recording(&app, &cfg, game_start_time).await;
+    }
 
     // Capture the game client via DXGI Desktop Duplication (GPU-composited:
     // works with DirectX, no CAPTUREBLT cursor flicker, near-zero CPU, black
@@ -3864,6 +4018,30 @@ async fn start_recording(app: tauri::AppHandle) -> Result<String, String> {
 #[tauri::command]
 async fn stop_recording(app: tauri::AppHandle) -> Result<Option<VodFile>, String> {
     stop_event_capture();
+
+    // OBS engine: stop libobs and finalize the mp4 here (no ffmpeg child to
+    // reap). libobs runs on a blocking thread, so stop it off the runtime.
+    if OBS_ACTIVE.swap(false, std::sync::atomic::Ordering::SeqCst) {
+        tauri::async_runtime::spawn_blocking(|| obs_recorder::stop())
+            .await
+            .map_err(|e| e.to_string())??;
+        let output_path = OBS_OUTPUT.lock().map_err(|e| e.to_string())?.take();
+        let valid_path = output_path.as_deref().and_then(|p| {
+            let meta = std::fs::metadata(p).ok()?;
+            let size = meta.len();
+            if size < 50_000 {
+                audio_log(&format!("VOD too small ({size} bytes), discarding: {p}"));
+                let _ = std::fs::remove_file(p);
+                return None;
+            }
+            Some(p)
+        });
+        let duration = valid_path
+            .and_then(|p| probe_media_duration(&app, p))
+            .unwrap_or(0.0);
+        return Ok(valid_path.map(|path| VodFile { path: path.to_string(), duration }));
+    }
+
     // DDA mode: the capturer thread owns ffmpeg's stdin — flag it to stop
     // (~100ms) so dropping stdin delivers video EOF and ffmpeg finalizes.
     VIDEO_CAPTURE_STOP.store(true, std::sync::atomic::Ordering::SeqCst);
@@ -4267,7 +4445,88 @@ async fn download_and_setup_ffmpeg(app: tauri::AppHandle) -> Result<String, Stri
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
+/// Is this process running with administrator privileges? OBS game capture
+/// needs this to open the Vanguard-protected League of Legends process.
+fn is_elevated() -> bool {
+    unsafe {
+        use windows::Win32::UI::Shell::IsUserAnAdmin;
+        IsUserAnAdmin().as_bool()
+    }
+}
+
+/// Relaunch this executable elevated (UAC) via ShellExecuteW "runas".
+/// Returns true if a new elevated instance was launched; the caller should
+/// then exit this (non-elevated) instance.
+fn relaunch_elevated() -> bool {
+    unsafe {
+        use windows::Win32::UI::Shell::ShellExecuteW;
+        use windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
+        let exe = std::env::current_exe().ok();
+        let Some(exe) = exe else { return false; };
+        let Ok(exe) = exe.into_os_string().into_string() else { return false; };
+        let w_exe: Vec<u16> = exe.encode_utf16().chain(std::iter::once(0)).collect();
+        let verb: Vec<u16> = "runas".encode_utf16().chain(std::iter::once(0)).collect();
+        let code = ShellExecuteW(
+            windows::Win32::Foundation::HWND(std::ptr::null_mut()),
+            windows::core::PCWSTR(verb.as_ptr()),
+            windows::core::PCWSTR(w_exe.as_ptr()),
+            windows::core::PCWSTR(std::ptr::null()),
+            windows::core::PCWSTR(std::ptr::null()),
+            SW_SHOWNORMAL,
+        );
+        code.0 as isize > 32
+    }
+}
+
+/// True when the user has enabled the OBS capture engine (reads config JSON
+/// directly from disk so it works before the Tauri AppHandle exists).
+fn obs_capture_enabled() -> bool {
+    let path = std::env::var_os("APPDATA")
+        .map(std::path::PathBuf::from)
+        .map(|d| d.join("com.rifthelper.desktop").join("config.json"));
+    let Some(path) = path else { return false };
+    std::fs::read_to_string(&path)
+        .ok()
+        .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
+        .and_then(|v| v.get("useObsCapture").and_then(|v| v.as_bool()).or(Some(false)))
+        .unwrap_or(false)
+}
+
+/// Prepare the process to run the OBS capture engine:
+///  1. Relaunch elevated (UAC) so game capture can open LoL.
+///  2. Ensure the OBS binaries are installed next to the exe (downloads on
+///     first run and, if a stale libobs dll is loaded, relaunches again).
+/// Only runs when the user enabled OBS capture (`useObsCapture`), and is
+/// skipped entirely during development via `RIFTHELPER_NO_ELEVATE=1`.
+fn ensure_obs_runtime() {
+    if !obs_capture_enabled() {
+        return;
+    }
+    if std::env::var_os("RIFTHELPER_NO_ELEVATE").is_none() && !is_elevated() {
+        if relaunch_elevated() {
+            std::process::exit(0);
+        }
+    }
+
+    // Bootstrap libobs binaries (idempotent; `Restart` means a fresh libobs
+    // dll landed on disk and this process must relaunch once to pick it up).
+    let rt = tokio::runtime::Runtime::new();
+    if let Ok(rt) = rt {
+        match rt.block_on(obs_recorder::ensure_obs()) {
+            Ok(true) => {
+                // A fresh libobs dll was installed; relaunch once to load it.
+                if relaunch_elevated() {
+                    std::process::exit(0);
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
 pub fn run() {
+    ensure_obs_runtime();
+
     let mut builder = tauri::Builder::default()
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_shell::init())
@@ -4299,6 +4558,8 @@ pub fn run() {
             set_audio_mode,
             get_mute_mic,
             set_mute_mic,
+            get_use_obs_capture,
+            set_use_obs_capture,
             list_audio_output_devices,
             get_audio_output_device,
             set_audio_output_device,

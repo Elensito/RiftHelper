@@ -14,6 +14,7 @@ import {
   listAudioOutputs, getAudioOutputDevice, setAudioOutputDevice,
   getRecordingFps, setRecordingFps,
   getRecordingQuality, setRecordingQuality,
+  getUseObsCapture, setUseObsCapture,
   downloadFfmpeg, onFfmpegProgress,
 } from '../tauri.js'
 
@@ -89,6 +90,7 @@ export default function AppSettings({ theme, onThemeChange, lang, onLangChange, 
   const [audioOutputDevice, setAudioOutputDeviceState] = useState('')
   const [recordingFps, setRecordingFpsState] = useState('30')
   const [recordingQuality, setRecordingQualityState] = useState('720p')
+  const [useObsCapture, setUseObsCaptureState] = useState(false)
   const [ffmpegTest, setFfmpegTest] = useState(null)
   const [confirmPopup, setConfirmPopup] = useState(false)
   const [downloadState, setDownloadState] = useState('confirm')
@@ -113,6 +115,7 @@ export default function AppSettings({ theme, onThemeChange, lang, onLangChange, 
     getAudioOutputDevice().then(setAudioOutputDeviceState)
     getRecordingFps().then(setRecordingFpsState)
     getRecordingQuality().then(setRecordingQualityState)
+    getUseObsCapture().then(setUseObsCaptureState)
     listAudioOutputs().then(setAudioOutputs)
   }, [])
 
@@ -196,6 +199,13 @@ export default function AppSettings({ theme, onThemeChange, lang, onLangChange, 
   const handleRecordingQuality = async (quality) => {
     setRecordingQualityState(quality)
     await setRecordingQuality(quality)
+  }
+
+  const handleUseObsCapture = async () => {
+    const next = !useObsCapture
+    setUseObsCaptureState(next)
+    await setUseObsCapture(next)
+    alert(t(lang, 'obsCaptureRestart'))
   }
 
   const handleConfirmAutoRecord = async () => {
@@ -332,6 +342,15 @@ export default function AppSettings({ theme, onThemeChange, lang, onLangChange, 
                   <button
                     className={`rt-toggle ${muteMic ? 'on' : ''}`}
                     onClick={handleMuteMic}
+                  >
+                    <span className="rt-toggle-knob" />
+                  </button>
+                </Row>
+
+                <Row label={t(lang, 'obsCapture')} desc={t(lang, 'obsCaptureDesc')}>
+                  <button
+                    className={`rt-toggle ${useObsCapture ? 'on' : ''}`}
+                    onClick={handleUseObsCapture}
                   >
                     <span className="rt-toggle-knob" />
                   </button>
