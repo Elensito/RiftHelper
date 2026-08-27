@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import ThemeToggle from './ThemeToggle.jsx'
 import LangSwitcher from './LangSwitcher.jsx'
 import DiscordButton from './DiscordButton.jsx'
@@ -14,8 +14,7 @@ import {
   listAudioOutputs, getAudioOutputDevice, setAudioOutputDevice,
   getRecordingFps, setRecordingFps,
   getRecordingQuality, setRecordingQuality,
-  getUseObsCapture, setUseObsCapture,
-  downloadFfmpeg, onFfmpegProgress,
+  setupObsCapture,
 } from '../tauri.js'
 
 const SECTION_ICONS = {
@@ -90,15 +89,10 @@ export default function AppSettings({ theme, onThemeChange, lang, onLangChange, 
   const [audioOutputDevice, setAudioOutputDeviceState] = useState('')
   const [recordingFps, setRecordingFpsState] = useState('30')
   const [recordingQuality, setRecordingQualityState] = useState('720p')
-  const [useObsCapture, setUseObsCaptureState] = useState(false)
   const [ffmpegTest, setFfmpegTest] = useState(null)
   const [confirmPopup, setConfirmPopup] = useState(false)
   const [downloadState, setDownloadState] = useState('confirm')
-  const [downloadPercent, setDownloadPercent] = useState(0)
-  const [downloadedMB, setDownloadedMB] = useState(0)
-  const [totalMB, setTotalMB] = useState(0)
   const [appVersion, setAppVersion] = useState('')
-  const unlistenRef = useRef(null)
 
   useEffect(() => {
     if (!isTauri()) return
@@ -115,14 +109,7 @@ export default function AppSettings({ theme, onThemeChange, lang, onLangChange, 
     getAudioOutputDevice().then(setAudioOutputDeviceState)
     getRecordingFps().then(setRecordingFpsState)
     getRecordingQuality().then(setRecordingQualityState)
-    getUseObsCapture().then(setUseObsCaptureState)
     listAudioOutputs().then(setAudioOutputs)
-  }, [])
-
-  useEffect(() => {
-    return () => {
-      if (unlistenRef.current) unlistenRef.current()
-    }
   }, [])
 
   const refreshAudioOutputs = async () => {
@@ -201,48 +188,23 @@ export default function AppSettings({ theme, onThemeChange, lang, onLangChange, 
     await setRecordingQuality(quality)
   }
 
-  const handleUseObsCapture = async () => {
-    const next = !useObsCapture
-    setUseObsCaptureState(next)
-    await setUseObsCapture(next)
-    alert(t(lang, 'obsCaptureRestart'))
-  }
-
   const handleConfirmAutoRecord = async () => {
-    setDownloadState('downloading')
-    setDownloadPercent(0)
-    setDownloadedMB(0)
-    setTotalMB(0)
-
-    const unlisten = await onFfmpegProgress((payload) => {
-      setDownloadPercent(Math.round(payload.percent))
-      setDownloadedMB(Math.round((payload.downloaded / (1024 * 1024)) * 10) / 10)
-      setTotalMB(Math.round((payload.total / (1024 * 1024)) * 10) / 10)
-      if (payload.stage === 'extracting') setDownloadState('extracting')
-      if (payload.stage === 'done') {
-        setDownloadState('done')
-        if (unlistenRef.current) unlistenRef.current()
-        setTimeout(() => {
-          setConfirmPopup(false)
-          setDownloadState('confirm')
-          setAutoRecordState(true)
-          setAutoRecord(true)
-          getFfmpegPath().then(setFfmpegPathState)
-          setFfmpegTest(true)
-        }, 1200)
-      }
-    })
-    unlistenRef.current = unlisten
-
+    // Persist auto-record first (backend also switches to OBS capture), so it
+    // survives the elevated relaunch that OBS setup may trigger.
+    try { await setAutoRecord(true) } catch {}
+    setDownloadState('installing')
     try {
-      const result = await downloadFfmpeg()
-      if (!result) {
-        setDownloadState('error')
-        if (unlisten) unlisten()
-      }
+      await setupObsCapture()
+      // setupObsCapture relaunches the app (process exits) when elevating or
+      // installing a fresh libobs dll. If it returns, OBS is already ready.
+      setDownloadState('done')
+      setTimeout(() => {
+        setConfirmPopup(false)
+        setDownloadState('confirm')
+        setAutoRecordState(true)
+      }, 800)
     } catch {
       setDownloadState('error')
-      if (unlisten) unlisten()
     }
   }
 
@@ -342,15 +304,6 @@ export default function AppSettings({ theme, onThemeChange, lang, onLangChange, 
                   <button
                     className={`rt-toggle ${muteMic ? 'on' : ''}`}
                     onClick={handleMuteMic}
-                  >
-                    <span className="rt-toggle-knob" />
-                  </button>
-                </Row>
-
-                <Row label={t(lang, 'obsCapture')} desc={t(lang, 'obsCaptureDesc')}>
-                  <button
-                    className={`rt-toggle ${useObsCapture ? 'on' : ''}`}
-                    onClick={handleUseObsCapture}
                   >
                     <span className="rt-toggle-knob" />
                   </button>
@@ -506,28 +459,15 @@ export default function AppSettings({ theme, onThemeChange, lang, onLangChange, 
               </>
             )}
 
-            {(downloadState === 'downloading' || downloadState === 'extracting') && (
+            {downloadState === 'installing' && (
               <>
                 <div className="neon-confirm-icon neon-spin">
                   <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--cyan)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M21 12a9 9 0 1 1-6.219-8.56" />
                   </svg>
                 </div>
-                <h4 className="neon-confirm-title">
-                  {downloadState === 'downloading' ? t(lang, 'downloadingFfmpeg') : t(lang, 'extractingFfmpeg')}
-                </h4>
-                <div className="neon-progress-wrap">
-                  <div className="neon-progress-bar">
-                    <div className="neon-progress-fill" style={{ width: `${downloadPercent}%` }} />
-                  </div>
-                  <span className="neon-progress-text">
-                    {downloadState === 'downloading'
-                      ? `${downloadedMB} MB / ${totalMB} MB`
-                      : t(lang, 'installingFfmpeg')
-                    }
-                  </span>
-                  <span className="neon-progress-percent">{downloadPercent}%</span>
-                </div>
+                <h4 className="neon-confirm-title">{t(lang, 'installingObs')}</h4>
+                <p className="neon-confirm-text">{t(lang, 'installingObsDesc')}</p>
               </>
             )}
 

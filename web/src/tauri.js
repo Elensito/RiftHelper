@@ -359,6 +359,12 @@ export async function setUseObsCapture(enabled) {
   try { await invoke('set_use_obs_capture', { enabled }) } catch {}
 }
 
+export async function setupObsCapture() {
+  if (!isTauri()) return null
+  const { invoke } = await import('@tauri-apps/api/core')
+  try { return await invoke('setup_obs_capture') } catch { return null }
+}
+
 export async function getDiskUsage() {
   if (!isTauri()) return null
   const { invoke } = await import('@tauri-apps/api/core')

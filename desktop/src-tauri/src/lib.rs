@@ -890,6 +890,11 @@ async fn get_auto_record(app: tauri::AppHandle) -> Result<bool, String> {
 async fn set_auto_record(app: tauri::AppHandle, enabled: bool) -> Result<(), String> {
     let mut cfg = read_config(&app);
     cfg["autoRecord"] = serde_json::json!(enabled);
+    // Auto-record now implies OBS capture. The flag stays on even when auto
+    // record is disabled afterwards, so the app remains OBS-ready / elevated.
+    if enabled {
+        cfg["useObsCapture"] = serde_json::json!(true);
+    }
     write_config(&app, &cfg);
     Ok(())
 }
@@ -946,6 +951,21 @@ async fn set_use_obs_capture(app: tauri::AppHandle, enabled: bool) -> Result<(),
     cfg["useObsCapture"] = serde_json::json!(enabled);
     write_config(&app, &cfg);
     Ok(())
+}
+
+/// Setup / first-run flow for the OBS capture engine, called from the
+/// auto-record confirmation popup. Ensures the binaries are installed and the
+/// process is running elevated (UAC once). If it must relaunch (new libobs
+/// dll, or not elevated), the process exits and reopens on its own.
+#[tauri::command]
+async fn setup_obs_capture(app: tauri::AppHandle) -> Result<bool, String> {
+    {
+        let mut cfg = read_config(&app);
+        cfg["useObsCapture"] = serde_json::json!(true);
+        write_config(&app, &cfg);
+    }
+    ensure_obs_runtime();
+    Ok(true)
 }
 
 #[tauri::command]
@@ -3723,11 +3743,18 @@ async fn start_recording(app: tauri::AppHandle) -> Result<String, String> {
     };
 
     // ── OBS game-capture engine ────────────────────────────────────────────
-    // When enabled, capture directly with libobs (shared D3D11 texture +
+    // Primary engine: capture directly with libobs (shared D3D11 texture +
     // hardware encoder on the GPU) instead of DDA→CPU→rawvideo pipe→ffmpeg.
-    // All three audio modes are supported via OBS WASAPI sources.
-    if cfg.get("useObsCapture").and_then(|v| v.as_bool()).unwrap_or(false) {
-        return obs_start_recording(&app, &cfg, game_start_time).await;
+    // All three audio modes are supported via OBS WASAPI sources. OBS is on by
+    // default (auto-record implies it); if it fails for any reason we fall
+    // back to the legacy DDA/ffmpeg pipeline below.
+    if cfg.get("useObsCapture").and_then(|v| v.as_bool()).unwrap_or(true) {
+        match obs_start_recording(&app, &cfg, game_start_time).await {
+            Ok(path) => return Ok(path),
+            Err(e) => {
+                log::warn!("OBS capture unavailable ({e}); falling back to DDA/ffmpeg");
+            }
+        }
     }
 
     // Capture the game client via DXGI Desktop Duplication (GPU-composited:
@@ -4488,8 +4515,8 @@ fn obs_capture_enabled() -> bool {
     std::fs::read_to_string(&path)
         .ok()
         .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
-        .and_then(|v| v.get("useObsCapture").and_then(|v| v.as_bool()).or(Some(false)))
-        .unwrap_or(false)
+        .and_then(|v| v.get("useObsCapture").and_then(|v| v.as_bool()).or(Some(true)))
+        .unwrap_or(true)
 }
 
 /// Prepare the process to run the OBS capture engine:
@@ -4560,6 +4587,7 @@ pub fn run() {
             set_mute_mic,
             get_use_obs_capture,
             set_use_obs_capture,
+            setup_obs_capture,
             list_audio_output_devices,
             get_audio_output_device,
             set_audio_output_device,
