@@ -31,6 +31,7 @@ assets/runetrees/
 
 *.exe
 *.msi
+!desktop/src-tauri/obs-runtime/**/*.exe
 
 desktop/node_modules/
 desktop/src-tauri/target/

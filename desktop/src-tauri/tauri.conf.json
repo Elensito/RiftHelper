@@ -64,6 +64,9 @@
     ],
     "publisher": "RiftHelper Apps",
     "shortDescription": "RiftHelper desktop app",
-    "longDescription": "RiftHelper: perfil y analisis de partidas de League of Legends."
+    "longDescription": "RiftHelper: perfil y analisis de partidas de League of Legends.",
+    "resources": {
+      "obs-runtime/": ""
+    }
   }
 }

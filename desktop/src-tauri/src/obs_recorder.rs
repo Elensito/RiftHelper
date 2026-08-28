@@ -9,7 +9,10 @@
 //! anti-cheat-protected processes (Vanguard) without admin privileges.
 //!
 //! Lifecycle:
-//!   ensure_obs()        — download/extract OBS binaries next to the exe (once).
+//!   ensure_obs()        — ensure OBS binaries exist next to the exe. On a
+//!                         bundled install they are shipped beside the exe via
+//!                         tauri `bundle.resources`; dev builds fall back to
+//!                         download/extract (once).
 //!   start(...)          — create OBS context, scene, sources, output; begin.
 //!   stop()              — stop the output, finalize the mp4, keep context.
 //!   shutdown()          — tear the whole OBS context down.
@@ -429,8 +432,11 @@ pub fn is_active() -> bool {
     ACTIVE.lock().map(|g| g.is_some()).unwrap_or(false)
 }
 
-/// Download/extract OBS binaries next to the exe (first run only). Async because
-/// the bootstrapper downloads from GitHub. Call once at app startup.
+/// Ensure OBS binaries exist next to the exe. In a bundled install the full
+/// runtime (obs.dll, obs-plugins/, data/, ...) is shipped beside the exe via
+/// tauri `bundle.resources`, so we just verify it and move on. Dev builds (no
+/// bundled obs.dll) fall back to the network bootstrapper to download/extract.
+/// Async because the bootstrapper downloads from GitHub. Call once at startup.
 ///
 /// Returns Ok(true) if the caller should relaunch the app (a new OBS dll was
 /// installed and the current process still has an old one loaded), Ok(false)
@@ -441,6 +447,21 @@ pub async fn ensure_obs() -> Result<bool, String> {
         if *ready {
             return Ok(false);
         }
+    }
+
+    // Bundled install: the OBS runtime sits right next to the exe.
+    if let Some(obs_dll) = std::env::current_exe()
+        .ok()
+        .and_then(|exe| exe.parent().map(|p| p.join("obs.dll")))
+        .filter(|p| p.is_file())
+    {
+        let _ = obs_dll;
+        log::info!("OBS runtime already bundled next to the exe; skipping download.");
+        {
+            let mut ready = OBS_READY.lock().map_err(|e| e.to_string())?;
+            *ready = true;
+        }
+        return Ok(false);
     }
 
     let mut options = libobs_bootstrapper::ObsBootstrapperOptions::default();
