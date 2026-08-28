@@ -277,8 +277,12 @@ fn make_video_info(fps: u32, height: u32) -> libobs_wrapper::data::video::ObsVid
     let mut b = libobs_wrapper::data::video::ObsVideoInfoBuilder::new();
     b = b.fps_num(fps).fps_den(1);
     if height > 0 {
-        // OBS scales output while keeping aspect from the capture.
-        b = b.output_height(height);
+        // Set BOTH dimensions to a true 16:9 frame. Setting only output_height
+        // left output_width at its default (the primary display width, e.g.
+        // 2560 or 3840), producing a very wide, short canvas like 2560x720
+        // that rendered as "narrow frames with little height".
+        let width = (height as u64 * 16 / 9) as u32;
+        b = b.output_width(width).output_height(height);
     }
     b.build()
 }
