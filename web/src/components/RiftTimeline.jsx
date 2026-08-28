@@ -119,6 +119,7 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
       autoRecord: s.autoRecord ?? true,
       closeToTray: s.closeToTray ?? true,
       autoStart: s.autoStart ?? false,
+      autoHighlights: s.autoHighlights ?? true,
       vodPath: s.vodPath ?? '',
       audioMode: s.audioMode ?? 'game',
       ...s,
@@ -145,18 +146,34 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
   }, [])
 
   useEffect(() => {
+    const reloadSettings = () => {
+      const s = loadSettings()
+      setSettings({
+        autoRecord: s.autoRecord ?? true,
+        closeToTray: s.closeToTray ?? true,
+        autoStart: s.autoStart ?? false,
+        autoHighlights: s.autoHighlights ?? true,
+        vodPath: s.vodPath ?? '',
+        audioMode: s.audioMode ?? 'game',
+        ...s,
+      })
+    }
     const onStorage = (e) => {
       if (e.key === VOD_STORAGE_KEY) setVods(loadVods())
       if (e.key === CLIPS_STORAGE_KEY) {
         try { setClips(JSON.parse(localStorage.getItem(CLIPS_STORAGE_KEY) || '[]')) } catch { setClips([]) }
       }
+      if (e.key === VOD_SETTINGS_KEY) reloadSettings()
     }
     window.addEventListener('storage', onStorage)
     const onCustom = () => setVods(loadVods())
+    const onSettingsCustom = () => reloadSettings()
     window.addEventListener('rh-vods-changed', onCustom)
+    window.addEventListener('rh-settings-changed', onSettingsCustom)
     return () => {
       window.removeEventListener('storage', onStorage)
       window.removeEventListener('rh-vods-changed', onCustom)
+      window.removeEventListener('rh-settings-changed', onSettingsCustom)
     }
   }, [])
 
@@ -193,6 +210,11 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
      plays, and build cards (chronologically + favorites first). */
   useEffect(() => {
     if (subTab !== 'highlights') return
+    if (!settings.autoHighlights) {
+      setHlLoading(false)
+      setHighlights([])
+      return
+    }
     let dead = false
     setHlLoading(true)
     setHighlights([])
@@ -233,7 +255,7 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
       setHlLoading(false)
     })
     return () => { dead = true }
-  }, [subTab, vods, lang])
+  }, [subTab, vods, lang, settings.autoHighlights])
 
   const toggleHlFavorite = useCallback((id, e) => {
     if (e) e.stopPropagation()
@@ -495,6 +517,14 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
             <div className="rt-empty">
               <div className="rt-hl-loading"><span className="rt-rec-dot active" /></div>
               <p className="rt-empty-sub">{t(lang, 'highlight')}</p>
+            </div>
+          ) : !settings.autoHighlights ? (
+            <div className="rt-empty">
+              <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" opacity="0.3">
+                <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+              </svg>
+              <p className="rt-empty-title">{t(lang, 'highlightsDisabled')}</p>
+              <p className="rt-empty-sub">{t(lang, 'highlightsDisabledHint')}</p>
             </div>
           ) : (() => {
             const visible = highlights

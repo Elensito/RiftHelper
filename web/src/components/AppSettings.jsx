@@ -87,6 +87,7 @@ export default function AppSettings({ theme, onThemeChange, lang, onLangChange, 
   const [audioOutputDevice, setAudioOutputDeviceState] = useState('')
   const [recordingFps, setRecordingFpsState] = useState('30')
   const [recordingQuality, setRecordingQualityState] = useState('720p')
+  const [autoHighlights, setAutoHighlightsState] = useState(true)
   const [confirmPopup, setConfirmPopup] = useState(false)
   const [downloadState, setDownloadState] = useState('confirm')
   const [appVersion, setAppVersion] = useState('')
@@ -106,6 +107,10 @@ export default function AppSettings({ theme, onThemeChange, lang, onLangChange, 
     getRecordingFps().then(setRecordingFpsState)
     getRecordingQuality().then(setRecordingQualityState)
     listAudioOutputs().then(setAudioOutputs)
+    try {
+      const s = JSON.parse(localStorage.getItem('rh-vod-settings') || '{}')
+      setAutoHighlightsState(s.autoHighlights ?? true)
+    } catch {}
   }, [])
 
   const refreshAudioOutputs = async () => {
@@ -168,6 +173,17 @@ export default function AppSettings({ theme, onThemeChange, lang, onLangChange, 
     await setRecordingQuality(quality)
   }
 
+  const handleAutoHighlights = () => {
+    const next = !autoHighlights
+    setAutoHighlightsState(next)
+    try {
+      const s = JSON.parse(localStorage.getItem('rh-vod-settings') || '{}')
+      s.autoHighlights = next
+      localStorage.setItem('rh-vod-settings', JSON.stringify(s))
+    } catch {}
+    window.dispatchEvent(new Event('rh-settings-changed'))
+  }
+
   const handleConfirmAutoRecord = async () => {
     // Persist auto-record first (backend also switches to OBS capture), so it
     // survives the elevated relaunch that OBS setup may trigger.
@@ -226,6 +242,14 @@ export default function AppSettings({ theme, onThemeChange, lang, onLangChange, 
                   <button
                     className={`rt-toggle ${autoRecord ? 'on' : ''}`}
                     onClick={handleAutoRecordToggle}
+                  >
+                    <span className="rt-toggle-knob" />
+                  </button>
+                </Row>
+                <Row label={t(lang, 'autoHighlights')} desc={t(lang, 'autoHighlightsDesc')}>
+                  <button
+                    className={`rt-toggle ${autoHighlights ? 'on' : ''}`}
+                    onClick={handleAutoHighlights}
                   >
                     <span className="rt-toggle-knob" />
                   </button>
