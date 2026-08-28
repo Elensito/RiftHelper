@@ -71,7 +71,19 @@ struct ActiveRec {
     fps: u32,
 }
 
+/// A fully built OBS context/scene/sources whose output has NOT been started
+/// yet. Kept warm during the loading screen so `begin()` can start capturing
+/// right at the target in-game second instead of paying the (≈1–2s) OBS
+/// engine/hook setup cost against the game clock.
+struct PreparedRec {
+    _context: ObsContext,
+    _scene: ObsSceneRef,
+    output: libobs_wrapper::data::output::ObsOutputRef,
+    fps: u32,
+}
+
 static ACTIVE: Mutex<Option<ActiveRec>> = Mutex::new(None);
+static PREPARED: Mutex<Option<PreparedRec>> = Mutex::new(None);
 static OBS_READY: Mutex<bool> = Mutex::new(false);
 
 /// Locate the LoL in-game window directly (the libobs window-helper skips it:
@@ -288,17 +300,18 @@ fn make_video_info(fps: u32, height: u32) -> libobs_wrapper::data::video::ObsVid
     b.build()
 }
 
-/// Start an OBS game-capture recording. Returns an error message on failure.
+/// Build the OBS context, scene, sources and output for a recording session but
+/// DO NOT start the output yet. Returns once the engine is warm so that
+/// `begin()` captures right at the target in-game second, instead of paying the
+/// ≈1–2s OBS/hook setup cost against the game clock.
 ///
-/// Must be called on a non-tokio blocking thread (e.g. `spawn_blocking`):
-/// libobs's run loop must not be driven by / blocked on the async runtime.
-/// Guarantees: OBS binaries are already installed (`ensure_obs` called first).
-pub fn start(config: ObsRecordingConfig) -> Result<(), String> {
-    {
-        let guard = ACTIVE.lock().map_err(|e| e.to_string())?;
-        if guard.is_some() {
-            return Err("Already recording via OBS".into());
-        }
+/// Must be called on a non-tokio blocking thread (e.g. `spawn_blocking`).
+pub fn prepare(config: ObsRecordingConfig) -> Result<(), String> {
+    if ACTIVE.lock().map_err(|e| e.to_string())?.is_some() {
+        return Err("Already recording via OBS".into());
+    }
+    if PREPARED.lock().map_err(|e| e.to_string())?.is_some() {
+        return Err("OBS already prepared".into());
     }
 
     let Some(window_id) = config.capture_window_id.clone().or_else(league_window_id) else {
@@ -374,13 +387,9 @@ pub fn start(config: ObsRecordingConfig) -> Result<(), String> {
         .build()
         .map_err(|e| format!("OBS output setup: {e}"))?;
 
-    output
-        .start()
-        .map_err(|e| format!("OBS output start: {e}"))?;
-
     {
-        let mut guard = ACTIVE.lock().map_err(|e| e.to_string())?;
-        *guard = Some(ActiveRec {
+        let mut guard = PREPARED.lock().map_err(|e| e.to_string())?;
+        *guard = Some(PreparedRec {
             _context: context,
             _scene: scene,
             output,
@@ -388,6 +397,47 @@ pub fn start(config: ObsRecordingConfig) -> Result<(), String> {
         });
     }
     Ok(())
+}
+
+/// Start the prepared OBS output, moving the session from `PREPARED` to
+/// `ACTIVE`. Call right when the in-game clock reaches the target second.
+pub fn begin() -> Result<(), String> {
+    let prepared = {
+        let mut guard = PREPARED.lock().map_err(|e| e.to_string())?;
+        guard.take()
+    };
+    let Some(rec) = prepared else {
+        return Err("OBS not prepared".into());
+    };
+
+    if let Err(e) = rec.output.start() {
+        drop(rec.output);
+        drop(rec._scene);
+        drop(rec._context);
+        return Err(format!("OBS output start: {e}"));
+    }
+
+    {
+        let mut guard = ACTIVE.lock().map_err(|e| e.to_string())?;
+        *guard = Some(ActiveRec {
+            _context: rec._context,
+            _scene: rec._scene,
+            output: rec.output,
+            fps: rec.fps,
+        });
+    }
+    Ok(())
+}
+
+/// Tear down a prepared-but-never-started session (e.g. the lobby was dodged).
+pub fn discard_prepared() {
+    if let Ok(mut guard) = PREPARED.lock() {
+        if let Some(rec) = guard.take() {
+            drop(rec.output);
+            drop(rec._scene);
+            drop(rec._context);
+        }
+    }
 }
 
 /// Create a generic OBS source by id with a single string property and attach

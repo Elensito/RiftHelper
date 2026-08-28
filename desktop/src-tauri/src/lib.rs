@@ -1160,11 +1160,12 @@ enum GameStartWait {
 fn wait_for_game_start(max_secs: u64) -> GameStartWait {
     // The in-game clock (gameTime) only starts counting once the match begins,
     // after the loading screen ends — it stays near 0 while loading. We want
-    // the recording to start at the exact in-game second 10 (00:10). To do that
+    // the recording to start at the exact in-game second 8 (00:08). To do that
     // we confirm the clock is actually running (loading is over) and then fire
     // the moment it reaches TARGET_START, polling finely so we land as close to
-    // 10.0s as possible and never a second before (9.x).
-    const TARGET_START: f64 = 10.0;
+    // 8.0s as possible and never a second before (7.x). OBS is already prepared
+    // (warm) by now, so `begin()` captures within a frame or two of this.
+    const TARGET_START: f64 = 8.0;
 
     let client = match reqwest::blocking::Client::builder()
         .danger_accept_invalid_certs(true)
@@ -1500,17 +1501,18 @@ fn start_focus_watchdog(hwnd: isize) {
     });
 }
 
-/// Start a recording through the OBS game-capture engine (libobs).
-/// All audio modes are supported via OBS WASAPI sources.
-async fn obs_start_recording(
-    _app: &tauri::AppHandle,
-    cfg: &serde_json::Value,
-    game_start_time: f64,
-) -> Result<String, String> {
-    if OBS_ACTIVE.load(std::sync::atomic::Ordering::SeqCst) {
-        return Err("Already recording".to_string());
-    }
+/// Paths derived from the recordings folder for one session. Shared by the OBS
+/// prepare step and the timeline/thumbnail workers started after `begin`.
+struct ObsPaths {
+    output: String,
+    thumb: String,
+    events: String,
+}
 
+/// Build the OBS session config + derived output paths from user settings.
+fn build_obs_config(
+    cfg: &serde_json::Value,
+) -> Result<(obs_recorder::ObsRecordingConfig, ObsPaths), String> {
     let recordings_folder = cfg
         .get("recordingsFolder")
         .and_then(|v| v.as_str())
@@ -1533,10 +1535,18 @@ async fn obs_start_recording(
         .unwrap_or_default()
         .as_secs();
     let stem = format!("recording-{}", ts);
-    let output_path = vods_dir.join(format!("{}.mp4", stem));
-    let output_str = output_path.to_string_lossy().to_string();
-    let thumb_str = thumbs_dir.join(format!("{}.thumb.jpg", stem)).to_string_lossy().to_string();
-    let events_str = timeline_dir.join(format!("{}.events.json", stem)).to_string_lossy().to_string();
+    let output_str = vods_dir
+        .join(format!("{}.mp4", stem))
+        .to_string_lossy()
+        .to_string();
+    let thumb_str = thumbs_dir
+        .join(format!("{}.thumb.jpg", stem))
+        .to_string_lossy()
+        .to_string();
+    let events_str = timeline_dir
+        .join(format!("{}.events.json", stem))
+        .to_string_lossy()
+        .to_string();
 
     // Recording quality and FPS from user settings.
     let rec_fps: u32 = cfg
@@ -1557,7 +1567,6 @@ async fn obs_start_recording(
         _ => 0, // 1440p / 4k: native resolution
     };
 
-    let out_for_obs = output_str.clone();
     let audio_mode = match audio_mode_from_cfg(cfg) {
         AudioMode::System => obs_recorder::ObsAudioMode::System,
         AudioMode::GameDiscord => obs_recorder::ObsAudioMode::GameDiscord,
@@ -1567,48 +1576,30 @@ async fn obs_start_recording(
         .get("audioOutputDevice")
         .and_then(|v| v.as_str())
         .map(|s| s.to_string());
-    // Start the focus watchdog BEFORE the OBS graphics-hook injection runs.
-    // Injecting the hook / grabbing the shared D3D11 texture can kick a
-    // true-exclusive-fullscreen game out of exclusive mode (seen as a
-    // minimize), so we watch and yank the game back while OBS sets up and
-    // for the first few seconds of the recording.
-    start_focus_watchdog(find_lol_hwnd());
-    match tauri::async_runtime::spawn_blocking(move || {
-        obs_recorder::start(obs_recorder::ObsRecordingConfig {
-            output_path: out_for_obs,
-            fps: rec_fps,
-            height: rec_height,
-            video_bitrate: match rec_height {
-                1080 => 12000,
-                720 => 6500,
-                480 => 3500,
-                _ => 16000, // native (1440p/4k)
-            },
-            audio_bitrate: 192,
-            audio_mode,
-            audio_output_device: audio_device,
-            capture_window_id: None,
-        })
-    })
-    .await
-    {
-        Ok(Ok(())) => {}
-        Ok(Err(e)) => return Err(e),
-        Err(e) => return Err(e.to_string()),
-    }
 
-    OBS_ACTIVE.store(true, std::sync::atomic::Ordering::SeqCst);
-    *OBS_OUTPUT.lock().map_err(|e| e.to_string())? = Some(output_str.clone());
-
-    // Timeline + thumbnail (grabbed live from the game window, no ffmpeg).
-    start_event_capture(events_str);
-    start_thumbnail_worker(thumb_str);
-
-    let result = serde_json::json!({
-        "path": output_str,
-        "gameTime": game_start_time,
-    });
-    Ok(result.to_string())
+    let config = obs_recorder::ObsRecordingConfig {
+        output_path: output_str.clone(),
+        fps: rec_fps,
+        height: rec_height,
+        video_bitrate: match rec_height {
+            1080 => 12000,
+            720 => 6500,
+            480 => 3500,
+            _ => 16000, // native (1440p/4k)
+        },
+        audio_bitrate: 192,
+        audio_mode,
+        audio_output_device: audio_device,
+        capture_window_id: None,
+    };
+    Ok((
+        config,
+        ObsPaths {
+            output: output_str,
+            thumb: thumb_str,
+            events: events_str,
+        },
+    ))
 }
 
 #[tauri::command]
@@ -1637,29 +1628,58 @@ async fn start_recording(app: tauri::AppHandle) -> Result<String, String> {
     .map_err(|e| e.to_string())?
     .ok_or_else(|| "League of Legends window not found".to_string())?;
 
-    // Wait for the in-game clock (00:00) before rolling: skips champ select
-    // and the loading screen. Falls back to recording anyway if the Live
-    // Client Data API never comes up; aborts if the window disappears.
-    let game_start_time = match tauri::async_runtime::spawn_blocking(|| wait_for_game_start(420)).await {
+    // Build the OBS session config + derived paths once (used by prepare and
+    // by the workers started right after `begin`).
+    let (obs_config, paths) = build_obs_config(&cfg)?;
+
+    // Start the focus watchdog BEFORE the OBS graphics-hook injection runs.
+    // Injecting the hook / grabbing the shared D3D11 texture can kick a
+    // true-exclusive-fullscreen game out of exclusive mode (seen as a
+    // minimize), so we watch and yank the game back while OBS sets up and
+    // for the first few seconds of the recording.
+    start_focus_watchdog(find_lol_hwnd());
+
+    // Phase 1 — PREPARE: warm up the OBS engine (context/scene/sources/output)
+    // during the loading screen, while the in-game clock is still near 0, so
+    // the ≈1–2s OBS/hook setup cost does NOT count against the game clock.
+    tauri::async_runtime::spawn_blocking(move || obs_recorder::prepare(obs_config))
+        .await
+        .map_err(|e| e.to_string())??;
+
+    // Wait for the in-game clock to reach ~00:08 (the loading screen is over
+    // by then), then fire `begin()`. Falls back to recording anyway if the
+    // Live Client Data API never comes up; aborts if the window disappears.
+    let detected_start = match tauri::async_runtime::spawn_blocking(|| wait_for_game_start(420)).await {
         Ok(GameStartWait::Started(gt)) => gt,
         Ok(GameStartWait::WindowClosed) => {
+            obs_recorder::discard_prepared();
             return Err("League of Legends window closed before the game started".to_string());
         }
         _ => 0.0, // Timeout: start anyway, no gameTime info
     };
 
-    // ── OBS game-capture engine (no ffmpeg fallback) ───────────────────────
-    // Primary engine: capture directly with libobs (shared D3D11 texture +
-    // hardware encoder on the GPU). All three audio modes are supported via
-    // OBS WASAPI sources. OBS is on by default (auto-record implies it).
-    if cfg.get("useObsCapture").and_then(|v| v.as_bool()).unwrap_or(true) {
-        let result = serde_json::json!({
-            "path": obs_start_recording(&app, &cfg, game_start_time).await?,
-            "gameTime": game_start_time,
-        });
-        return Ok(result.to_string());
-    }
-    Err("Recording engine unavailable: OBS capture is disabled and the legacy FFmpeg pipeline has been removed. Enable OBS capture in Settings.".to_string())
+    // Phase 2 — BEGIN: with OBS already warm, starting the output lands within
+    // a frame or two of the target in-game second instead of 2s late.
+    tauri::async_runtime::spawn_blocking(obs_recorder::begin)
+        .await
+        .map_err(|e| e.to_string())??;
+
+    // Resync: report the real in-game clock at the moment of the first frame
+    // so the timeline aligns with the actual video, closing any final gap.
+    let game_start_time = query_current_game_time().unwrap_or(detected_start);
+
+    OBS_ACTIVE.store(true, std::sync::atomic::Ordering::SeqCst);
+    *OBS_OUTPUT.lock().map_err(|e| e.to_string())? = Some(paths.output.clone());
+
+    // Timeline + thumbnail (grabbed live from the game window, no ffmpeg).
+    start_event_capture(paths.events);
+    start_thumbnail_worker(paths.thumb);
+
+    let result = serde_json::json!({
+        "path": paths.output,
+        "gameTime": game_start_time,
+    });
+    Ok(result.to_string())
 }
 
 #[tauri::command]
@@ -2035,6 +2055,7 @@ pub fn run() {
                             if OBS_ACTIVE.swap(false, std::sync::atomic::Ordering::SeqCst) {
                                 let _ = obs_recorder::stop();
                             }
+                            obs_recorder::discard_prepared();
                             std::process::exit(0);
                         }
                         _ => {}
@@ -2070,6 +2091,7 @@ pub fn run() {
                     if OBS_ACTIVE.swap(false, std::sync::atomic::Ordering::SeqCst) {
                         let _ = obs_recorder::stop();
                     }
+                    obs_recorder::discard_prepared();
                 }
             }
         });
