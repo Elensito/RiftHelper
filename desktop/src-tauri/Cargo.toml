@@ -9,6 +9,16 @@ edition = "2021"
 name = "rifthelper_desktop_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
+# Explicit bin targets so Tauri unambiguously treats the GUI app (main.rs) as
+# the main/installed binary and never the console-only OBS probe helper.
+[[bin]]
+name = "rifthelper-desktop"
+path = "src/main.rs"
+
+[[bin]]
+name = "obs_probe"
+path = "src/bin/obs_probe.rs"
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
