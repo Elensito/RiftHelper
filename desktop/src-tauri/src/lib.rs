@@ -1373,9 +1373,6 @@ fn vod_sibling(video_path: &str, subdir: &str, ext: &str) -> std::path::PathBuf 
     parent.join(subdir).join(format!("{}.{}", stem, ext))
 }
 
-static OVERLAY_GEN: std::sync::atomic::AtomicU64 =
-    std::sync::atomic::AtomicU64::new(0);
-
 fn find_lol_hwnd() -> isize {
     use std::ffi::c_void;
     type HWND = *mut c_void;
@@ -1445,33 +1442,19 @@ fn lol_client_rect(hwnd: isize) -> Option<(i32, i32, u32, u32)> {
     }
 }
 
-fn lol_window_foreground(hwnd: isize) -> bool {
-    use std::ffi::c_void;
-    type HWND = *mut c_void;
-    type BOOL = i32;
-    extern "system" {
-        fn GetForegroundWindow() -> HWND;
-        fn IsIconic(hWnd: HWND) -> BOOL;
-    }
-    unsafe {
-        GetForegroundWindow() == hwnd as HWND && IsIconic(hwnd as HWND) == 0
-    }
-}
-
 #[derive(Serialize)]
 struct VodFile {
     path: String,
     duration: f64,
 }
 
-/// Exact duration of a finished recording via ffprobe (ships next to the
-/// bundled ffmpeg). Wall-clock estimates drift by several seconds because
-/// ffmpeg starts after the game-start wait and stops a few seconds late.
-/// After DDA initializes, Windows can briefly kick a true-exclusive-fullscreen
-/// game out of exclusive mode, which minimizes it — the user experiences this
-/// as "the game minimizes when recording starts".  For the first seconds of
-/// every recording, watch the game window and yank it straight back to the
-/// foreground if anything minimized it.
+/// After OBS graphics-hook injection starts, a true-exclusive-fullscreen game
+/// can be kicked out of exclusive mode (seen as a minimize). Watch the game
+/// window for the first seconds of a recording and RESTORE it only if it is
+/// actually minimized. We deliberately do NOT drag an exclusive-fullscreen
+/// window back to the foreground on a timer — repeatedly pulling it up while
+/// the game-capture hook pushes it back down is exactly what produces the
+/// repeated black-flash / re-minimize loop.
 fn start_focus_watchdog(hwnd: isize) {
     if hwnd == 0 {
         return;
@@ -1490,37 +1473,27 @@ fn start_focus_watchdog(hwnd: isize) {
         }
         const SW_RESTORE: i32 = 9;
         const SW_SHOW: i32 = 5;
-        // Windows only lets the focus owner (or a process sharing its input
-        // queue) call SetForegroundWindow. Attaching our elevated thread to the
-        // game's input queue just before the call makes the restore actually
-        // take effect, then we detach so the game keeps exclusive input.
         unsafe fn attach(gtid: u32) {
             let _ = AttachThreadInput(GetCurrentThreadId(), gtid, 1);
         }
         unsafe fn detach(gtid: u32) {
             let _ = AttachThreadInput(GetCurrentThreadId(), gtid, 0);
         }
-        for i in 0..120 {
-            std::thread::sleep(std::time::Duration::from_millis(250));
+        for _ in 0..60 {
+            std::thread::sleep(std::time::Duration::from_millis(500));
             unsafe {
                 let h = hwnd as HWND;
-                let gtid = GetWindowThreadProcessId(h, std::ptr::null_mut());
-                let iconic = IsIconic(h) != 0;
-                // Aggressively reclaim focus only during the first ~12s, when
-                // OBS graphics-hook injection / exclusive-mode kicks steal it.
-                // Afterwards, only force-restore if the game is actually
-                // minimized — a user legitimately tabbing away must not be
-                // yanked back mid-game.
-                let focus_recover_window = i < 48;
-                if iconic || (focus_recover_window && !lol_window_foreground(hwnd)) {
+                if IsIconic(h) != 0 {
+                    // The game is genuinely minimized: restore it once and stop
+                    // probing until the next poll — do not force foreground on
+                    // a timer, which would restart the exclusive-mode drop.
+                    let gtid = GetWindowThreadProcessId(h, std::ptr::null_mut());
                     attach(gtid);
-                    if iconic {
-                        let _ = ShowWindow(h, SW_RESTORE);
-                    }
+                    let _ = ShowWindow(h, SW_RESTORE);
                     let _ = ShowWindow(h, SW_SHOW);
                     let _ = SetForegroundWindow(h);
                     detach(gtid);
-                    audio_log("focus watchdog: game window minimized/lost focus - restoring");
+                    audio_log("focus watchdog: game window minimized - restoring");
                 }
             }
         }
@@ -1831,15 +1804,12 @@ async fn is_recording() -> Result<bool, String> {
 }
 
 /* ── Overlay window control ────────────────────────────────────────────────
-   The overlay is created VISIBLE but parked far offscreen (-34000,-34000)
-   and permanently carries WS_EX_NOACTIVATE|WS_EX_TOOLWINDOW.  Showing it =
-   moving it into place with SWP_NOACTIVATE; hiding it = parking it back
-   offscreen.  There are NO show/hide transitions at all, so nothing can
-   ever activate the popup or steal foreground from fullscreen LoL.
+   The in-game "Recording" card is DISABLED: showing a topmost webview window
+   over a true-exclusive-fullscreen League client kicks it out of exclusive
+   mode, which (combined with the focus watchdog) produced the repeated
+   minimize / black-flash at recording start. show/hide_overlay are no-ops
+   now; the recording state is shown only in the main app window.
    ------------------------------------------------------------------------ */
-const OVERLAY_PARK_X: i32 = -34000;
-const OVERLAY_PARK_Y: i32 = -34000;
-
 fn overlay_hwnd(app: &tauri::AppHandle) -> Option<isize> {
     use tauri::Manager;
     if let Some(win) = app.get_webview_window("overlay") {
@@ -1871,83 +1841,15 @@ unsafe fn apply_overlay_noactivate(hwnd: isize) {
 }
 
 #[tauri::command]
-async fn show_overlay(app: tauri::AppHandle, lang: String) -> Result<(), String> {
-    use tauri::Manager;
-
-    let title_text = match lang.as_str() {
-        "es" => "Grabando",
-        "pt" => "Gravando",
-        "fr" => "Enregistrement",
-        "ko" => "녹화 중",
-        _ => "Recording",
-    };
-    let js = format!(
-        "document.getElementById('title').textContent='{}'; if (window.__rhEnter) window.__rhEnter();",
-        title_text
-    );
-
-    if let Some(oh) = overlay_hwnd(&app) {
-        unsafe {
-            use windows::Win32::UI::WindowsAndMessaging::{
-                SetWindowPos, HWND_TOPMOST, SWP_NOSIZE, SWP_NOACTIVATE, SWP_SHOWWINDOW,
-            };
-            apply_overlay_noactivate(oh);
-            // Update content BEFORE it becomes visible.
-            if let Some(win) = app.get_webview_window("overlay") {
-                let _ = win.eval(&js);
-            }
-            let pos = find_lol_window_rect()
-                .map(|(x, y, w, h)| ((x + w - 360).max(0), (y + h / 2 - 45).max(0)))
-                .unwrap_or((0, 0));
-            // Slide the parked window into place WITHOUT activation.
-            let _ = SetWindowPos(
-                windows::Win32::Foundation::HWND(oh as *mut _),
-                HWND_TOPMOST,
-                pos.0, pos.1, 0, 0,
-                SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW,
-            );
-        }
-        // Generation counter so a stale auto-hide timer never parks a newer
-        // overlay that was just shown.
-        let gen = OVERLAY_GEN.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
-        std::thread::spawn(move || {
-            std::thread::sleep(std::time::Duration::from_secs(5));
-            if OVERLAY_GEN.load(std::sync::atomic::Ordering::SeqCst) != gen {
-                return;
-            }
-            unsafe {
-                use windows::Win32::UI::WindowsAndMessaging::{
-                    SetWindowPos, HWND_TOPMOST, SWP_NOSIZE, SWP_NOACTIVATE,
-                };
-                let _ = SetWindowPos(
-                windows::Win32::Foundation::HWND(oh as *mut _),
-                    HWND_TOPMOST,
-                    OVERLAY_PARK_X, OVERLAY_PARK_Y, 0, 0,
-                    SWP_NOSIZE | SWP_NOACTIVATE,
-                );
-            }
-        });
-    }
+async fn show_overlay(_app: tauri::AppHandle, _lang: String) -> Result<(), String> {
+    // No-op: the in-game recording card is disabled so it never kicks the game
+    // out of exclusive fullscreen (see block comment above).
     Ok(())
 }
 
 #[tauri::command]
-async fn hide_overlay(app: tauri::AppHandle) -> Result<(), String> {
-    if let Some(oh) = overlay_hwnd(&app) {
-        // Invalidate pending timers and park offscreen — never hide().
-        OVERLAY_GEN.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-        unsafe {
-            use windows::Win32::UI::WindowsAndMessaging::{
-                SetWindowPos, HWND_TOPMOST, SWP_NOSIZE, SWP_NOACTIVATE,
-            };
-            let _ = SetWindowPos(
-                windows::Win32::Foundation::HWND(oh as *mut _),
-                HWND_TOPMOST,
-                OVERLAY_PARK_X, OVERLAY_PARK_Y, 0, 0,
-                SWP_NOSIZE | SWP_NOACTIVATE,
-            );
-        }
-    }
+async fn hide_overlay(_app: tauri::AppHandle) -> Result<(), String> {
+    // No-op: see show_overlay.
     Ok(())
 }
 

@@ -19,7 +19,7 @@ import VODPlayer from './components/VODPlayer.jsx'
 import AppSettings from './components/AppSettings.jsx'
 import { fetchSummoner, fetchLatestMatch, fetchLiveGame, fetchMastery, fetchChampions, fetchChampion } from './api.js'
 import { retryPendingMatches, loadVodsRaw, saveVodsRaw } from './match-resolver.js'
-import { isTauri, getRiotClientSession, notifyGameEnded, startRecordingTauri, stopRecordingTauri, getAutoRecord, isLolWindowOpen, showOverlay, hideOverlay, getLastGameMode, deleteVodFiles } from './tauri.js'
+import { isTauri, getRiotClientSession, notifyGameEnded, startRecordingTauri, stopRecordingTauri, getAutoRecord, isLolWindowOpen, getLastGameMode, deleteVodFiles } from './tauri.js'
 import { matchGroup, t } from './i18n.js'
 
 const PAGE_SIZE = 20
@@ -217,7 +217,6 @@ export default function App() {
       consecutiveNotInGame = 0
       wasInGameRef.current = false
       finalizedAtRef.current = Date.now()
-      hideOverlay()
       if (!recordingStartRef.current) return
       const duration = Math.floor((Date.now() - recordingStartRef.current) / 1000)
       recordingStartRef.current = null
@@ -365,13 +364,11 @@ export default function App() {
                 recordingStartRef.current = null
                 gameTimeOffsetRef.current = 0
                 setIsRecording(false)
-                hideOverlay()
               }
               startRecordingTauri().then(result => {
                 if (!result || !result.path) { abort(); return }
                 // Store gameTime for timeline alignment with video
                 gameTimeOffsetRef.current = result.gameTime || 0
-                showOverlay(lang)
               }).catch(abort)
             }
             tryRecord()
