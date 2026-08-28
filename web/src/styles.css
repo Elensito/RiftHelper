@@ -8751,3 +8751,158 @@ body.sidebar-expanded .vod-player-view {
   from { opacity: 0; }
   to { opacity: 1; }
 }
+
+/* === Highlights (Rift Timeline) === */
+.rt-hl-view {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  width: 100%;
+}
+
+.rt-hl-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.rt-hl-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.rt-hl-count {
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  border-radius: 11px;
+  background: rgba(0, 243, 255, 0.12);
+  border: 1px solid rgba(0, 243, 255, 0.3);
+  color: var(--cyan);
+  font-size: 12px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.rt-hl-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 0;
+}
+
+.rt-card-hl {
+  cursor: pointer;
+}
+
+.rt-card-hl-novideo {
+  cursor: default;
+  opacity: 0.75;
+}
+
+.rt-card-hl-fav {
+  border-color: rgba(0, 243, 255, 0.5);
+  box-shadow: 0 0 18px rgba(0, 243, 255, 0.08);
+}
+
+.rt-hl-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.rt-hl-fill {
+  flex: 1;
+}
+
+.rt-hl-kind {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--cyan);
+  background: rgba(0, 243, 255, 0.1);
+  border: 1px solid rgba(0, 243, 255, 0.25);
+  border-radius: 4px;
+  padding: 2px 7px;
+}
+
+.rt-hl-body {
+  margin-bottom: 10px;
+}
+
+.rt-hl-kda {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--text);
+  margin-bottom: 6px;
+}
+
+.rt-hl-stat {
+  color: var(--text);
+}
+
+.rt-hl-stat.strong {
+  color: var(--green);
+}
+
+.rt-hl-div {
+  color: var(--muted);
+}
+
+.rt-hl-die {
+  color: var(--red);
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.rt-hl-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 6px;
+}
+
+.rt-hl-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+/* Highlight pill in VOD player topbar */
+.vod-highlight-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--cyan);
+  background: rgba(0, 243, 255, 0.1);
+  border: 1px solid rgba(0, 243, 255, 0.3);
+  border-radius: 4px;
+  padding: 2px 8px;
+}
+
+.vod-highlight-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--cyan);
+  box-shadow: 0 0 8px var(--cyan);
+}
+

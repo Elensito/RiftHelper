@@ -1,13 +1,16 @@
 ﻿import { useState, useEffect, useCallback, useRef } from 'react'
 import { t } from '../i18n.js'
-import { isTauri, showInFolder, getAudioMode, vodThumbUrl, getDiskUsage } from '../tauri.js'
+import { isTauri, showInFolder, getAudioMode, vodThumbUrl, getDiskUsage, readVodEvents } from '../tauri.js'
 import { deleteRecordingBlob } from '../video-recorder.js'
 import { deleteVodFiles } from '../tauri.js'
+import { computeHighlights, highlightLabel, highlightId } from '../highlights.js'
 
 const VOD_STORAGE_KEY = 'rh-vods'
 const VOD_SETTINGS_KEY = 'rh-vod-settings'
 const CLIPS_STORAGE_KEY = 'rh-clips'
 const FAV_STORAGE_KEY = 'rh-vod-favorites'
+const HL_FAV_KEY = 'rh-hl-favorites'
+const HL_HIDDEN_KEY = 'rh-hl-hidden'
 
 function loadVods() {
   try {
@@ -37,6 +40,14 @@ function loadFavorites() {
 
 function saveFavorites(favs) {
   localStorage.setItem(FAV_STORAGE_KEY, JSON.stringify([...favs]))
+}
+
+function loadHlFav() {
+  try { return new Set(JSON.parse(localStorage.getItem(HL_FAV_KEY) || '[]')) } catch { return new Set() }
+}
+
+function loadHlHidden() {
+  try { return new Set(JSON.parse(localStorage.getItem(HL_HIDDEN_KEY) || '[]')) } catch { return new Set() }
 }
 
 function formatDuration(sec) {
@@ -89,12 +100,16 @@ function VodThumb({ vod }) {
 
 export { loadVods, saveVods, loadSettings, saveSettings, VOD_STORAGE_KEY, VOD_SETTINGS_KEY }
 
-export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTabChange, onDelete, onSeekTo }) {
+export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTabChange, onDelete, onSeekTo, onOpenHighlight }) {
   const [vods, setVods] = useState(loadVods)
   const [clips, setClips] = useState(() => {
     try { return JSON.parse(localStorage.getItem(CLIPS_STORAGE_KEY) || '[]') } catch { return [] }
   })
   const [favorites, setFavorites] = useState(loadFavorites)
+  const [hlFav, setHlFav] = useState(loadHlFav)
+  const [hlHidden, setHlHidden] = useState(loadHlHidden)
+  const [highlights, setHighlights] = useState([])
+  const [hlLoading, setHlLoading] = useState(false)
   const [contextMenu, setContextMenu] = useState(null)
   const [deleteModal, setDeleteModal] = useState(null)
   const [diskUsage, setDiskUsage] = useState(null)
@@ -173,6 +188,78 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
     setClips(filtered)
     try { localStorage.setItem(CLIPS_STORAGE_KEY, JSON.stringify(filtered)) } catch {}
   }, [clips])
+
+  /* Automatic highlights: load each recorded match's local LCD events, detect
+     plays, and build cards (chronologically + favorites first). */
+  useEffect(() => {
+    if (subTab !== 'highlights') return
+    let dead = false
+    setHlLoading(true)
+    setHighlights([])
+    const candidates = [...vods]
+      .filter(v => v.hasVideo && v.videoPath && isTauri())
+      .sort((a, b) => (b.date || 0) - (a.date || 0))
+      .slice(0, 60)
+    Promise.all(candidates.map(async (vod) => {
+      if (!vod.videoPath) return null
+      try {
+        const raw = await readVodEvents(vod.videoPath)
+        if (!raw) return null
+        const parsed = JSON.parse(raw)
+        const items = computeHighlights(parsed.events || [], {
+          me: parsed.me || '',
+          gameTimeOffset: vod.gameTimeOffset || 0,
+          vodDurationSec: vod.duration || 0,
+          max: 3,
+        })
+        if (!items.length) return null
+        return {
+          vod,
+          items: items.map(hl => ({
+            id: highlightId(vod.id, hl),
+            hl,
+            label: highlightLabel(hl, lang, vod.champion || ''),
+          })),
+        }
+      } catch { return null }
+    })).then(results => {
+      if (dead) return
+      const flat = []
+      for (const r of results) {
+        if (!r) continue
+        for (const item of r.items) flat.push({ vod: r.vod, ...item })
+      }
+      setHighlights(flat)
+      setHlLoading(false)
+    })
+    return () => { dead = true }
+  }, [subTab, vods, lang])
+
+  const toggleHlFavorite = useCallback((id, e) => {
+    if (e) e.stopPropagation()
+    setHlFav(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      localStorage.setItem(HL_FAV_KEY, JSON.stringify([...next]))
+      return next
+    })
+  }, [])
+
+  const hideHighlight = useCallback((id, e) => {
+    if (e) e.stopPropagation()
+    setHlHidden(prev => {
+      const next = new Set(prev)
+      next.add(id)
+      localStorage.setItem(HL_HIDDEN_KEY, JSON.stringify([...next]))
+      return next
+    })
+  }, [])
+
+  const openHighlight = useCallback((vod, hl) => {
+    if (onOpenHighlight) onOpenHighlight(vod, hl)
+    else if (onOpenVod) onOpenVod(vod)
+  }, [onOpenHighlight, onOpenVod])
 
   const handleContextMenu = useCallback((e, vod) => {
     e.preventDefault()
@@ -333,62 +420,172 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
             ))}
           </div>
         )
-      ) : clips.length === 0 ? (
-        <div className="rt-empty">
-          <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" opacity="0.3">
-            <circle cx="6" cy="6" r="3" />
-            <circle cx="6" cy="18" r="3" />
-            <line x1="20" y1="4" x2="8.12" y2="15.88" />
-            <line x1="14.47" y1="14.48" x2="20" y2="20" />
-            <line x1="8.12" y1="8.12" x2="12" y2="12" />
-          </svg>
-          <p className="rt-empty-title">{t(lang, 'noClips')}</p>
-          <p className="rt-empty-sub">{t(lang, 'noClipsHint')}</p>
-        </div>
+      ) : subTab === 'clips' ? (
+        clips.length === 0 ? (
+          <div className="rt-empty">
+            <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" opacity="0.3">
+              <circle cx="6" cy="6" r="3" />
+              <circle cx="6" cy="18" r="3" />
+              <line x1="20" y1="4" x2="8.12" y2="15.88" />
+              <line x1="14.47" y1="14.48" x2="20" y2="20" />
+              <line x1="8.12" y1="8.12" x2="12" y2="12" />
+            </svg>
+            <p className="rt-empty-title">{t(lang, 'noClips')}</p>
+            <p className="rt-empty-sub">{t(lang, 'noClipsHint')}</p>
+          </div>
+        ) : (
+          <div className="rt-grid">
+            {clips.map((clip) => {
+              const vod = vods.find(v => v.id === clip.vodId)
+              const duration = clip.end - clip.start
+              return (
+                <div key={clip.id} className="rt-card rt-card-clip">
+                  <div className="rt-card-clip-header">
+                    <div className="rt-card-champ">
+                      {vod?.championIcon && <img className="rt-card-champ-icon" src={vod.championIcon} alt="" />}
+                      <span className="rt-card-champ-name">{vod?.champion || '—'}</span>
+                    </div>
+                    <div className="rt-card-meta">
+                      <span className="rt-card-date">{formatDate(clip.date)}</span>
+                    </div>
+                  </div>
+                  <div className="rt-card-clip-times">
+                    <span className="rt-clip-time">{t(lang, 'clipFrom')} {formatDuration(clip.start)}</span>
+                    <span className="rt-clip-time">{t(lang, 'clipTo')} {formatDuration(clip.end)}</span>
+                    <span className="rt-clip-duration">{t(lang, 'clipDuration')}: {formatDuration(duration)}</span>
+                  </div>
+                  {vod?.queue && <div className="rt-card-queue">{vod.queue}</div>}
+                  <div className="rt-card-clip-actions">
+                    <button
+                      className="rt-btn rt-btn-sm rt-btn-ghost"
+                      onClick={() => {
+                        onOpenVod(vod)
+                        if (onSeekTo) onSeekTo(clip.start)
+                      }}
+                    >
+                      {t(lang, 'clipOpenVod')}
+                    </button>
+                    <button
+                      className="rt-btn rt-btn-sm rt-btn-danger"
+                      onClick={() => {
+                        if (confirm(t(lang, 'confirmDeleteClip'))) deleteClip(clip.id)
+                      }}
+                    >
+                      {t(lang, 'deleteVod')}
+                    </button>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )
       ) : (
-        <div className="rt-grid">
-          {clips.map((clip) => {
-            const vod = vods.find(v => v.id === clip.vodId)
-            const duration = clip.end - clip.start
+        <div className="rt-hl-view">
+          <div className="rt-hl-head">
+            <div className="rt-hl-title">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--cyan)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+              </svg>
+              <span>{t(lang, 'navHighlights')}</span>
+            </div>
+            <span className="rt-hl-count">{highlights.filter(h => !hlHidden.has(h.id)).length}</span>
+          </div>
+
+          {hlLoading ? (
+            <div className="rt-empty">
+              <div className="rt-hl-loading"><span className="rt-rec-dot active" /></div>
+              <p className="rt-empty-sub">{t(lang, 'highlight')}</p>
+            </div>
+          ) : (() => {
+            const visible = highlights
+              .filter(h => !hlHidden.has(h.id))
+              .sort((a, b) => {
+                const fa = hlFav.has(a.id) ? 0 : 1
+                const fb = hlFav.has(b.id) ? 0 : 1
+                if (fa !== fb) return fa - fb
+                return ((b.vod.date || 0)) - ((a.vod.date || 0))
+              })
+            if (visible.length === 0) {
+              return (
+                <div className="rt-empty">
+                  <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" opacity="0.3">
+                    <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+                  </svg>
+                  <p className="rt-empty-title">{t(lang, 'noHighlights')}</p>
+                  <p className="rt-empty-sub">{t(lang, 'noHighlightsHint')}</p>
+                </div>
+              )
+            }
             return (
-              <div key={clip.id} className="rt-card rt-card-clip">
-                <div className="rt-card-clip-header">
-                  <div className="rt-card-champ">
-                    {vod?.championIcon && <img className="rt-card-champ-icon" src={vod.championIcon} alt="" />}
-                    <span className="rt-card-champ-name">{vod?.champion || '—'}</span>
-                  </div>
-                  <div className="rt-card-meta">
-                    <span className="rt-card-date">{formatDate(clip.date)}</span>
-                  </div>
-                </div>
-                <div className="rt-card-clip-times">
-                  <span className="rt-clip-time">{t(lang, 'clipFrom')} {formatDuration(clip.start)}</span>
-                  <span className="rt-clip-time">{t(lang, 'clipTo')} {formatDuration(clip.end)}</span>
-                  <span className="rt-clip-duration">{t(lang, 'clipDuration')}: {formatDuration(duration)}</span>
-                </div>
-                {vod?.queue && <div className="rt-card-queue">{vod.queue}</div>}
-                <div className="rt-card-clip-actions">
-                  <button
-                    className="rt-btn rt-btn-sm rt-btn-ghost"
-                    onClick={() => {
-                      onOpenVod(vod)
-                      if (onSeekTo) onSeekTo(clip.start)
-                    }}
-                  >
-                    {t(lang, 'clipOpenVod')}
-                  </button>
-                  <button
-                    className="rt-btn rt-btn-sm rt-btn-danger"
-                    onClick={() => {
-                      if (confirm(t(lang, 'confirmDeleteClip'))) deleteClip(clip.id)
-                    }}
-                  >
-                    {t(lang, 'deleteVod')}
-                  </button>
-                </div>
+              <div className="rt-grid">
+                {visible.map((h) => {
+                  const vod = h.vod
+                  const fav = hlFav.has(h.id)
+                  const hasVideo = !!vod.videoPath
+                  return (
+                    <div
+                      key={h.id}
+                      className={`rt-card rt-card-hl ${fav ? 'rt-card-hl-fav' : ''} ${hasVideo ? '' : 'rt-card-hl-novideo'}`}
+                      onClick={() => { if (hasVideo) openHighlight(vod, h.hl) }}
+                    >
+                      <div className="rt-hl-top">
+                        {vod.championIcon && <img className="rt-card-champ-icon" src={vod.championIcon} alt="" />}
+                        <span className="rt-hl-kind">
+                          {h.hl.solo && !h.hl.died ? t(lang, 'hlSolo')
+                            : h.hl.kills >= 2 && h.hl.assists === 0 ? t(lang, 'hlMultikill')
+                            : h.hl.kills >= 2 ? t(lang, 'hlMultikill')
+                            : h.hl.died ? t(lang, 'hlTrade') : t(lang, 'hlAssist')}
+                        </span>
+                        <span className="rt-hl-fill" />
+                        <button
+                          className={`rt-card-fav ${fav ? 'active' : ''}`}
+                          onClick={(e) => toggleHlFavorite(h.id, e)}
+                          title={fav ? t(lang, 'removeFavorite') : t(lang, 'addFavorite')}
+                        >
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill={fav ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+                          </svg>
+                        </button>
+                      </div>
+                      <div className="rt-hl-body">
+                        <div className="rt-hl-kda">
+                          <span className="rt-hl-stat strong">{h.hl.kills}</span>
+                          <span className="rt-hl-div"> / </span>
+                          <span className="rt-hl-stat">{h.hl.assists}</span>
+                          {h.hl.died && <span className="rt-hl-die">†</span>}
+                        </div>
+                        <div className="rt-hl-label">{h.label}</div>
+                        <div className="rt-card-meta">
+                          <span className="rt-card-kda">{relTime(lang, vod.date)}</span>
+                          <span className="rt-card-date">{formatDate(vod.date)}</span>
+                        </div>
+                        <div className="rt-card-queue">{vod.champion || vod.queue || ''}</div>
+                      </div>
+                      <div className="rt-hl-actions">
+                        <button
+                          className="rt-btn rt-btn-sm rt-btn-primary"
+                          disabled={!hasVideo}
+                          onClick={(e) => { e.stopPropagation(); if (hasVideo) openHighlight(vod, h.hl) }}
+                        >
+                          {hasVideo ? t(lang, 'openHighlight') : t(lang, 'noVideo')}
+                        </button>
+                        <button
+                          className="rt-btn rt-btn-sm rt-btn-danger"
+                          onClick={(e) => hideHighlight(h.id, e)}
+                          title={t(lang, 'deleteVod')}
+                        >
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <polyline points="3 6 5 6 21 6" />
+                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                          </svg>
+                        </button>
+                      </div>
+                    </div>
+                  )
+                })}
               </div>
             )
-          })}
+          })()}
         </div>
       )}
 

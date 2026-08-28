@@ -71,6 +71,7 @@ export default function App() {
   const [ownProfile, setOwnProfile] = useState(false)
 
   const [activeVod, setActiveVod] = useState(null)
+  const [activeHighlight, setActiveHighlight] = useState(null)
   const [riftSubTab, setRiftSubTab] = useState('recordings')
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [isRecording, setIsRecording] = useState(false)
@@ -529,7 +530,7 @@ export default function App() {
       <Tooltip />
       <NavSidebar
         view={view}
-        onNavigate={(v) => { if (v !== 'rift-timeline' || isTauri()) setView(v); setActiveVod(null); setChampion(null) }}
+        onNavigate={(v) => { if (v !== 'rift-timeline' || isTauri()) setView(v); setActiveVod(null); setActiveHighlight(null); setChampion(null) }}
         lang={lang}
         onSettingsOpen={() => setSettingsOpen(true)}
         riftSubTab={riftSubTab}
@@ -539,7 +540,7 @@ export default function App() {
       {view === 'rift-timeline' && activeVod ? (
         (() => {
           const isCompetitiveQueue = /solo|flex/i.test(activeVod.queue || '')
-          return <VODPlayer vod={activeVod} lang={lang} puuid={profile?.summoner?.puuid} summoner={profile?.summoner} onBack={() => setActiveVod(null)} showTeamsProp={isCompetitiveQueue} />
+          return <VODPlayer vod={activeVod} lang={lang} puuid={profile?.summoner?.puuid} summoner={profile?.summoner} onBack={() => { setActiveVod(null); setActiveHighlight(null) }} showTeamsProp={isCompetitiveQueue} highlight={activeHighlight} />
         })()
       ) : view === 'rift-timeline' ? (
         <>
@@ -561,7 +562,8 @@ export default function App() {
           <main className="content">
             <RiftTimeline
               lang={lang}
-              onOpenVod={(vod) => setActiveVod(vod)}
+              onOpenVod={(vod) => { setActiveVod(vod); setActiveHighlight(null) }}
+              onOpenHighlight={(vod, hl) => { setActiveVod(vod); setActiveHighlight(hl) }}
               profile={profile}
               subTab={riftSubTab}
               onSubTabChange={setRiftSubTab}

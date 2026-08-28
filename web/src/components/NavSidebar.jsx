@@ -166,6 +166,15 @@ export default function NavSidebar({ view, onNavigate, lang, onSettingsOpen, rif
                   >
                     {t(lang, 'navClips')}
                   </button>
+                  <button
+                    className={`nav-subitem ${view === 'rift-timeline' && riftSubTab === 'highlights' ? 'active' : ''}`}
+                    onClick={() => {
+                      onNavigate('rift-timeline')
+                      onSubTabChange('highlights')
+                    }}
+                  >
+                    {t(lang, 'navHighlights')}
+                  </button>
                 </div>
               )}
             </div>

@@ -384,7 +384,7 @@ function PlayerTeamPanel({ team, teamLabel, isWinner, lang }) {
 
 /* ── Player ────────────────────────────────────────────────── */
 
-export default function VODPlayer({ vod, lang, onBack, puuid, summoner, showTeamsProp }) {
+export default function VODPlayer({ vod, lang, onBack, puuid, summoner, showTeamsProp, highlight }) {
   /* personal events need the puuid the backend used to flag is_player;
      fall back to the puuid stored in the VOD when no profile is loaded */
   const evPuuid = puuid || vod.puuid || ''
@@ -586,6 +586,13 @@ export default function VODPlayer({ vod, lang, onBack, puuid, summoner, showTeam
          correct game time.  Just reset to start on video change. */
       if (!didInitialSeekRef.current && dur > 0) {
         didInitialSeekRef.current = true
+        if (highlight && Number.isFinite(highlight.startVideoSec)) {
+          const target = Math.max(0, Math.min(highlight.startVideoSec, dur))
+          vid.currentTime = target
+          setCurrent(target)
+        } else {
+          vid.currentTime = 0
+        }
       }
     }
     const onEnd = () => setPlaying(false)
@@ -597,7 +604,7 @@ export default function VODPlayer({ vod, lang, onBack, puuid, summoner, showTeam
       vid.removeEventListener('loadedmetadata', onLoaded)
       vid.removeEventListener('ended', onEnd)
     }
-  }, [videoUrl])
+  }, [videoUrl, highlight])
 
   /* Canvas MPO bypass: draw video frames onto a <canvas> element which is
      never promoted to a hardware overlay plane.  The <video> is hidden
@@ -774,6 +781,12 @@ export default function VODPlayer({ vod, lang, onBack, puuid, summoner, showTeam
             <span className="vod-pending-pill" title={t(lang, 'pendingMatchDesc')}>
               <span className="vod-pending-dot" />
               {t(lang, 'pendingMatchBadge')}
+            </span>
+          )}
+          {highlight && (
+            <span className="vod-highlight-pill">
+              <span className="vod-highlight-dot" />
+              {highlight.label || t(lang, 'highlight')}
             </span>
           )}
         </div>
@@ -1032,16 +1045,18 @@ export default function VODPlayer({ vod, lang, onBack, puuid, summoner, showTeam
         )}
       </div>
 
-      <NeonTimeline
-        matchId={pending ? '' : mv.matchId}
-        puuid={evPuuid}
-        lang={lang}
-        duration={duration}
-        current={currentTime}
-        onSeek={seek}
-        localData={localEvents}
-        gameTimeOffset={mv.gameTimeOffset || 0}
-      />
+      {!highlight && (
+        <NeonTimeline
+          matchId={pending ? '' : mv.matchId}
+          puuid={evPuuid}
+          lang={lang}
+          duration={duration}
+          current={currentTime}
+          onSeek={seek}
+          localData={localEvents}
+          gameTimeOffset={mv.gameTimeOffset || 0}
+        />
+      )}
     </div>
   )
 }
