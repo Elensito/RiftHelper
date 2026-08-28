@@ -3,7 +3,7 @@ import { t } from '../i18n.js'
 import { isTauri, showInFolder, getAudioMode, vodThumbUrl, getDiskUsage, readVodEvents } from '../tauri.js'
 import { deleteRecordingBlob } from '../video-recorder.js'
 import { deleteVodFiles } from '../tauri.js'
-import { computeHighlights, highlightLabel, highlightId } from '../highlights.js'
+import { computeHighlights, highlightId } from '../highlights.js'
 
 const VOD_STORAGE_KEY = 'rh-vods'
 const VOD_SETTINGS_KEY = 'rh-vod-settings'
@@ -240,7 +240,6 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
           items: items.map(hl => ({
             id: highlightId(vod.id, hl),
             hl,
-            label: highlightLabel(hl, lang, vod.champion || ''),
           })),
         }
       } catch { return null }
@@ -567,6 +566,13 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
                             : h.hl.died ? t(lang, 'hlTrade') : t(lang, 'hlAssist')}
                         </span>
                         <span className="rt-hl-fill" />
+                        {hasVideo && (
+                          <span className="rt-hl-play-icon">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+                              <polygon points="5 3 19 12 5 21 5 3" />
+                            </svg>
+                          </span>
+                        )}
                         <button
                           className={`rt-card-fav ${fav ? 'active' : ''}`}
                           onClick={(e) => toggleHlFavorite(h.id, e)}
@@ -584,23 +590,25 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
                           <span className="rt-hl-stat">{h.hl.assists}</span>
                           {h.hl.died && <span className="rt-hl-die">†</span>}
                         </div>
-                        <div className="rt-hl-label">{h.label}</div>
-                        <div className="rt-card-meta">
-                          <span className="rt-card-kda">{relTime(lang, vod.date)}</span>
-                          <span className="rt-card-date">{formatDate(vod.date)}</span>
+                        <div className="rt-hl-meta">
+                          <span className="rt-hl-champ">{vod.champion || vod.queue || ''}</span>
+                          <span className="rt-hl-sep">•</span>
+                          <span className="rt-hl-rel">{relTime(lang, vod.date)}</span>
                         </div>
-                        <div className="rt-card-queue">{vod.champion || vod.queue || ''}</div>
                       </div>
                       <div className="rt-hl-actions">
                         <button
-                          className="rt-btn rt-btn-sm rt-btn-primary"
+                          className="rt-btn rt-btn-sm rt-btn-hl-watch"
                           disabled={!hasVideo}
                           onClick={(e) => { e.stopPropagation(); if (hasVideo) openHighlight(vod, h.hl) }}
                         >
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+                            <polygon points="5 3 19 12 5 21 5 3" />
+                          </svg>
                           {hasVideo ? t(lang, 'openHighlight') : t(lang, 'noVideo')}
                         </button>
                         <button
-                          className="rt-btn rt-btn-sm rt-btn-danger"
+                          className="rt-btn rt-btn-sm rt-btn-hl-ghost"
                           onClick={(e) => hideHighlight(h.id, e)}
                           title={t(lang, 'deleteVod')}
                         >
