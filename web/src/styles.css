@@ -947,7 +947,7 @@ body {
 /* ── Recording Overlay ── */
 .recording-overlay {
   position: fixed;
-  top: 104px;
+  top: 96px;
   right: 22px;
   z-index: 900;
   pointer-events: none;

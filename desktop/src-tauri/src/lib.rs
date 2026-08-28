@@ -1114,11 +1114,13 @@ enum GameStartWait {
 /// a threshold (LOADING_GRACE_SECS) to ensure the game has actually started.
 /// If the window disappears the game was cancelled/dodged.
 fn wait_for_game_start(max_secs: u64) -> GameStartWait {
-    // Minimum gameTime before we consider the loading screen over.
-    // Loading screens in ranked can take 1-5+ minutes, but gameTime only
-    // starts counting once the game session begins (after loading).
-    // A value of 15s gives plenty of margin.
-    const LOADING_GRACE_SECS: f64 = 10.0;
+    // The in-game clock (gameTime) only starts counting once the match begins,
+    // after the loading screen ends — it stays near 0 while loading. We want
+    // the recording to start at the exact in-game second 10 (00:10). To do that
+    // we confirm the clock is actually running (loading is over) and then fire
+    // the moment it reaches TARGET_START, polling finely so we land as close to
+    // 10.0s as possible and never a second before (9.x).
+    const TARGET_START: f64 = 10.0;
 
     let client = match reqwest::blocking::Client::builder()
         .danger_accept_invalid_certs(true)
@@ -1129,10 +1131,12 @@ fn wait_for_game_start(max_secs: u64) -> GameStartWait {
     };
     let url = "https://127.0.0.1:2999/liveclientdata/gamestats";
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(max_secs);
-    let mut first_t: Option<f64> = None;
-    let mut last_t: Option<f64> = None;
+    // True when we observed the clock below the target (the normal ranked flow:
+    // we connect during champ select / loading, so we see it start from ~0).
+    // False means we only started seeing it after 00:10 already (a late join
+    // that cannot be rewound).
+    let mut saw_below = false;
     let mut missing = 0u32;
-    let mut grace = 0u32;
     while std::time::Instant::now() < deadline {
         let sample = client
             .get(url)
@@ -1143,41 +1147,26 @@ fn wait_for_game_start(max_secs: u64) -> GameStartWait {
             .and_then(|v| v.get("gameTime").and_then(|t| t.as_f64()));
         match sample {
             Some(t) => {
-                if first_t.is_none() {
-                    first_t = Some(t);
-                    last_t = Some(t);
-                    audio_log(&format!("wait_for_game_start: first gameTime={t:.1}s"));
-                    // Mid-game join (reconnect): start immediately.
-                    if t >= 90.0 {
-                        return GameStartWait::Started(t);
-                    }
-                    continue;
-                }
-                // Check if the clock has advanced past the loading grace period.
-                let advanced = t > last_t.unwrap_or(0.0) + 0.4;
-                let past_loading = t >= LOADING_GRACE_SECS;
-                if advanced && past_loading {
-                    audio_log(&format!(
-                        "wait_for_game_start: game started — gameTime={t:.1}s (advanced from {:.1}s)",
-                        first_t.unwrap_or(0.0)
-                    ));
+                missing = 0;
+                // Mid-game join (reconnect): start immediately, can't rewind.
+                if t >= 90.0 {
                     return GameStartWait::Started(t);
                 }
-                // Ambiguous frozen time: don't wait forever.
-                grace += 1;
-                if grace >= 20 {
-                    // ~6s of frozen clock after first contact — start anyway.
-                    audio_log(&format!(
-                        "wait_for_game_start: grace timeout — gameTime={t:.1}s, starting anyway"
-                    ));
-                    return GameStartWait::Started(t);
+                if !saw_below && t < TARGET_START {
+                    saw_below = true;
                 }
-                if advanced {
-                    last_t = Some(t);
+                // Normal ranked path: we saw the clock below 00:10 and it has now
+                // crossed it — start at the exact in-game second 10.
+                // Late-join path (never saw it below target): start now at t.
+                if t >= TARGET_START {
+                    let start = if saw_below { TARGET_START } else { t };
+                    audio_log(&format!(
+                        "wait_for_game_start: starting at in-game {start:.1}s (saw_below={saw_below})"
+                    ));
+                    return GameStartWait::Started(start);
                 }
             }
             None => {
-                last_t = None;
                 // A vanished window means the lobby was dodged/cancelled.
                 if find_lol_window_rect().is_none() {
                     missing += 1;
@@ -1189,7 +1178,7 @@ fn wait_for_game_start(max_secs: u64) -> GameStartWait {
                 }
             }
         }
-        std::thread::sleep(std::time::Duration::from_millis(300));
+        std::thread::sleep(std::time::Duration::from_millis(120));
     }
     GameStartWait::Timeout
 }
