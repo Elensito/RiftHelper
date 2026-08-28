@@ -68,6 +68,7 @@ struct ActiveRec {
     _context: ObsContext,
     _scene: ObsSceneRef,
     output: libobs_wrapper::data::output::ObsOutputRef,
+    fps: u32,
 }
 
 static ACTIVE: Mutex<Option<ActiveRec>> = Mutex::new(None);
@@ -383,6 +384,7 @@ pub fn start(config: ObsRecordingConfig) -> Result<(), String> {
             _context: context,
             _scene: scene,
             output,
+            fps: config.fps,
         });
     }
     Ok(())
@@ -412,19 +414,34 @@ fn add_wasapi_source(
     Ok(())
 }
 
-/// Stop the active OBS recording and finalize the mp4.
-pub fn stop() -> Result<(), String> {
+/// Stop the active OBS recording and finalize the mp4. Returns the recording
+/// duration in seconds (derived from the output's video-frame counter, so it is
+/// valid without ffmpeg/ffprobe).
+pub fn stop() -> Result<f64, String> {
     let active = ACTIVE.lock().map_err(|e| e.to_string())?.take();
     match active {
         Some(mut rec) => {
             rec.output.stop().map_err(|e| format!("OBS output stop: {e}"))?;
             // Allow the muxer to finalize.
             std::thread::sleep(Duration::from_millis(800));
+
+            // Video duration = video frames / fps. libobs keeps counting frames
+            // even after stop, so this is accurate.
+            use libobs_wrapper::data::object::ObsObjectTrait;
+            let total_frames = unsafe {
+                libobs::obs_output_get_total_frames(rec.output.as_ptr().get_ptr())
+            };
+            let duration = if rec.fps > 0 && total_frames > 0 {
+                (total_frames as f64) / (rec.fps as f64)
+            } else {
+                0.0
+            };
+
             // Drop output, scene, then context in reverse order.
             drop(rec.output);
             drop(rec._scene);
             drop(rec._context);
-            Ok(())
+            Ok(duration)
         }
         None => Err("No active OBS recording".into()),
     }

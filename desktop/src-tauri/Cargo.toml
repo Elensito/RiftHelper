@@ -30,16 +30,16 @@ tauri-plugin-dialog = "2"
 tauri-plugin-autostart = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-reqwest = { version = "0.12", features = ["json", "blocking", "stream"] }
+reqwest = { version = "0.12", features = ["json", "blocking"] }
 opener = "0.6"
-zip = "2"
-futures-util = "0.3"
+image = { version = "0.25", default-features = false, features = ["jpeg"] }
 libobs-simple = "8.0.1"
 libobs-bootstrapper = "0.2"
 anyhow = "1"
 log = "0.4"
 env_logger = "0.11"
 libobs-wrapper = "9.0.4"
+libobs = "5"
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 
 [target.'cfg(windows)'.dependencies]

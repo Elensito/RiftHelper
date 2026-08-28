@@ -93,18 +93,6 @@ export async function setCloseBehavior(behavior) {
   } catch {}
 }
 
-export async function getFfmpegPath() {
-  if (!isTauri()) return ''
-  const { invoke } = await import('@tauri-apps/api/core')
-  try { return await invoke('get_ffmpeg_path') } catch { return '' }
-}
-
-export async function setFfmpegPath(path) {
-  if (!isTauri()) return
-  const { invoke } = await import('@tauri-apps/api/core')
-  try { await invoke('set_ffmpeg_path', { path }) } catch {}
-}
-
 export async function getRecordingsFolder() {
   if (!isTauri()) return ''
   const { invoke } = await import('@tauri-apps/api/core')
@@ -121,18 +109,6 @@ export async function selectRecordingsFolder() {
   if (!isTauri()) return null
   const { invoke } = await import('@tauri-apps/api/core')
   try { return await invoke('select_recordings_folder') } catch { return null }
-}
-
-export async function selectFfmpegFile() {
-  if (!isTauri()) return null
-  const { invoke } = await import('@tauri-apps/api/core')
-  try { return await invoke('select_ffmpeg_file') } catch { return null }
-}
-
-export async function testFfmpeg(path) {
-  if (!isTauri()) return false
-  const { invoke } = await import('@tauri-apps/api/core')
-  try { return await invoke('test_ffmpeg', { path }) } catch { return false }
 }
 
 export async function getAutoRecord() {
@@ -212,21 +188,6 @@ export async function hideOverlay() {
   if (!isTauri()) return
   const { invoke } = await import('@tauri-apps/api/core')
   try { await invoke('hide_overlay') } catch {}
-}
-
-export async function downloadFfmpeg() {
-  if (!isTauri()) return null
-  const { invoke } = await import('@tauri-apps/api/core')
-  try { return await invoke('download_and_setup_ffmpeg') } catch { return null }
-}
-
-export async function onFfmpegProgress(callback) {
-  if (!isTauri()) return () => {}
-  const { listen } = await import('@tauri-apps/api/event')
-  const unlisten = await listen('ffmpeg-download-progress', (event) => {
-    callback(event.payload)
-  })
-  return unlisten
 }
 
 export async function openVodFolder(path) {
