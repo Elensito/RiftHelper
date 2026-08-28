@@ -9019,6 +9019,19 @@ body.sidebar-expanded .vod-player-view {
   color: var(--red) !important;
 }
 
+.rt-btn-hl-ghost.locked {
+  cursor: not-allowed;
+  color: var(--muted) !important;
+  background: rgba(255, 255, 255, 0.03);
+  border-color: rgba(255, 255, 255, 0.08) !important;
+}
+
+.rt-btn-hl-ghost.locked:hover {
+  background: rgba(255, 255, 255, 0.03);
+  border-color: rgba(255, 255, 255, 0.08) !important;
+  color: var(--muted) !important;
+}
+
 /* Highlight pill in VOD player topbar */
 .vod-highlight-pill {
   display: inline-flex;

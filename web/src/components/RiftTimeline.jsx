@@ -11,6 +11,7 @@ const CLIPS_STORAGE_KEY = 'rh-clips'
 const FAV_STORAGE_KEY = 'rh-vod-favorites'
 const HL_FAV_KEY = 'rh-hl-favorites'
 const HL_HIDDEN_KEY = 'rh-hl-hidden'
+const HL_STORE_KEY = 'rh-hl-store'
 
 function loadVods() {
   try {
@@ -48,6 +49,44 @@ function loadHlFav() {
 
 function loadHlHidden() {
   try { return new Set(JSON.parse(localStorage.getItem(HL_HIDDEN_KEY) || '[]')) } catch { return new Set() }
+}
+
+/* Persisted highlight cards. Highlights are snapshotted into this store so they
+   survive even after their source VOD is deleted. Keyed by `vodId::firstSec`. */
+function loadHlStore() {
+  try { return JSON.parse(localStorage.getItem(HL_STORE_KEY) || '{}') } catch { return {} }
+}
+
+function saveHlStore(store) {
+  try { localStorage.setItem(HL_STORE_KEY, JSON.stringify(store)) } catch {}
+}
+
+/* Convert the persisted highlight store into renderable cards. A card survives
+   VOD deletion; if the source VOD no longer exists we render it without video. */
+function buildHlCards(store, vods, hlHidden) {
+  const vodMap = new Map(vods.map(v => [v.id, v]))
+  return Object.keys(store)
+    .filter(id => !hlHidden.has(id))
+    .map(id => {
+      const e = store[id]
+      const vod = vodMap.get(e.vodId)
+      const hasVideo = !!(vod && vod.hasVideo && vod.videoPath)
+      return {
+        key: id,
+        id,
+        hl: e.hl,
+        hasVideo,
+        vod: {
+          id: e.vodId,
+          champion: e.champion,
+          championIcon: e.championIcon,
+          date: e.date,
+          queue: e.queue,
+          videoPath: vod ? vod.videoPath : null,
+        },
+      }
+    })
+    .sort((a, b) => (b.vod.date || 0) - (a.vod.date || 0))
 }
 
 function formatDuration(sec) {
@@ -109,6 +148,7 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
   const [hlFav, setHlFav] = useState(loadHlFav)
   const [hlHidden, setHlHidden] = useState(loadHlHidden)
   const [highlights, setHighlights] = useState([])
+  const [hlStore, setHlStore] = useState(loadHlStore)
   const [hlLoading, setHlLoading] = useState(false)
   const [contextMenu, setContextMenu] = useState(null)
   const [deleteModal, setDeleteModal] = useState(null)
@@ -244,17 +284,30 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
         }
       } catch { return null }
     })).then(results => {
-      if (dead) return
-      const flat = []
+      const store = { ...loadHlStore() }
       for (const r of results) {
         if (!r) continue
-        for (const item of r.items) flat.push({ vod: r.vod, ...item })
+        for (const item of r.items) {
+          const vod = r.vod
+          store[item.id] = {
+            id: item.id,
+            vodId: vod.id,
+            hl: item.hl,
+            champion: vod.champion || '',
+            championIcon: vod.championIcon || '',
+            date: vod.date,
+            queue: vod.queue || '',
+          }
+        }
       }
-      setHighlights(flat)
+      saveHlStore(store)
+      setHlStore(store)
+      if (dead) return
+      setHighlights(buildHlCards(store, vods, hlHidden))
       setHlLoading(false)
     })
     return () => { dead = true }
-  }, [subTab, vods, lang, settings.autoHighlights])
+  }, [subTab, vods, hlHidden, lang, settings.autoHighlights])
 
   const toggleHlFavorite = useCallback((id, e) => {
     if (e) e.stopPropagation()
@@ -269,13 +322,14 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
 
   const hideHighlight = useCallback((id, e) => {
     if (e) e.stopPropagation()
+    if (hlFav.has(id)) return
     setHlHidden(prev => {
       const next = new Set(prev)
       next.add(id)
       localStorage.setItem(HL_HIDDEN_KEY, JSON.stringify([...next]))
       return next
     })
-  }, [])
+  }, [hlFav])
 
   const openHighlight = useCallback((vod, hl) => {
     if (onOpenHighlight) onOpenHighlight(vod, hl)
@@ -550,7 +604,7 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
                 {visible.map((h) => {
                   const vod = h.vod
                   const fav = hlFav.has(h.id)
-                  const hasVideo = !!vod.videoPath
+                  const hasVideo = h.hasVideo
                   return (
                     <div
                       key={h.id}
@@ -608,14 +662,22 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
                           {hasVideo ? t(lang, 'openHighlight') : t(lang, 'noVideo')}
                         </button>
                         <button
-                          className="rt-btn rt-btn-sm rt-btn-hl-ghost"
+                          className={`rt-btn rt-btn-sm rt-btn-hl-ghost ${fav ? 'locked' : ''}`}
                           onClick={(e) => hideHighlight(h.id, e)}
-                          title={t(lang, 'deleteVod')}
+                          disabled={fav}
+                          title={fav ? t(lang, 'hlLocked') : t(lang, 'deleteVod')}
                         >
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <polyline points="3 6 5 6 21 6" />
-                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                          </svg>
+                          {fav ? (
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                              <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                            </svg>
+                          ) : (
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <polyline points="3 6 5 6 21 6" />
+                              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                            </svg>
+                          )}
                         </button>
                       </div>
                     </div>
