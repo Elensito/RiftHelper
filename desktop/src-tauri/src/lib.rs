@@ -17,6 +17,38 @@ mod clip;
 static OBS_ACTIVE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 /// Path of the ongoing OBS recording so stop can finalize and report the file.
 static OBS_OUTPUT: Mutex<Option<String>> = Mutex::new(None);
+/// In-game clock (seconds) at the moment the recording's first frame was
+/// captured (= gameTimeOffset). Lets us translate a hotkey press during a live
+/// recording into absolute seconds into the video file.
+static REC_GAME_START: Mutex<Option<f64>> = Mutex::new(None);
+/// The clip duration (seconds) requested by the user (10/15/30/45/60). Set on
+/// start so the hotkey worker uses the current configured value immediately.
+static REC_CLIP_DURATION: std::sync::atomic::AtomicI64 = std::sync::atomic::AtomicI64::new(30);
+/// Current clip hotkey name (e.g. "F9" or "Ctrl+Shift+F5"). Read by the long
+/// lived hotkey worker; changed by `set_clip_hotkey`.
+static CLIP_HOTKEY_NAME: Mutex<Option<String>> = Mutex::new(None);
+
+/// A clip of the live recording requested by the hotkey, expressed as absolute
+/// video seconds [start_abs, end_abs]. It cannot be cut while the MP4 is still
+/// being written (the moov atom lands at finalize), so it's queued and realized
+/// right after `stop_recording()` finalizes the file.
+struct PendingClip {
+    start_abs: f64,
+    end_abs: f64,
+    /// Wall-clock time of the request, used for ordering + clip metadata.
+    req_at: u64,
+}
+static PENDING_CLIPS: Mutex<Vec<PendingClip>> = Mutex::new(Vec::new());
+
+/// A realized clip returned from `stop_recording`: an absolute path to the
+/// freshly cut mp4 plus its thumbnail jpg.
+#[derive(Serialize)]
+struct RealizedClip {
+    path: String,
+    thumb: String,
+    start_abs: f64,
+    end_abs: f64,
+}
 
 /// Append a line to the audio debug log at %APPDATA%\com.rifthelper.desktop\rift-helper-audio.log
 /// so we can diagnose audio capture failures that `eprintln!` can't show (GUI app has no console).
@@ -890,6 +922,281 @@ async fn set_close_behavior(app: tauri::AppHandle, behavior: String) -> Result<(
 }
 
 #[tauri::command]
+async fn get_start_minimized(app: tauri::AppHandle) -> Result<bool, String> {
+    let cfg = read_config(&app);
+    Ok(cfg.get("startMinimized").and_then(|v| v.as_bool()).unwrap_or(false))
+}
+
+#[tauri::command]
+async fn set_start_minimized(app: tauri::AppHandle, enabled: bool) -> Result<(), String> {
+    let mut cfg = read_config(&app);
+    cfg["startMinimized"] = serde_json::json!(enabled);
+    write_config(&app, &cfg);
+    Ok(())
+}
+
+#[tauri::command]
+async fn get_focus_after_game(app: tauri::AppHandle) -> Result<bool, String> {
+    let cfg = read_config(&app);
+    Ok(cfg.get("focusAfterGame").and_then(|v| v.as_bool()).unwrap_or(false))
+}
+
+#[tauri::command]
+async fn set_focus_after_game(app: tauri::AppHandle, enabled: bool) -> Result<(), String> {
+    let mut cfg = read_config(&app);
+    cfg["focusAfterGame"] = serde_json::json!(enabled);
+    write_config(&app, &cfg);
+    Ok(())
+}
+
+#[tauri::command]
+async fn get_clip_duration(app: tauri::AppHandle) -> Result<i64, String> {
+    let cfg = read_config(&app);
+    let d = cfg.get("clipDuration").and_then(|v| v.as_i64()).unwrap_or(30);
+    Ok(normalize_clip_duration(d))
+}
+
+#[tauri::command]
+async fn set_clip_duration(app: tauri::AppHandle, seconds: i64) -> Result<(), String> {
+    let d = normalize_clip_duration(seconds);
+    let mut cfg = read_config(&app);
+    cfg["clipDuration"] = serde_json::json!(d);
+    write_config(&app, &cfg);
+    REC_CLIP_DURATION.store(d, std::sync::atomic::Ordering::SeqCst);
+    Ok(())
+}
+
+#[tauri::command]
+async fn get_clip_hotkey(app: tauri::AppHandle) -> Result<String, String> {
+    let cfg = read_config(&app);
+    let hk = cfg.get("clipHotkey").and_then(|v| v.as_str()).unwrap_or("F9").to_string();
+    Ok(hk)
+}
+
+#[tauri::command]
+async fn set_clip_hotkey(app: tauri::AppHandle, key: String) -> Result<(), String> {
+    let mut cfg = read_config(&app);
+    cfg["clipHotkey"] = serde_json::json!(key);
+    write_config(&app, &cfg);
+    // Re-register the global hotkey with the new key.
+    spawn_hotkey_worker();
+    Ok(())
+}
+
+/// Restrict the clip duration to the supported set {10,15,30,45,60}.
+fn normalize_clip_duration(d: i64) -> i64 {
+    match d {
+        10 | 15 | 45 | 60 => d,
+        _ => 30,
+    }
+}
+
+/// Bring the main RiftHelper window to the foreground. Used for the
+/// "focus after game" setting so the app appears when a match ends.
+#[tauri::command]
+async fn focus_window(app: tauri::AppHandle) -> Result<(), String> {
+    use tauri::Manager;
+    if let Some(w) = app.get_webview_window("main") {
+        let _ = w.show();
+        let _ = w.set_focus();
+    }
+    Ok(())
+}
+
+/* ── Clip hotkey (global, via RegisterHotKey) ─────────────────────────
+   A single long-lived thread owns the registration so it can be re-armed
+   cheaply when the user changes the key. It polls for WM_HOTKEY messages on
+   the thread queue (hwnd = NULL), so the hotkey fires even while the game or
+   another app has focus. The queue is realized once the MP4 is finalized. */
+
+/// Queue a clip of the *last configured seconds* of the live recording,
+/// ending at the moment the hotkey was pressed. Returns Ok(true) if a clip was
+/// queued, Ok(false) if nothing is recording.
+fn queue_clip_now() -> Result<bool, String> {
+    if !OBS_ACTIVE.load(std::sync::atomic::Ordering::SeqCst) {
+        return Ok(false);
+    }
+    let end_abs = match *REC_GAME_START.lock().map_err(|e| e.to_string())? {
+        Some(start) => query_current_game_time().map_or(0.0, |gt| (gt - start).max(0.0)),
+        None => 0.0,
+    };
+    let duration = REC_CLIP_DURATION.load(std::sync::atomic::Ordering::SeqCst).max(1) as f64;
+    let start_abs = (end_abs - duration).max(0.0);
+    let req_at = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0);
+    PENDING_CLIPS
+        .lock()
+        .map_err(|e| e.to_string())?
+        .push(PendingClip { start_abs, end_abs, req_at });
+    Ok(true)
+}
+
+/// Cut every queued clip from the just-finalized recording into
+/// `<recordings>/clips/` and build each one's thumbnail (at second 5 of the
+/// clip, i.e. clip_start + 5s). Returns the realized clips for the frontend.
+fn realize_pending_clips(video_path: &str, recordings: &str) -> Vec<RealizedClip> {
+    #[cfg(windows)]
+    {
+        if !std::path::Path::new(video_path).exists() {
+            PENDING_CLIPS.lock().map(|mut v| v.clear()).ok();
+            return Vec::new();
+        }
+        let clips_dir = std::path::Path::new(recordings).join("clips");
+        std::fs::create_dir_all(&clips_dir).ok();
+        let thumbs_dir = clips_dir.join("thumbnails");
+        std::fs::create_dir_all(&thumbs_dir).ok();
+
+        let src_stem = std::path::Path::new(video_path)
+            .file_stem()
+            .map(|s| s.to_string_lossy().to_string())
+            .unwrap_or_else(|| "recording".to_string());
+
+        let queued: Vec<PendingClip> = PENDING_CLIPS.lock().map(|mut v| std::mem::take(&mut *v)).unwrap_or_default();
+        let mut realized = Vec::new();
+        for pc in queued {
+            if pc.end_abs - pc.start_abs < 0.2 {
+                continue; // nothing but a sliver to save
+            }
+            let stamp = pc.req_at;
+            let clip_path = clips_dir.join(format!("{src_stem}_clip_{stamp}.mp4"));
+            let clip_str = clip_path.to_string_lossy().to_string();
+            if clip::cut_highlight(video_path, &clip_str, pc.start_abs, pc.end_abs).is_err() {
+                continue;
+            }
+            let thumb_dir = thumbs_dir.join(format!("{src_stem}_clip_{stamp}.jpg"));
+            let thumb_str = thumb_dir.to_string_lossy().to_string();
+            // Thumbnail at 5s into the clip (first 5s; "at second 5").
+            clip::extract_thumbnail(&clip_str, &thumb_str, 5.0)
+                .map(|_| ())
+                .unwrap_or_else(|_| { let _ = std::fs::remove_file(&thumb_str); });
+            realized.push(RealizedClip {
+                path: clip_str,
+                thumb: if std::path::Path::new(&thumb_str).exists() { thumb_str } else { String::new() },
+                start_abs: pc.start_abs,
+                end_abs: pc.end_abs,
+            });
+        }
+        realized
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = (video_path, recordings);
+        PENDING_CLIPS.lock().map(|mut v| v.clear()).ok();
+        Vec::new()
+    }
+}
+
+/* --- Global-hotkey message worker. Runs for the lifetime of the app. --- */
+fn spawn_hotkey_worker() {
+    #[cfg(windows)]
+    {
+        let spawned = std::thread::Builder::new().name("clip-hotkey".into()).spawn(run_hotkey_worker);
+        if let Ok(h) = spawned {
+            std::mem::forget(h);
+        }
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = ();
+    }
+}
+
+#[cfg(windows)]
+fn run_hotkey_worker() {
+    use windows::Win32::Foundation::HWND;
+    use windows::Win32::UI::Input::KeyboardAndMouse::{RegisterHotKey, UnregisterHotKey, HOT_KEY_MODIFIERS};
+    use windows::Win32::UI::WindowsAndMessaging::{
+        DispatchMessageW, PeekMessageW, TranslateMessage, MSG, PM_REMOVE, WM_HOTKEY,
+    };
+
+    const MY_HOTKEY_ID: i32 = 0x5254;
+
+    let mut current: Option<(u32, u32)> = None;
+    loop {
+        // Re-register if the key changed.
+        let desired = CLIP_HOTKEY_NAME
+            .lock()
+            .ok()
+            .and_then(|g| g.clone())
+            .and_then(|name| parse_hotkey(&name));
+        if desired != current {
+            if current.is_some() {
+                unsafe {
+                    let _ = UnregisterHotKey(HWND::default(), MY_HOTKEY_ID);
+                }
+            }
+            if let Some((vk, mods)) = desired {
+                unsafe {
+                    if RegisterHotKey(HWND::default(), MY_HOTKEY_ID, HOT_KEY_MODIFIERS(mods), vk).is_err() {
+                        audio_log(&format!("clip hotkey register failed (vk={vk}, mods={mods})"));
+                    }
+                }
+            }
+            current = desired;
+        }
+
+        // Drain any queued messages (hwnd = NULL retrieves the thread queue).
+        let mut msg: MSG = MSG::default();
+        while unsafe { PeekMessageW(&mut msg, HWND::default(), 0, 0, PM_REMOVE).as_bool() } {
+            if msg.message == WM_HOTKEY && (msg.wParam.0 as i32) == MY_HOTKEY_ID {
+                let _ = queue_clip_now();
+            }
+            unsafe {
+                let _ = TranslateMessage(&msg);
+                let _ = DispatchMessageW(&msg);
+            }
+        }
+        std::thread::sleep(std::time::Duration::from_millis(150));
+    }
+}
+
+/// Parse a hotkey spec like "F9", "Ctrl+Shift+F5", "Alt+F12" into
+/// (virtual-key, modifier-bits). Modifier bits match Win32 MOD_* values.
+fn parse_hotkey(name: &str) -> Option<(u32, u32)> {
+    const MOD_ALT: u32 = 0x0001;
+    const MOD_CONTROL: u32 = 0x0002;
+    const MOD_SHIFT: u32 = 0x0004;
+    const MOD_WIN: u32 = 0x0008;
+
+    let mut mods = 0u32;
+    let mut rest = name.to_uppercase();
+    let mut changed = true;
+    while changed {
+        changed = false;
+        for (prefix, mask) in [
+            ("CTRL+", MOD_CONTROL),
+            ("ALT+", MOD_ALT),
+            ("SHIFT+", MOD_SHIFT),
+            ("WIN+", MOD_WIN),
+        ] {
+            if rest.starts_with(prefix) {
+                mods |= mask;
+                rest = rest[prefix.len()..].trim().to_string();
+                changed = true;
+                break;
+            }
+        }
+    }
+
+    let vk = if let Some(n) = rest.strip_prefix('F').and_then(|s| s.parse::<u32>().ok()) {
+        if (1..=24).contains(&n) { 0x6F + n } else { return None }
+    } else {
+        match rest.as_str() {
+            "DELETE" => 0x2E,
+            "INSERT" => 0x2D,
+            "HOME" => 0x24,
+            "END" => 0x23,
+            "PGUP" => 0x21,
+            "PGDN" => 0x22,
+            _ => return None,
+        }
+    };
+    Some((vk, mods))
+}
+
+#[tauri::command]
 async fn get_recordings_folder(app: tauri::AppHandle) -> Result<String, String> {
     let cfg = read_config(&app);
     if let Some(folder) = cfg.get("recordingsFolder").and_then(|v| v.as_str()) {
@@ -1507,6 +1814,8 @@ fn lol_client_rect(hwnd: isize) -> Option<(i32, i32, u32, u32)> {
 struct VodFile {
     path: String,
     duration: f64,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    clips: Vec<RealizedClip>,
 }
 
 /// After OBS graphics-hook injection starts, a true-exclusive-fullscreen game
@@ -1730,6 +2039,12 @@ async fn start_recording(app: tauri::AppHandle) -> Result<String, String> {
 
     OBS_ACTIVE.store(true, std::sync::atomic::Ordering::SeqCst);
     *OBS_OUTPUT.lock().map_err(|e| e.to_string())? = Some(paths.output.clone());
+    *REC_GAME_START.lock().map_err(|e| e.to_string())? = Some(game_start_time);
+    // Refresh the hotkey clip length from config so the worker always uses it.
+    {
+        let d = read_config(&app).get("clipDuration").and_then(|v| v.as_i64()).unwrap_or(30);
+        REC_CLIP_DURATION.store(normalize_clip_duration(d), std::sync::atomic::Ordering::SeqCst);
+    }
 
     // Timeline + thumbnail (grabbed live from the game window, no ffmpeg).
     start_event_capture(paths.events);
@@ -1743,8 +2058,9 @@ async fn start_recording(app: tauri::AppHandle) -> Result<String, String> {
 }
 
 #[tauri::command]
-async fn stop_recording(_app: tauri::AppHandle) -> Result<Option<VodFile>, String> {
+async fn stop_recording(app: tauri::AppHandle) -> Result<Option<VodFile>, String> {
     stop_event_capture();
+    REC_GAME_START.lock().map_err(|e| e.to_string())?.take();
 
     // OBS engine: stop libobs and finalize the mp4 here (no ffmpeg child to
     // reap). libobs runs on a blocking thread, so stop it off the runtime.
@@ -1753,6 +2069,11 @@ async fn stop_recording(_app: tauri::AppHandle) -> Result<Option<VodFile>, Strin
             .await
             .map_err(|e| e.to_string())??;
         let output_path = OBS_OUTPUT.lock().map_err(|e| e.to_string())?.take();
+        let recordings = read_config(&app)
+            .get("recordingsFolder")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string())
+            .unwrap_or_else(default_recordings_folder);
         let valid_path = output_path.as_deref().and_then(|p| {
             let meta = std::fs::metadata(p).ok()?;
             let size = meta.len();
@@ -1763,7 +2084,11 @@ async fn stop_recording(_app: tauri::AppHandle) -> Result<Option<VodFile>, Strin
             }
             Some(p)
         });
-        return Ok(valid_path.map(|path| VodFile { path: path.to_string(), duration }));
+        return Ok(valid_path.map(|path| VodFile {
+            path: path.to_string(),
+            duration,
+            clips: realize_pending_clips(path, &recordings),
+        }));
     }
 
     // No engine active: nothing to stop.
@@ -2034,6 +2359,15 @@ pub fn run() {
             is_autostart_enabled,
             get_close_behavior,
             set_close_behavior,
+            get_start_minimized,
+            set_start_minimized,
+            get_focus_after_game,
+            set_focus_after_game,
+            get_clip_hotkey,
+            set_clip_hotkey,
+            get_clip_duration,
+            set_clip_duration,
+            focus_window,
             get_recordings_folder,
             set_recordings_folder,
             select_recordings_folder,
@@ -2095,6 +2429,22 @@ pub fn run() {
                     write_config(&app.handle(), &cfg);
                 }
             }
+
+            // Seed the clip hotkey + duration and start the global hotkey
+            // worker. Autostart may launch us with `--minimized`.
+            {
+                let cfg = read_config(&app.handle());
+                let hk = cfg.get("clipHotkey").and_then(|v| v.as_str()).unwrap_or("F9").to_string();
+                *CLIP_HOTKEY_NAME.lock().unwrap_or_else(|e| e.into_inner()) = Some(hk.clone());
+                let d = cfg.get("clipDuration").and_then(|v| v.as_i64()).unwrap_or(30);
+                REC_CLIP_DURATION.store(normalize_clip_duration(d), std::sync::atomic::Ordering::SeqCst);
+                let start_minimized = cfg.get("startMinimized").and_then(|v| v.as_bool()).unwrap_or(false);
+                let arg_minimized = std::env::args().any(|a| a.eq_ignore_ascii_case("--minimized"));
+                if start_minimized || arg_minimized {
+                    let _ = window.minimize();
+                }
+            }
+            spawn_hotkey_worker();
 
             let show_item = MenuItemBuilder::with_id("show", "Show RiftHelper").build(app)?;
             let quit_item = MenuItemBuilder::with_id("quit", "Quit").build(app)?;

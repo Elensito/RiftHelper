@@ -337,3 +337,65 @@ export async function getDiskUsage() {
   const { invoke } = await import('@tauri-apps/api/core')
   try { return await invoke('get_disk_usage') } catch { return null }
 }
+
+export async function getStartMinimized() {
+  if (!isTauri()) return false
+  const { invoke } = await import('@tauri-apps/api/core')
+  try { return await invoke('get_start_minimized') } catch { return false }
+}
+
+export async function setStartMinimized(enabled) {
+  if (!isTauri()) return
+  const { invoke } = await import('@tauri-apps/api/core')
+  try { await invoke('set_start_minimized', { enabled }) } catch {}
+}
+
+export async function getFocusAfterGame() {
+  if (!isTauri()) return false
+  const { invoke } = await import('@tauri-apps/api/core')
+  try { return await invoke('get_focus_after_game') } catch { return false }
+}
+
+export async function setFocusAfterGame(enabled) {
+  if (!isTauri()) return
+  const { invoke } = await import('@tauri-apps/api/core')
+  try { await invoke('set_focus_after_game', { enabled }) } catch {}
+}
+
+export async function getClipHotkey() {
+  if (!isTauri()) return 'F9'
+  const { invoke } = await import('@tauri-apps/api/core')
+  try { return await invoke('get_clip_hotkey') } catch { return 'F9' }
+}
+
+export async function setClipHotkey(name) {
+  if (!isTauri()) return
+  const { invoke } = await import('@tauri-apps/api/core')
+  try { await invoke('set_clip_hotkey', { name }) } catch {}
+}
+
+export async function getClipDuration() {
+  if (!isTauri()) return 30
+  const { invoke } = await import('@tauri-apps/api/core')
+  try { return await invoke('get_clip_duration') } catch { return 30 }
+}
+
+export async function setClipDuration(duration) {
+  if (!isTauri()) return
+  const { invoke } = await import('@tauri-apps/api/core')
+  try { await invoke('set_clip_duration', { duration }) } catch {}
+}
+
+export async function focusWindow() {
+  if (!isTauri()) return
+  const { invoke } = await import('@tauri-apps/api/core')
+  try { await invoke('focus_window') } catch {}
+}
+
+export async function localFileSrc(path) {
+  if (!isTauri() || !path) return ''
+  try {
+    const { convertFileSrc } = await import('@tauri-apps/api/core')
+    return convertFileSrc(path)
+  } catch { return '' }
+}

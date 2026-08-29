@@ -6003,6 +6003,44 @@ button.p-name:hover {
   padding: 12px 14px 8px;
 }
 
+.rt-card-clip-thumb {
+  position: relative;
+  margin: 0 14px 8px;
+  aspect-ratio: 16 / 9;
+  border-radius: 8px;
+  overflow: hidden;
+  cursor: pointer;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.rt-card-clip-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.rt-card-clip-thumb-badge {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  transition: transform 0.15s, background 0.15s;
+}
+
+.rt-card-clip-thumb:hover .rt-card-clip-thumb-badge {
+  transform: translate(-50%, -50%) scale(1.08);
+  background: rgba(87, 230, 255, 0.45);
+}
+
 .rt-card-clip-times {
   display: flex;
   flex-direction: column;
@@ -7133,6 +7171,27 @@ body.light .settings-segment.active {
 .settings-recording-select option {
   background: var(--bg-2);
   color: var(--text);
+}
+
+/* Clip hotkey capture button */
+.clip-hotkey-capture {
+  min-width: 150px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+  letter-spacing: 0.05em;
+  justify-content: center;
+  border-color: var(--border);
+}
+
+.clip-hotkey-capture.capturing {
+  border-color: var(--cyan);
+  box-shadow: var(--glow-cyan);
+  animation: clip-pulse 1.2s ease-in-out infinite;
+}
+
+.clip-hotkey-capture .key-caption {
+  color: var(--text-2);
+  font-size: 12px;
 }
 
 .rt-toggle-row {

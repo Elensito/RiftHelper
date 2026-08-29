@@ -11,8 +11,8 @@ use windows::Win32::Media::MediaFoundation::{
     MF_MT_FRAME_SIZE, MF_MT_MAJOR_TYPE, MF_MT_SUBTYPE, MF_SOURCE_READERF_ENDOFSTREAM,
     MF_SOURCE_READERF_STREAMTICK, MF_SOURCE_READER_ANY_STREAM, MFAudioFormat_AAC,
     MFCreateAttributes, MFCreateMediaType, MFCreateSinkWriterFromURL, MFCreateSourceReaderFromURL,
-    MFMediaType_Audio, MFMediaType_Video, MFVideoFormat_H264, IMFAttributes, IMFMediaType,
-    IMFSample,
+    MFMediaType_Audio, MFMediaType_Video, MFVideoFormat_H264, MFVideoFormat_RGB32, IMFAttributes,
+    IMFMediaType, IMFSample,
 };
 use windows::Win32::System::Com::{CoInitializeEx, CoUninitialize, COINIT_APARTMENTTHREADED};
 
@@ -217,4 +217,131 @@ fn pack_ratio(num: u32, den: u32) -> u64 {
 
 fn to_wide_url(p: &str) -> Result<Vec<u16>, String> {
     Ok(p.encode_utf16().collect())
+}
+
+/// Extract a single frame (at `at_sec` into the video) from a finalized MP4 and
+/// save it as a JPEG thumbnail. Uses the Source Reader with an RGB32 output
+/// type so the H.264 stream is decoded to uncompressed pixels, which we then
+/// encode with the `image` crate.
+pub fn extract_thumbnail(in_path: &str, out_path: &str, at_sec: f64) -> Result<(), String> {
+    unsafe {
+        let hr = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
+        if hr.is_err() && hr != RPC_E_CHANGED_MODE {
+            return Err(format!("CoInitializeEx: {hr:?}"));
+        }
+        let result = extract_thumbnail_inner(in_path, out_path, at_sec);
+        CoUninitialize();
+        result
+    }
+}
+
+unsafe fn extract_thumbnail_inner(in_path: &str, out_path: &str, at_sec: f64) -> Result<(), String> {
+    if std::path::Path::new(out_path).exists() {
+        let _ = std::fs::remove_file(out_path);
+    }
+
+    let in_url = to_wide_url(in_path)?;
+
+    let mut attrs: Option<IMFAttributes> = None;
+    MFCreateAttributes(&mut attrs, 1).map_err(|e| format!("attrs: {e:?}"))?;
+    if let Some(a) = &attrs {
+        a.SetUINT32(&MF_READWRITE_ENABLE_HARDWARE_TRANSFORMS, 1).ok();
+    }
+
+    let reader = MFCreateSourceReaderFromURL(PCWSTR(in_url.as_ptr()), attrs.as_ref())
+        .map_err(|e| format!("MFCreateSourceReaderFromURL: {e:?}"))?;
+
+    // Find the first video stream.
+    let mut video_idx: Option<u32> = None;
+    for idx in 0..64u32 {
+        match reader.GetCurrentMediaType(idx) {
+            Ok(mt) => {
+                if mt_is(&mt, MFMediaType_Video)? {
+                    video_idx = Some(idx);
+                    break;
+                }
+            }
+            Err(_) => break,
+        }
+    }
+    let video_idx = video_idx.ok_or("no video stream")?;
+
+    // Request decoded RGB32 so we can dump pixels.
+    let rgb = MFCreateMediaType().map_err(|e| format!("mt: {e:?}"))?;
+    rgb.SetGUID(&MF_MT_MAJOR_TYPE, &MFMediaType_Video)
+        .map_err(|e| format!("major: {e:?}"))?;
+    rgb.SetGUID(&MF_MT_SUBTYPE, &MFVideoFormat_RGB32)
+        .map_err(|e| format!("subtype: {e:?}"))?;
+    reader
+        .SetCurrentMediaType(video_idx, None, &rgb)
+        .map_err(|e| format!("SetCurrentMediaType: {e:?}"))?;
+
+    // Actual decoded dimensions + pixel format.
+    let cur = reader
+        .GetCurrentMediaType(video_idx)
+        .map_err(|e| format!("GetCurrentMediaType: {e:?}"))?;
+    let frame_size = cur
+        .GetUINT64(&MF_MT_FRAME_SIZE)
+        .unwrap_or(pack_ratio(1920, 1080));
+    let w = (frame_size >> 32) as usize;
+    let h = (frame_size & 0xFFFF_FFFF) as usize;
+
+    let target_hns = (at_sec * 10_000_000.0) as i64;
+    let mut saved = false;
+    let mut saw_end = false;
+    while !saw_end {
+        let mut flags: u32 = 0;
+        let mut ts: i64 = 0;
+        let mut sample: Option<IMFSample> = None;
+        if reader
+            .ReadSample(video_idx, 0, None, Some(&mut flags), Some(&mut ts), Some(&mut sample))
+            .is_err()
+        {
+            break;
+        }
+        if flags & MF_SOURCE_READERF_ENDOFSTREAM.0 as u32 != 0 {
+            saw_end = true;
+        }
+        if let Some(s) = &sample {
+            if ts >= target_hns || saw_end {
+                if let Ok(buf) = s.ConvertToContiguousBuffer() {
+                    let mut ptr: *mut u8 = std::ptr::null_mut();
+                    let mut len: u32 = 0;
+                    if buf.Lock(&mut ptr, Some(&mut len), None).is_ok() && !ptr.is_null() {
+                        let bytes = std::slice::from_raw_parts(ptr, len as usize);
+                        if save_rgb32_jpeg(bytes, w, h, out_path) {
+                            saved = true;
+                        }
+                    }
+                }
+                break;
+            }
+        }
+    }
+    if saved { Ok(()) } else { Err("no frame captured".into()) }
+}
+
+/// Convert an MF RGB32 buffer (BGRA byte order, rows padded to 4-byte stride)
+/// to a JPEG file. Returns true on success.
+fn save_rgb32_jpeg(bytes: &[u8], w: usize, h: usize, out_path: &str) -> bool {
+    if w == 0 || h == 0 || w > 8192 || h > 8192 {
+        return false;
+    }
+    let stride = (w * 4).min(bytes.len());
+    let mut rgb = Vec::with_capacity(w * h * 3);
+    for row in 0..h {
+        let base = row * stride;
+        for col in 0..w {
+            let i = base + col * 4;
+            if i + 3 < bytes.len() {
+                rgb.push(bytes[i + 2]); // R
+                rgb.push(bytes[i + 1]); // G
+                rgb.push(bytes[i]); // B
+            }
+        }
+    }
+    let Some(img) = image::RgbImage::from_raw(w as u32, h as u32, rgb) else {
+        return false;
+    };
+    img.save(out_path).is_ok()
 }

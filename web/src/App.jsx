@@ -19,7 +19,7 @@ import VODPlayer from './components/VODPlayer.jsx'
 import AppSettings from './components/AppSettings.jsx'
 import { fetchSummoner, fetchLatestMatch, fetchLiveGame, fetchMastery, fetchChampions, fetchChampion } from './api.js'
 import { retryPendingMatches, loadVodsRaw, saveVodsRaw } from './match-resolver.js'
-import { isTauri, getRiotClientSession, notifyGameEnded, startRecordingTauri, stopRecordingTauri, getAutoRecord, isLolWindowOpen, getLastGameMode, deleteVodFiles } from './tauri.js'
+import { isTauri, getRiotClientSession, notifyGameEnded, startRecordingTauri, stopRecordingTauri, getAutoRecord, isLolWindowOpen, getLastGameMode, deleteVodFiles, getFocusAfterGame, focusWindow, localFileSrc } from './tauri.js'
 import { matchGroup, t } from './i18n.js'
 
 const PAGE_SIZE = 20
@@ -228,14 +228,17 @@ export default function App() {
       }, 600)
       let videoPath = null
       let realDuration = 0
+      let realizedClips = []
       if (recordingActiveRef.current) {
-        /* Backend returns { path, duration } — duration is the exact file
-           length probed with ffprobe, immune to start/stop wall-clock drift */
+        /* Backend returns { path, duration, clips } — duration is the exact
+           file length probed with ffprobe, immune to start/stop wall-clock
+           drift; clips are the hotkey-triggered highlight cuts. */
         try {
           const r = await stopRecordingTauri()
           if (r && typeof r === 'object') {
             videoPath = r.path || null
             realDuration = Math.round(r.duration || 0)
+            realizedClips = Array.isArray(r.clips) ? r.clips : []
           } else if (typeof r === 'string') {
             videoPath = r
           }
@@ -303,6 +306,37 @@ export default function App() {
         gameTimeOffset: gameTimeOffsetRef.current || 0, // gameTime at recording start for timeline alignment
       })
       saveVodsRaw(vods)
+
+      /* Hotkey-triggered clips cut by the backend during this session: append
+         them to the clips library so they show up in the Clips tab. */
+      if (realizedClips.length) {
+        try {
+          const existing = JSON.parse(localStorage.getItem('rh-clips') || '[]')
+          const now = Date.now()
+          const newClips = []
+          for (let i = 0; i < realizedClips.length; i++) {
+            const c = realizedClips[i]
+            newClips.push({
+              id: `${vodId}::clip-${now}-${i}`,
+              vodId,
+              start: c.start_abs || 0,
+              end: c.end_abs || 0,
+              date: now - i,
+              path: c.path || '',
+              thumb: (await localFileSrc(c.thumb)) || '',
+            })
+          }
+          localStorage.setItem('rh-clips', JSON.stringify([...newClips, ...existing]))
+          window.dispatchEvent(new Event('rh-clips-changed'))
+        } catch {}
+      }
+
+      /* "Focus after game": bring the app to the foreground on match end. */
+      if (isTauri()) {
+        try {
+          if (await getFocusAfterGame()) focusWindow()
+        } catch {}
+      }
 
       /* Immediate attempt (sometimes Riot indexes fast), then background
          retries for ~5 min. preGameId rejects stale results pointing at the

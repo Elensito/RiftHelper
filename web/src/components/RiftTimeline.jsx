@@ -212,12 +212,17 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
     window.addEventListener('storage', onStorage)
     const onCustom = () => setVods(loadVods())
     const onSettingsCustom = () => reloadSettings()
+    const onClipsCustom = () => {
+      try { setClips(JSON.parse(localStorage.getItem(CLIPS_STORAGE_KEY) || '[]')) } catch { setClips([]) }
+    }
     window.addEventListener('rh-vods-changed', onCustom)
     window.addEventListener('rh-settings-changed', onSettingsCustom)
+    window.addEventListener('rh-clips-changed', onClipsCustom)
     return () => {
       window.removeEventListener('storage', onStorage)
       window.removeEventListener('rh-vods-changed', onCustom)
       window.removeEventListener('rh-settings-changed', onSettingsCustom)
+      window.removeEventListener('rh-clips-changed', onClipsCustom)
     }
   }, [])
 
@@ -547,6 +552,21 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
                       <span className="rt-card-date">{formatDate(clip.date)}</span>
                     </div>
                   </div>
+                  {clip.thumb && (
+                    <div className="rt-card-clip-thumb" onClick={() => {
+                      if (clip.path) {
+                        onOpenVod({ ...vod, videoPath: clip.path })
+                      } else {
+                        onOpenVod(vod)
+                        if (onSeekTo) onSeekTo(clip.start)
+                      }
+                    }}>
+                      <img src={clip.thumb} alt="" />
+                      <span className="rt-card-clip-thumb-badge">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3" /></svg>
+                      </span>
+                    </div>
+                  )}
                   <div className="rt-card-clip-times">
                     <span className="rt-clip-time">{t(lang, 'clipFrom')} {formatDuration(clip.start)}</span>
                     <span className="rt-clip-time">{t(lang, 'clipTo')} {formatDuration(clip.end)}</span>
@@ -557,11 +577,15 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
                     <button
                       className="rt-btn rt-btn-sm rt-btn-ghost"
                       onClick={() => {
-                        onOpenVod(vod)
-                        if (onSeekTo) onSeekTo(clip.start)
+                        if (clip.path) {
+                          onOpenVod({ ...vod, videoPath: clip.path })
+                        } else {
+                          onOpenVod(vod)
+                          if (onSeekTo) onSeekTo(clip.start)
+                        }
                       }}
                     >
-                      {t(lang, 'clipOpenVod')}
+                      {clip.path ? t(lang, 'clipOpenClip') : t(lang, 'clipOpenVod')}
                     </button>
                     <button
                       className="rt-btn rt-btn-sm rt-btn-danger"

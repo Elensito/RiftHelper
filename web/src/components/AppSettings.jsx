@@ -14,6 +14,9 @@ import {
   getRecordingFps, setRecordingFps,
   getRecordingQuality, setRecordingQuality,
   setupObsCapture,
+  getStartMinimized, setStartMinimized,
+  getFocusAfterGame, setFocusAfterGame,
+  getClipHotkey, setClipHotkey, getClipDuration, setClipDuration,
 } from '../tauri.js'
 
 const SECTION_ICONS = {
@@ -47,6 +50,12 @@ const SECTION_ICONS = {
   storage: (
     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+    </svg>
+  ),
+  clips: (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M23 7l-7 5 7 5V7z" />
+      <rect x="1" y="5" width="15" height="14" rx="2" ry="2" />
     </svg>
   ),
 }
@@ -91,6 +100,11 @@ export default function AppSettings({ theme, onThemeChange, lang, onLangChange, 
   const [confirmPopup, setConfirmPopup] = useState(false)
   const [downloadState, setDownloadState] = useState('confirm')
   const [appVersion, setAppVersion] = useState('')
+  const [startMinimized, setStartMinimizedState] = useState(false)
+  const [focusAfterGame, setFocusAfterGameState] = useState(false)
+  const [clipHotkey, setClipHotkeyState] = useState('F9')
+  const [clipDuration, setClipDurationState] = useState(30)
+  const [capturingHotkey, setCapturingHotkey] = useState(false)
 
   useEffect(() => {
     if (!isTauri()) return
@@ -107,6 +121,10 @@ export default function AppSettings({ theme, onThemeChange, lang, onLangChange, 
     getRecordingFps().then(setRecordingFpsState)
     getRecordingQuality().then(setRecordingQualityState)
     listAudioOutputs().then(setAudioOutputs)
+    getStartMinimized().then(setStartMinimizedState)
+    getFocusAfterGame().then(setFocusAfterGameState)
+    getClipHotkey().then(setClipHotkeyState)
+    getClipDuration().then(setClipDurationState)
     try {
       const s = JSON.parse(localStorage.getItem('rh-vod-settings') || '{}')
       setAutoHighlightsState(s.autoHighlights ?? true)
@@ -171,6 +189,64 @@ export default function AppSettings({ theme, onThemeChange, lang, onLangChange, 
   const handleRecordingQuality = async (quality) => {
     setRecordingQualityState(quality)
     await setRecordingQuality(quality)
+  }
+
+  const handleStartMinimized = async () => {
+    const next = !startMinimized
+    setStartMinimizedState(next)
+    await setStartMinimized(next)
+  }
+
+  const handleFocusAfterGame = async () => {
+    const next = !focusAfterGame
+    setFocusAfterGameState(next)
+    await setFocusAfterGame(next)
+  }
+
+  const handleClipDuration = async (d) => {
+    const v = Number(d)
+    setClipDurationState(v)
+    await setClipDuration(v)
+  }
+
+  // Infer a hotkey name from a keydown while "capturing". Prioritizes F-keys
+  // and modifier combos so the backend can register them globally.
+  const captureHotkeyEvent = (e) => {
+    if (!capturingHotkey) return
+    e.preventDefault()
+    e.stopPropagation()
+    const mods = []
+    if (e.ctrlKey) mods.push('Ctrl')
+    if (e.altKey) mods.push('Alt')
+    if (e.shiftKey) mods.push('Shift')
+    if (e.metaKey) mods.push('Win')
+    const k = (e.code || '').toUpperCase()
+    let key = ''
+    if (/^F\d{1,2}$/.test(k)) key = k
+    else if (k === 'DELETE') key = 'Delete'
+    else if (k === 'INSERT') key = 'Insert'
+    else if (k === 'HOME') key = 'Home'
+    else if (k === 'END') key = 'End'
+    else if (k === 'PAGEUP') key = 'PgUp'
+    else if (k === 'PAGEDOWN') key = 'PgDn'
+    if (!key) return
+    const name = [...mods, key].join('+')
+    setClipHotkeyState(name)
+    setClipHotkey(name)
+    setCapturingHotkey(false)
+  }
+
+  useEffect(() => {
+    if (capturingHotkey) {
+      const h = (e) => captureHotkeyEvent(e)
+      window.addEventListener('keydown', h, true)
+      return () => window.removeEventListener('keydown', h, true)
+    }
+  }, [capturingHotkey])
+
+  const beginCaptureHotkey = () => {
+    setClipHotkeyState('...')
+    setCapturingHotkey(true)
   }
 
   const handleAutoHighlights = () => {
@@ -344,6 +420,22 @@ export default function AppSettings({ theme, onThemeChange, lang, onLangChange, 
               </Section>
 
               <Section icon="system" title={t(lang, 'settingsSystem')}>
+                <Row label={t(lang, 'startMinimized')} desc={t(lang, 'startMinimizedDesc')}>
+                  <button
+                    className={`rt-toggle ${startMinimized ? 'on' : ''}`}
+                    onClick={handleStartMinimized}
+                  >
+                    <span className="rt-toggle-knob" />
+                  </button>
+                </Row>
+                <Row label={t(lang, 'focusAfterGame')} desc={t(lang, 'focusAfterGameDesc')}>
+                  <button
+                    className={`rt-toggle ${focusAfterGame ? 'on' : ''}`}
+                    onClick={handleFocusAfterGame}
+                  >
+                    <span className="rt-toggle-knob" />
+                  </button>
+                </Row>
                 <Row label={t(lang, 'closeToTray')} desc={t(lang, 'closeToTrayDesc')}>
                   <select
                     className="rt-setting-select"
@@ -361,6 +453,33 @@ export default function AppSettings({ theme, onThemeChange, lang, onLangChange, 
                   >
                     <span className="rt-toggle-knob" />
                   </button>
+                </Row>
+              </Section>
+
+              <Section icon="clips" title={t(lang, 'settingsClips')}>
+                <div className="settings-row settings-row-block">
+                  <span className="settings-row-label">{t(lang, 'clipHotkey')}</span>
+                  <span className="settings-row-desc">{t(lang, 'clipHotkeyDesc')}</span>
+                  <div className="rt-input-row">
+                    <button
+                      className={`rt-btn rt-btn-ghost rt-btn-sm clip-hotkey-capture ${capturingHotkey ? 'capturing' : ''}`}
+                      onClick={beginCaptureHotkey}
+                      title={t(lang, 'clipHotkeyCapture')}
+                    >
+                      {capturingHotkey ? t(lang, 'pressKey') : clipHotkey}
+                    </button>
+                  </div>
+                </div>
+                <Row label={t(lang, 'clipLength')} desc={t(lang, 'clipLengthDesc')}>
+                  <select
+                    className="settings-recording-select"
+                    value={clipDuration}
+                    onChange={(e) => handleClipDuration(e.target.value)}
+                  >
+                    {[10, 15, 30, 45, 60].map((d) => (
+                      <option key={d} value={d}>{d} {t(lang, 'seconds')}</option>
+                    ))}
+                  </select>
                 </Row>
               </Section>
 
