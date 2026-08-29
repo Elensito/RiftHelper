@@ -21,6 +21,20 @@ static OBS_OUTPUT: Mutex<Option<String>> = Mutex::new(None);
 /// captured (= gameTimeOffset). Lets us translate a hotkey press during a live
 /// recording into absolute seconds into the video file.
 static REC_GAME_START: Mutex<Option<f64>> = Mutex::new(None);
+/// Reusable HTTP client for the LCD API. Created once, shared across all calls
+/// to `query_current_game_time()` and `lcd_get_json()` to avoid allocating a
+/// new TLS context + connection pool on every invocation (~100+ times per game
+/// in the thumbnail worker).
+static LCD_HTTP: std::sync::OnceLock<reqwest::blocking::Client> = std::sync::OnceLock::new();
+fn lcd_http() -> &'static reqwest::blocking::Client {
+    LCD_HTTP.get_or_init(|| {
+        reqwest::blocking::Client::builder()
+            .danger_accept_invalid_certs(true)
+            .timeout(std::time::Duration::from_secs(2))
+            .build()
+            .expect("failed to build LCD HTTP client")
+    })
+}
 /// The clip duration (seconds) requested by the user (10/15/30/45/60). Set on
 /// start so the hotkey worker uses the current configured value immediately.
 static REC_CLIP_DURATION: std::sync::atomic::AtomicI64 = std::sync::atomic::AtomicI64::new(30);
@@ -94,12 +108,8 @@ static LAST_GAME_MODE: Mutex<Option<String>> = Mutex::new(None);
    next to the video. The frontend prefers this file for an instant
    timeline and only falls back to the backend when it is missing. */
 
-fn lcd_client() -> Option<reqwest::blocking::Client> {
-    reqwest::blocking::Client::builder()
-        .danger_accept_invalid_certs(true)
-        .timeout(std::time::Duration::from_secs(2))
-        .build()
-        .ok()
+fn lcd_client() -> &'static reqwest::blocking::Client {
+    lcd_http()
 }
 
 fn lcd_get_json(client: &reqwest::blocking::Client, path: &str) -> Option<serde_json::Value> {
@@ -320,10 +330,7 @@ fn capture_window_to_jpeg(path: &str) -> bool {
 }
 
 fn run_event_capture(events_path: String, stop: Arc<std::sync::atomic::AtomicBool>) {
-    let client = match lcd_client() {
-        Some(c) => c,
-        None => return,
-    };
+    let client = lcd_client();
 
     /* Phase 1: roster + local player. Retries because the LCD port comes
        up slightly after the recording starts. */
@@ -1664,11 +1671,7 @@ fn wait_for_game_start(max_secs: u64) -> GameStartWait {
 /// closing the setup gap between wait_for_game_start() returning and the
 /// actual recording start.
 fn query_current_game_time() -> Option<f64> {
-    let client = reqwest::blocking::Client::builder()
-        .danger_accept_invalid_certs(true)
-        .build()
-        .ok()?;
-    let data: serde_json::Value = client
+    let data: serde_json::Value = lcd_http()
         .get("https://127.0.0.1:2999/liveclientdata/gamestats")
         .timeout(std::time::Duration::from_millis(800))
         .send()
