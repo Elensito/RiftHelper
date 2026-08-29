@@ -1067,8 +1067,12 @@ fn realize_pending_clips(video_path: &str, recordings: &str) -> Vec<RealizedClip
             }
             let thumb_dir = thumbs_dir.join(format!("{src_stem}_clip_{stamp}.jpg"));
             let thumb_str = thumb_dir.to_string_lossy().to_string();
-            // Thumbnail at 5s into the clip (first 5s; "at second 5").
-            clip::extract_thumbnail(&clip_str, &thumb_str, 5.0)
+            // Thumbnail around the 2-minute mark of the clip; if the clip is
+            // shorter, grab a frame near the end instead (never at the very
+            // start, which can be a black/fade frame).
+            let clip_len = pc.end_abs - pc.start_abs;
+            let at_sec = if clip_len >= 125.0 { 120.0 } else { (clip_len - 1.0).max(0.5) };
+            clip::extract_thumbnail(&clip_str, &thumb_str, at_sec)
                 .map(|_| ())
                 .unwrap_or_else(|_| { let _ = std::fs::remove_file(&thumb_str); });
             realized.push(RealizedClip {
