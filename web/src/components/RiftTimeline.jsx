@@ -143,7 +143,7 @@ function VodThumb({ vod }) {
 
 export { loadVods, saveVods, loadSettings, saveSettings, VOD_STORAGE_KEY, VOD_SETTINGS_KEY }
 
-export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTabChange, onDelete, onSeekTo, onOpenHighlight, onOpenClipEditor }) {
+export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTabChange, onDelete, onSeekTo, onOpenHighlight }) {
   const [vods, setVods] = useState(loadVods)
   const [clips, setClips] = useState(() => {
     try { return JSON.parse(localStorage.getItem(CLIPS_STORAGE_KEY) || '[]') } catch { return [] }
@@ -508,7 +508,7 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
                     </svg>
                   </button>
                 </div>
-                <div className="rt-card-info">
+                  <div className="rt-card-info">
                   <div className="rt-card-champ">
                     {vod.championIcon && <img className="rt-card-champ-icon" src={vod.championIcon} alt="" />}
                     <span className="rt-card-champ-name">{vod.champion || '—'}</span>
@@ -518,21 +518,6 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
                     <span className="rt-card-date">{formatDate(vod.date)}</span>
                   </div>
                   <div className="rt-card-queue">{vod.queue || ''}</div>
-                  </div>
-                  <div className="rt-card-hover-overlay" onClick={(e) => e.stopPropagation()}>
-                    <button className="rt-card-hover-btn primary" onClick={() => onOpenVod(vod)}>
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3" /></svg>
-                      {t(lang, 'watch')}
-                    </button>
-                    {vod.hasVideo && onOpenClipEditor && (
-                      <button className="rt-card-hover-btn" onClick={() => onOpenClipEditor(vod)}>
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <circle cx="6" cy="6" r="3" /><circle cx="6" cy="18" r="3" />
-                          <line x1="20" y1="4" x2="8.12" y2="15.88" /><line x1="14.47" y1="14.48" x2="20" y2="20" /><line x1="8.12" y1="8.12" x2="12" y2="12" />
-                        </svg>
-                        {t(lang, 'clipEditor')}
-                      </button>
-                    )}
                   </div>
               </div>
             ))}
@@ -556,59 +541,47 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
             {clips.map((clip) => {
               const vod = vods.find(v => v.id === clip.vodId)
               const duration = clip.end - clip.start
+              const openClip = () => {
+                if (clip.path) {
+                  onOpenVod({ ...vod, videoPath: clip.path })
+                } else {
+                  onOpenVod(vod)
+                  if (onSeekTo) onSeekTo(clip.start)
+                }
+              }
               return (
-                <div key={clip.id} className="rt-card rt-card-clip">
-                  <div className="rt-card-clip-header">
-                    <div className="rt-card-champ">
-                      {vod?.championIcon && <img className="rt-card-champ-icon" src={vod.championIcon} alt="" />}
-                      <span className="rt-card-champ-name">{vod?.champion || '—'}</span>
-                    </div>
-                    <div className="rt-card-meta">
-                      <span className="rt-card-date">{formatDate(clip.date)}</span>
-                    </div>
-                  </div>
-                  {clip.thumb && (
-                    <div className="rt-card-clip-thumb" onClick={() => {
-                      if (clip.path) {
-                        onOpenVod({ ...vod, videoPath: clip.path })
-                      } else {
-                        onOpenVod(vod)
-                        if (onSeekTo) onSeekTo(clip.start)
-                      }
-                    }}>
+                <div key={clip.id} className="rt-card rt-card-clip" onClick={openClip}>
+                  <div className="rt-card-clip-thumb">
+                    {clip.thumb ? (
                       <img src={clip.thumb} alt="" />
-                      <span className="rt-card-clip-thumb-badge">
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3" /></svg>
-                      </span>
-                    </div>
-                  )}
-                  <div className="rt-card-clip-times">
-                    <span className="rt-clip-time">{t(lang, 'clipFrom')} {formatDuration(clip.start)}</span>
-                    <span className="rt-clip-time">{t(lang, 'clipTo')} {formatDuration(clip.end)}</span>
-                    <span className="rt-clip-duration">{t(lang, 'clipDuration')}: {formatDuration(duration)}</span>
+                    ) : vod?.thumbnail ? (
+                      <img src={vod.thumbnail} alt="" />
+                    ) : (
+                      <div className="rt-card-clip-thumb-fallback">
+                        {vod?.championIcon && <img src={vod.championIcon} alt="" />}
+                      </div>
+                    )}
+                    <span className="rt-card-clip-duration">{formatDuration(duration)}</span>
+                    <span className="rt-card-clip-play">
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 3 20 12 6 21 6 3" /></svg>
+                    </span>
                   </div>
-                  {vod?.queue && <div className="rt-card-queue">{vod.queue}</div>}
-                  <div className="rt-card-clip-actions">
+                  <div className="rt-card-clip-bottom">
+                    <div className="rt-card-clip-info">
+                      {vod?.championIcon && <img className="rt-card-clip-champ" src={vod.championIcon} alt="" />}
+                      <span className="rt-card-clip-range">{formatDuration(clip.start)} — {formatDuration(clip.end)}</span>
+                    </div>
                     <button
-                      className="rt-btn rt-btn-sm rt-btn-ghost"
-                      onClick={() => {
-                        if (clip.path) {
-                          onOpenVod({ ...vod, videoPath: clip.path })
-                        } else {
-                          onOpenVod(vod)
-                          if (onSeekTo) onSeekTo(clip.start)
-                        }
-                      }}
-                    >
-                      {clip.path ? t(lang, 'clipOpenClip') : t(lang, 'clipOpenVod')}
-                    </button>
-                    <button
-                      className="rt-btn rt-btn-sm rt-btn-danger"
-                      onClick={() => {
+                      className="rt-card-clip-delete"
+                      onClick={(e) => {
+                        e.stopPropagation()
                         if (confirm(t(lang, 'confirmDeleteClip'))) deleteClip(clip.id)
                       }}
+                      title={t(lang, 'deleteVod')}
                     >
-                      {t(lang, 'deleteVod')}
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                      </svg>
                     </button>
                   </div>
                 </div>

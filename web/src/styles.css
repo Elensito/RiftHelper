@@ -5993,24 +5993,20 @@ button.p-name:hover {
 
 /* ── Clip Cards ── */
 .rt-card-clip {
-  cursor: default;
+  cursor: pointer;
+  padding: 0;
+  overflow: hidden;
 }
 
-.rt-card-clip-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 12px 14px 8px;
+.rt-card-clip:hover {
+  transform: translateY(-3px);
 }
 
 .rt-card-clip-thumb {
   position: relative;
-  margin: 0 14px 8px;
   aspect-ratio: 16 / 9;
-  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.3);
   overflow: hidden;
-  cursor: pointer;
-  border: 1px solid rgba(255, 255, 255, 0.06);
 }
 
 .rt-card-clip-thumb img {
@@ -6018,66 +6014,117 @@ button.p-name:hover {
   height: 100%;
   object-fit: cover;
   display: block;
+  transition: transform 0.25s ease;
 }
 
-.rt-card-clip-thumb-badge {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
+.rt-card-clip:hover .rt-card-clip-thumb img {
+  transform: scale(1.04);
+}
+
+.rt-card-clip-thumb-fallback {
+  width: 100%;
+  height: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 40px;
-  height: 40px;
+  background: linear-gradient(135deg, rgba(0, 229, 255, 0.08), rgba(139, 92, 246, 0.08));
+}
+
+.rt-card-clip-thumb-fallback img {
+  width: 36px;
+  height: 36px;
   border-radius: 50%;
-  background: rgba(0, 0, 0, 0.55);
+  object-fit: contain;
+}
+
+.rt-card-clip-duration {
+  position: absolute;
+  bottom: 6px;
+  right: 6px;
+  background: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(4px);
   color: #fff;
-  transition: transform 0.15s, background 0.15s;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-variant-numeric: tabular-nums;
 }
 
-.rt-card-clip-thumb:hover .rt-card-clip-thumb-badge {
-  transform: translate(-50%, -50%) scale(1.08);
-  background: rgba(87, 230, 255, 0.45);
-}
-
-.rt-card-clip-times {
+.rt-card-clip-play {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) scale(0.85);
   display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: 0 14px;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(6px);
+  color: #fff;
+  opacity: 0;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+  pointer-events: none;
 }
 
-.rt-clip-time {
-  font-size: 12px;
-  color: var(--muted);
+.rt-card-clip:hover .rt-card-clip-play {
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(1);
 }
 
-.rt-clip-duration {
-  font-size: 12px;
-  color: var(--cyan);
-  font-weight: 500;
-}
-
-.rt-card-clip-actions {
+.rt-card-clip-bottom {
   display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 10px;
+}
+
+.rt-card-clip-info {
+  display: flex;
+  align-items: center;
   gap: 6px;
-  padding: 10px 14px;
-  border-top: 1px solid rgba(255, 255, 255, 0.04);
+  min-width: 0;
 }
 
-.rt-btn-sm {
-  padding: 4px 10px;
-  font-size: 12px;
+.rt-card-clip-champ {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+
+.rt-card-clip-range {
+  font-size: 11px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.7);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rt-card-clip-delete {
+  width: 26px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
   border-radius: 6px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.3);
+  cursor: pointer;
+  transition: all 0.15s;
+  flex-shrink: 0;
 }
 
-.rt-btn-danger {
+.rt-card-clip-delete:hover {
+  background: rgba(255, 60, 80, 0.15);
   color: var(--red);
-}
-
-.rt-btn-danger:hover {
-  background: rgba(255, 80, 80, 0.1);
 }
 
 /* ── Mobile Hamburger (shown only ≤920px) ── */
@@ -9311,54 +9358,5 @@ body.sidebar-expanded .vod-player-view {
   font-size: 12px;
   font-weight: 600;
   color: var(--green);
-}
-
-/* ── VOD card hover overlay ────────────────────────────────── */
-.rt-card-hover-overlay {
-  position: absolute;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.65);
-  backdrop-filter: blur(2px);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-  opacity: 0;
-  transition: opacity 0.18s ease;
-  pointer-events: none;
-  z-index: 5;
-  border-radius: 12px;
-}
-
-.rt-card:hover .rt-card-hover-overlay {
-  opacity: 1;
-  pointer-events: auto;
-}
-
-.rt-card-hover-btn {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 14px;
-  border-radius: 8px;
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  background: rgba(0, 0, 0, 0.5);
-  color: #fff;
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background 0.15s, border-color 0.15s;
-  white-space: nowrap;
-}
-
-.rt-card-hover-btn:hover {
-  background: rgba(0, 243, 255, 0.2);
-  border-color: rgba(0, 243, 255, 0.5);
-}
-
-.rt-card-hover-btn.primary {
-  background: rgba(0, 243, 255, 0.25);
-  border-color: rgba(0, 243, 255, 0.5);
-  color: var(--cyan);
 }
 

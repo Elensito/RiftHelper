@@ -384,7 +384,7 @@ function PlayerTeamPanel({ team, teamLabel, isWinner, lang }) {
 
 /* ── Player ────────────────────────────────────────────────── */
 
-export default function VODPlayer({ vod, lang, onBack, puuid, summoner, showTeamsProp, highlight, startInClipEditor }) {
+export default function VODPlayer({ vod, lang, onBack, puuid, summoner, showTeamsProp, highlight }) {
   /* personal events need the puuid the backend used to flag is_player;
      fall back to the puuid stored in the VOD when no profile is loaded */
   const evPuuid = puuid || vod.puuid || ''
@@ -564,12 +564,6 @@ export default function VODPlayer({ vod, lang, onBack, puuid, summoner, showTeam
   useEffect(() => { setVideoError(false) }, [videoUrl])
 
   useEffect(() => {
-    if (startInClipEditor && hasVideoLive && duration > 0) {
-      openClipEditor()
-    }
-  }, [startInClipEditor, hasVideoLive])
-
-  useEffect(() => {
     if (showTeamsProp === false) setShowTeams(false)
   }, [showTeamsProp])
 
@@ -656,9 +650,14 @@ export default function VODPlayer({ vod, lang, onBack, puuid, summoner, showTeam
   const togglePlay = useCallback(() => {
     const vid = videoRef.current
     if (!vid) return
-    if (vid.paused || vid.ended) vid.play().then(() => setPlaying(true)).catch(() => {})
-    else { vid.pause(); setPlaying(false) }
-  }, [])
+    if (vid.paused || vid.ended) {
+      if (clipEditorOpen && clipStart != null && vid.currentTime < clipStart) {
+        vid.currentTime = clipStart
+        setCurrent(clipStart)
+      }
+      vid.play().then(() => setPlaying(true)).catch(() => {})
+    } else { vid.pause(); setPlaying(false) }
+  }, [clipEditorOpen, clipStart])
 
   /* Keyboard shortcuts: Space = play/pause, ←/→ = ±10s */
   const seek = useCallback((time) => {
