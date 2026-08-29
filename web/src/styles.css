@@ -8144,65 +8144,6 @@ body.sidebar-expanded .vod-player-view {
   pointer-events: auto;
 }
 
-.vod-seek {
-  position: relative;
-  height: 16px;
-  display: flex;
-  align-items: center;
-  cursor: pointer;
-  margin-bottom: 2px;
-}
-
-.vod-seek-rail {
-  width: 100%;
-  height: 4px;
-  border-radius: 2px;
-  background: rgba(255, 255, 255, 0.12);
-  overflow: visible;
-}
-
-.vod-seek-fill {
-  position: absolute;
-  left: 0;
-  top: 50%;
-  transform: translateY(-50%);
-  height: 4px;
-  border-radius: 2px;
-  background: linear-gradient(90deg, var(--cyan), var(--violet));
-  box-shadow: 0 0 10px rgba(0, 229, 255, 0.45);
-  pointer-events: none;
-}
-
-.vod-seek-thumb {
-  position: absolute;
-  top: 50%;
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  background: #fff;
-  border: 2px solid var(--cyan);
-  box-shadow: 0 0 10px rgba(0, 229, 255, 0.7);
-  transform: translate(-50%, -50%) scale(0.55);
-  transition: transform 0.15s ease;
-  pointer-events: none;
-}
-
-.vod-seek:hover .vod-seek-thumb {
-  transform: translate(-50%, -50%) scale(1);
-}
-
-.vod-clip-region {
-  position: absolute;
-  top: 50%;
-  transform: translateY(-50%);
-  height: 8px;
-  background: rgba(255, 45, 120, 0.25);
-  border: 1px solid rgba(255, 45, 120, 0.55);
-  border-radius: 3px;
-  pointer-events: none;
-  box-shadow: 0 0 10px rgba(255, 45, 120, 0.25);
-}
-
 .vod-deck-row {
   display: flex;
   align-items: center;
@@ -8277,7 +8218,6 @@ body.sidebar-expanded .vod-player-view {
   min-width: 36px;
 }
 
-/* (old flow-level timeline removed — seek bar now lives in .vod-deck) */
 
 .vod-speed-wrap {
   position: relative;
@@ -9115,256 +9055,263 @@ body.sidebar-expanded .vod-player-view {
   box-shadow: 0 0 8px var(--cyan);
 }
 
-/* ── Clip editor overlay ──────────────────────────────────── */
-.clip-editor-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.7);
-  z-index: 200;
+/* ── Inline clip bar (seek bar integration) ──────────────── */
+.vod-seek-bar-wrap {
+  padding: 6px 0 2px;
+  width: 100%;
+}
+
+.vod-seek-bar {
+  position: relative;
+  height: 18px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  touch-action: none;
+}
+
+.vod-seek-bar-bg {
+  width: 100%;
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.12);
+  position: relative;
+  overflow: visible;
+  transition: height 0.15s ease;
+}
+
+.vod-seek-bar:hover .vod-seek-bar-bg,
+.vod-seek-bar.clip-mode .vod-seek-bar-bg {
+  height: 6px;
+}
+
+.vod-seek-bar-played {
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  border-radius: 2px;
+  background: linear-gradient(90deg, var(--cyan), var(--violet));
+  box-shadow: 0 0 8px rgba(0, 229, 255, 0.4);
+  pointer-events: none;
+  transition: none;
+}
+
+.vod-seek-bar-clip-range {
+  position: absolute;
+  top: -1px; bottom: -1px;
+  background: rgba(255, 45, 120, 0.2);
+  border: 1px solid rgba(255, 45, 120, 0.55);
+  border-radius: 3px;
+  pointer-events: none;
+  box-shadow: 0 0 12px rgba(255, 45, 120, 0.25);
+}
+
+.vod-seek-scrubber {
+  position: absolute;
+  top: 50%;
+  width: 12px; height: 12px;
+  border-radius: 50%;
+  background: #fff;
+  border: 2px solid var(--cyan);
+  box-shadow: 0 0 8px rgba(0, 229, 255, 0.7);
+  transform: translate(-50%, -50%) scale(0.55);
+  transition: transform 0.15s ease;
+  pointer-events: none;
+}
+
+.vod-seek-bar:hover .vod-seek-scrubber {
+  transform: translate(-50%, -50%) scale(1);
+}
+
+.vod-seek-clip-handle {
+  position: absolute;
+  top: 50%;
+  width: 14px; height: 14px;
+  border-radius: 50%;
+  background: var(--red, #ff2d78);
+  border: 2px solid #fff;
+  box-shadow: 0 0 10px rgba(255, 45, 120, 0.6);
+  transform: translate(-50%, -50%);
+  cursor: ew-resize;
+  z-index: 2;
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+
+.vod-seek-clip-handle:hover,
+.vod-seek-clip-handle.active {
+  transform: translate(-50%, -50%) scale(1.35);
+  box-shadow: 0 0 16px rgba(255, 45, 120, 0.8);
+}
+
+.vod-seek-clip-handle-tip {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(10, 10, 18, 0.92);
+  border: 1px solid rgba(255, 45, 120, 0.45);
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--cyan);
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+
+.vod-seek-clip-handle:hover .vod-seek-clip-handle-tip,
+.vod-seek-clip-handle.active .vod-seek-clip-handle-tip {
+  opacity: 1;
+}
+
+/* Clip bar — inline controls below seek bar */
+.vod-clip-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px 8px;
+  background: rgba(10, 10, 18, 0.85);
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 0 0 10px 10px;
+  animation: vod-clip-bar-in 0.22s ease;
+}
+
+@keyframes vod-clip-bar-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.vod-clip-bar-times {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.vod-clip-bar-badge {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-variant-numeric: tabular-nums;
+}
+
+.vod-clip-bar-badge.start {
+  background: rgba(0, 229, 255, 0.12);
+  color: var(--cyan);
+  border: 1px solid rgba(0, 229, 255, 0.3);
+}
+
+.vod-clip-bar-badge.end {
+  background: rgba(255, 45, 120, 0.12);
+  color: var(--red, #ff2d78);
+  border: 1px solid rgba(255, 45, 120, 0.3);
+}
+
+.vod-clip-bar-sep {
+  color: rgba(255, 255, 255, 0.3);
+  font-size: 11px;
+}
+
+.vod-clip-bar-dur {
+  font-size: 10px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.45);
+  margin-left: 2px;
+}
+
+.vod-clip-bar-name {
+  flex: 1;
+  min-width: 0;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 5px;
+  padding: 4px 8px;
+  font-size: 11px;
+  color: var(--text);
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.vod-clip-bar-name:focus {
+  border-color: var(--cyan);
+}
+
+.vod-clip-bar-name::placeholder {
+  color: rgba(255, 255, 255, 0.3);
+}
+
+.vod-clip-bar-preview,
+.vod-clip-bar-save {
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 600;
+  transition: all 0.15s;
+  flex-shrink: 0;
+}
+
+.vod-clip-bar-preview {
+  width: 26px; height: 26px;
   display: flex;
   align-items: center;
   justify-content: center;
-  backdrop-filter: blur(4px);
-  animation: fadeIn 0.15s ease;
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.7);
+  padding: 0;
 }
 
-@keyframes fadeIn { from { opacity: 0 } to { opacity: 1 } }
-
-.clip-editor-panel {
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: 16px;
-  width: 520px;
-  max-width: 94vw;
-  max-height: 90vh;
-  overflow-y: auto;
-  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.5);
+.vod-clip-bar-preview:hover {
+  background: rgba(0, 229, 255, 0.15);
+  color: var(--cyan);
 }
 
-.clip-editor-header {
+.vod-clip-bar-save {
+  padding: 5px 12px;
+  background: linear-gradient(135deg, var(--cyan), var(--violet));
+  color: #000;
+}
+
+.vod-clip-bar-save:hover {
+  box-shadow: 0 0 12px rgba(0, 229, 255, 0.4);
+  transform: translateY(-1px);
+}
+
+.vod-clip-bar-save:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+.vod-clip-bar-success {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 16px 20px;
-  border-bottom: 1px solid var(--border);
+  width: 100%;
 }
 
-.clip-editor-header h3 {
-  flex: 1;
-  margin: 0;
-  font-size: 15px;
-  font-weight: 700;
-  color: var(--text);
-}
-
-.clip-editor-close {
-  background: none;
-  border: none;
-  color: var(--muted);
-  cursor: pointer;
-  padding: 4px;
-  border-radius: 6px;
-  transition: color 0.15s;
-}
-
-.clip-editor-close:hover { color: var(--text); }
-
-.clip-editor-body { padding: 20px; }
-
-/* Timeline range slider */
-.clip-editor-timeline {
-  margin-bottom: 16px;
-}
-
-.clip-editor-track {
-  position: relative;
-  height: 36px;
-  background: var(--bg-2);
-  border-radius: 8px;
+.vod-clip-bar-thumb {
+  width: 40px; height: 24px;
+  border-radius: 4px;
   overflow: hidden;
+  flex-shrink: 0;
+  border: 1px solid rgba(0, 229, 255, 0.3);
 }
 
-.clip-editor-range {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  background: rgba(0, 243, 255, 0.18);
-  border: 1px solid rgba(0, 243, 255, 0.4);
-  border-radius: 4px;
-  pointer-events: none;
-  z-index: 1;
-}
-
-.clip-editor-slider {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  -webkit-appearance: none;
-  appearance: none;
-  background: transparent;
-  pointer-events: none;
-  outline: none;
-  margin: 0;
-  z-index: 2;
-}
-
-.clip-editor-slider::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  appearance: none;
-  width: 16px;
-  height: 36px;
-  background: var(--cyan);
-  border: 2px solid var(--bg);
-  border-radius: 4px;
-  cursor: ew-resize;
-  pointer-events: auto;
-  box-shadow: 0 0 10px rgba(0, 243, 255, 0.5);
-}
-
-.clip-editor-slider::-moz-range-thumb {
-  width: 16px;
-  height: 36px;
-  background: var(--cyan);
-  border: 2px solid var(--bg);
-  border-radius: 4px;
-  cursor: ew-resize;
-  pointer-events: auto;
-  box-shadow: 0 0 10px rgba(0, 243, 255, 0.5);
-}
-
-/* Time display row */
-.clip-editor-times {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 16px;
-}
-
-.clip-editor-time-field {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.clip-editor-time-field label {
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--muted);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-
-.clip-editor-time-input {
-  background: var(--bg-2);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 8px 10px;
-  color: var(--text);
-  font-size: 14px;
-  font-weight: 600;
-  font-family: 'JetBrains Mono', monospace;
-  text-align: center;
-  outline: none;
-}
-
-.clip-editor-duration-badge {
-  background: rgba(0, 243, 255, 0.12);
-  border: 1px solid rgba(0, 243, 255, 0.3);
-  border-radius: 6px;
-  padding: 8px 12px;
-  color: var(--cyan);
-  font-size: 13px;
-  font-weight: 700;
-  font-family: 'JetBrains Mono', monospace;
-  white-space: nowrap;
-}
-
-/* Name input */
-.clip-editor-name-row {
-  margin-bottom: 12px;
-}
-
-.clip-editor-name-row label {
-  display: block;
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--muted);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  margin-bottom: 4px;
-}
-
-.clip-editor-name-input {
-  width: 100%;
-  background: var(--bg-2);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 10px 14px;
-  color: var(--text);
-  font-size: 14px;
-  outline: none;
-  transition: border-color 0.2s;
-  box-sizing: border-box;
-}
-
-.clip-editor-name-input:focus {
-  border-color: var(--cyan);
-  box-shadow: var(--glow-cyan);
-}
-
-.clip-editor-name-input::placeholder {
-  color: var(--muted);
-  opacity: 0.6;
-}
-
-.clip-editor-hint {
-  font-size: 12px;
-  color: var(--muted);
-  line-height: 1.5;
-  margin: 0 0 16px 0;
-}
-
-.clip-editor-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-}
-
-/* Success state */
-.clip-editor-success {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 12px;
-  padding: 20px 0;
-}
-
-.clip-editor-thumb-preview {
-  width: 280px;
-  aspect-ratio: 16 / 9;
-  border-radius: 10px;
-  overflow: hidden;
-  border: 2px solid rgba(0, 243, 255, 0.4);
-}
-
-.clip-editor-thumb-preview img {
-  width: 100%;
-  height: 100%;
+.vod-clip-bar-thumb img {
+  width: 100%; height: 100%;
   object-fit: cover;
 }
 
-.clip-editor-success-text {
-  font-size: 15px;
-  font-weight: 700;
+.vod-clip-bar-success-text {
+  flex: 1;
+  font-size: 12px;
+  font-weight: 600;
   color: var(--green);
-  margin: 0;
 }
-
-/* Clip button glow */
-.vod-clip-btn { transition: color 0.15s, background 0.15s; }
-.vod-clip-btn:hover { color: var(--cyan); background: rgba(0, 243, 255, 0.1); }
 
 /* ── VOD card hover overlay ────────────────────────────────── */
 .rt-card-hover-overlay {

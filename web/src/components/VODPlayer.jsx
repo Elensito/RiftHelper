@@ -390,7 +390,6 @@ export default function VODPlayer({ vod, lang, onBack, puuid, summoner, showTeam
   const evPuuid = puuid || vod.puuid || ''
   const videoRef = useRef(null)
   const canvasRef = useRef(null)
-  const seekRef = useRef(null)
 
   const [playing, setPlaying] = useState(false)
   const [currentTime, setCurrent] = useState(0)
@@ -406,6 +405,8 @@ export default function VODPlayer({ vod, lang, onBack, puuid, summoner, showTeam
   const [clipName, setClipName] = useState('')
   const [clipSaving, setClipSaving] = useState(false)
   const [clipReady, setClipReady] = useState(null)
+  const [clipDrag, setClipDrag] = useState(null)
+  const seekBarRef = useRef(null)
   const [showTeams, setShowTeams] = useState(showTeamsProp !== false)
   const [videoUrl, setVideoUrl] = useState(null)
   const [videoError, setVideoError] = useState(false)
@@ -689,21 +690,13 @@ export default function VODPlayer({ vod, lang, onBack, puuid, summoner, showTeam
     return () => window.removeEventListener('keydown', onKey)
   }, [togglePlay, seek])
 
-  const seekFromEvent = (e) => {
-    const el = seekRef.current
-    if (!el || !duration) return
-    const rect = el.getBoundingClientRect()
-    const p = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width))
-    seek(p * duration)
-  }
-
   const setSpeed = (rate) => {
     setPlaybackRate(rate)
     if (videoRef.current) videoRef.current.playbackRate = rate
     setShowSpeed(false)
   }
 
-  /* Clip editor */
+  /* Clip editor — inline on the seek bar */
   const openClipEditor = () => {
     const t = currentTime || 0
     setClipStart(t)
@@ -716,7 +709,49 @@ export default function VODPlayer({ vod, lang, onBack, puuid, summoner, showTeam
     setClipEditorOpen(false)
     setClipSaving(false)
     setClipReady(null)
+    setClipDrag(null)
   }
+
+  const seekBarTimeFromEvent = useCallback((e) => {
+    const el = seekBarRef.current
+    if (!el || !duration) return 0
+    const rect = el.getBoundingClientRect()
+    const p = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width))
+    return p * duration
+  }, [duration])
+
+  const onSeekBarClick = useCallback((e) => {
+    if (clipEditorOpen) return
+    seek(seekBarTimeFromEvent(e))
+  }, [clipEditorOpen, seek, seekBarTimeFromEvent])
+
+  /* Clip handle dragging */
+  const startClipDrag = useCallback((handle, e) => {
+    e.stopPropagation()
+    e.preventDefault()
+    setClipDrag(handle)
+  }, [])
+
+  useEffect(() => {
+    if (!clipDrag) return
+    const onMove = (e) => {
+      const t = seekBarTimeFromEvent(e)
+      if (clipDrag === 'start') {
+        setClipStart(Math.max(0, Math.min(t, (clipEnd || duration) - 0.5)))
+      } else if (clipDrag === 'end') {
+        setClipEnd(Math.min(duration, Math.max(t, (clipStart || 0) + 0.5)))
+      }
+    }
+    const onUp = () => setClipDrag(null)
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+    return () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp) }
+  }, [clipDrag, clipStart, clipEnd, duration, seekBarTimeFromEvent])
+
+  /* Preview the clip region: seek to start when handles change */
+  const previewClipRegion = useCallback(() => {
+    if (clipStart !== null) seek(clipStart)
+  }, [clipStart, seek])
 
   const saveClipToLibrary = async () => {
     if (clipStart === null || clipEnd === null || clipStart >= clipEnd) return
@@ -991,8 +1026,8 @@ export default function VODPlayer({ vod, lang, onBack, puuid, summoner, showTeam
                     )}
                   </div>
 
-                  <button className="vod-ctrl-btn vod-clip-btn" onClick={openClipEditor} title={t(lang, 'clipEditor')}>
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <button className="vod-ctrl-btn vod-clip-btn" onClick={clipEditorOpen ? closeClipEditor : openClipEditor} title={t(lang, 'clipEditor')}>
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={clipEditorOpen ? 'var(--cyan)' : 'currentColor'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                       <circle cx="6" cy="6" r="3" />
                       <circle cx="6" cy="18" r="3" />
                       <line x1="20" y1="4" x2="8.12" y2="15.88" />
@@ -1007,6 +1042,93 @@ export default function VODPlayer({ vod, lang, onBack, puuid, summoner, showTeam
                     </svg>
                   </button>
                 </div>
+
+                {/* Progress / seek bar with inline clip range */}
+                <div className="vod-seek-bar-wrap">
+                  <div
+                    ref={seekBarRef}
+                    className={`vod-seek-bar ${clipEditorOpen ? 'clip-mode' : ''}`}
+                    onClick={(e) => { e.stopPropagation(); onSeekBarClick(e) }}
+                  >
+                    <div className="vod-seek-bar-bg">
+                      <div className="vod-seek-bar-played" style={{ width: `${duration ? (currentTime / duration) * 100 : 0}%` }} />
+                      {clipEditorOpen && clipStart !== null && clipEnd !== null && (
+                        <div
+                          className="vod-seek-bar-clip-range"
+                          style={{
+                            left: `${(clipStart / duration) * 100}%`,
+                            width: `${((clipEnd - clipStart) / duration) * 100}%`,
+                          }}
+                        />
+                      )}
+                    </div>
+                    {clipEditorOpen && clipStart !== null && (
+                      <div
+                        className="vod-seek-clip-handle start"
+                        style={{ left: `${(clipStart / duration) * 100}%` }}
+                        onMouseDown={(e) => startClipDrag('start', e)}
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <span className="vod-seek-clip-handle-tip">{fmt(clipStart)}</span>
+                      </div>
+                    )}
+                    {clipEditorOpen && clipEnd !== null && (
+                      <div
+                        className="vod-seek-clip-handle end"
+                        style={{ left: `${(clipEnd / duration) * 100}%` }}
+                        onMouseDown={(e) => startClipDrag('end', e)}
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <span className="vod-seek-clip-handle-tip">{fmt(clipEnd)}</span>
+                      </div>
+                    )}
+                    {!clipEditorOpen && (
+                      <div className="vod-seek-scrubber" style={{ left: `${duration ? (currentTime / duration) * 100 : 0}%` }} />
+                    )}
+                  </div>
+                </div>
+
+                {/* Clip bar — name input + save/cancel (only when clip editor is open) */}
+                {clipEditorOpen && (
+                  <div className="vod-clip-bar" onClick={(e) => e.stopPropagation()}>
+                    {clipReady ? (
+                      <div className="vod-clip-bar-success">
+                        <div className="vod-clip-bar-thumb">
+                          <img src={clipReady} alt="" />
+                        </div>
+                        <span className="vod-clip-bar-success-text">{t(lang, 'clipSavedToast')}</span>
+                        <button className="rt-btn rt-btn-ghost rt-btn-sm" onClick={closeClipEditor}>{t(lang, 'close')}</button>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="vod-clip-bar-times">
+                          <span className="vod-clip-bar-badge start">{fmt(clipStart || 0)}</span>
+                          <span className="vod-clip-bar-sep">→</span>
+                          <span className="vod-clip-bar-badge end">{fmt(clipEnd || 0)}</span>
+                          <span className="vod-clip-bar-dur">{fmt((clipEnd || 0) - (clipStart || 0))}</span>
+                        </div>
+                        <input
+                          className="vod-clip-bar-name"
+                          type="text"
+                          placeholder={t(lang, 'clipNamePlaceholder')}
+                          value={clipName}
+                          onChange={(e) => setClipName(e.target.value)}
+                          maxLength={80}
+                        />
+                        <button className="vod-clip-bar-preview" onClick={previewClipRegion} title={t(lang, 'clipPreview')}>
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3" /></svg>
+                        </button>
+                        <button
+                          className="vod-clip-bar-save"
+                          onClick={saveClipToLibrary}
+                          disabled={clipSaving || !clipStart || !clipEnd || clipStart >= clipEnd || !vod.videoPath}
+                        >
+                          {clipSaving ? t(lang, 'clipSaving') : t(lang, 'saveClip')}
+                        </button>
+                      </>
+                    )}
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -1063,118 +1185,6 @@ export default function VODPlayer({ vod, lang, onBack, puuid, summoner, showTeam
         />
       )}
 
-      {clipEditorOpen && (
-        <div className="clip-editor-overlay" onClick={closeClipEditor}>
-          <div className="clip-editor-panel" onClick={(e) => e.stopPropagation()}>
-            <div className="clip-editor-header">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--cyan)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="6" cy="6" r="3" />
-                <circle cx="6" cy="18" r="3" />
-                <line x1="20" y1="4" x2="8.12" y2="15.88" />
-                <line x1="14.47" y1="14.48" x2="20" y2="20" />
-                <line x1="8.12" y1="8.12" x2="12" y2="12" />
-              </svg>
-              <h3>{t(lang, 'clipEditor')}</h3>
-              <button className="clip-editor-close" onClick={closeClipEditor}>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-                </svg>
-              </button>
-            </div>
-
-            <div className="clip-editor-body">
-              {clipReady ? (
-                <div className="clip-editor-success">
-                  <div className="clip-editor-thumb-preview">
-                    <img src={clipReady} alt="" />
-                  </div>
-                  <p className="clip-editor-success-text">{t(lang, 'clipSavedToast')}</p>
-                  <button className="rt-btn rt-btn-primary rt-btn-sm" onClick={closeClipEditor}>{t(lang, 'close')}</button>
-                </div>
-              ) : (
-                <>
-                  <div className="clip-editor-timeline">
-                    <div className="clip-editor-track">
-                      <div
-                        className="clip-editor-range"
-                        style={{
-                          left: `${(clipStart / duration) * 100}%`,
-                          width: `${((clipEnd - clipStart) / duration) * 100}%`,
-                        }}
-                      />
-                      <input
-                        type="range" className="clip-editor-slider clip-editor-slider-start"
-                        min={0} max={duration} step={0.1}
-                        value={clipStart || 0}
-                        onChange={(e) => {
-                          const v = Math.min(parseFloat(e.target.value), clipEnd - 0.5)
-                          setClipStart(Math.max(0, v))
-                        }}
-                      />
-                      <input
-                        type="range" className="clip-editor-slider clip-editor-slider-end"
-                        min={0} max={duration} step={0.1}
-                        value={clipEnd || 0}
-                        onChange={(e) => {
-                          const v = Math.max(parseFloat(e.target.value), clipStart + 0.5)
-                          setClipEnd(Math.min(duration, v))
-                        }}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="clip-editor-times">
-                    <div className="clip-editor-time-field">
-                      <label>{t(lang, 'clipStartLabel')}</label>
-                      <input
-                        type="text" className="clip-editor-time-input"
-                        value={fmt(clipStart || 0)}
-                        readOnly
-                      />
-                    </div>
-                    <div className="clip-editor-duration-badge">
-                      {fmt((clipEnd || 0) - (clipStart || 0))}
-                    </div>
-                    <div className="clip-editor-time-field">
-                      <label>{t(lang, 'clipEndLabel')}</label>
-                      <input
-                        type="text" className="clip-editor-time-input"
-                        value={fmt(clipEnd || 0)}
-                        readOnly
-                      />
-                    </div>
-                  </div>
-
-                  <div className="clip-editor-name-row">
-                    <label>{t(lang, 'clipName')}</label>
-                    <input
-                      className="clip-editor-name-input"
-                      type="text"
-                      placeholder={t(lang, 'clipNamePlaceholder')}
-                      value={clipName}
-                      onChange={(e) => setClipName(e.target.value)}
-                      maxLength={80}
-                    />
-                  </div>
-
-                  <p className="clip-editor-hint">{t(lang, 'clipEditorHint')}</p>
-
-                  <div className="clip-editor-actions">
-                    <button className="rt-btn rt-btn-ghost rt-btn-sm" onClick={closeClipEditor}>{t(lang, 'cancel')}</button>
-                    <button
-                      className="rt-btn rt-btn-primary"
-                      onClick={saveClipToLibrary}
-                      disabled={clipSaving || !clipStart || !clipEnd || clipStart >= clipEnd || !vod.videoPath}
-                    >
-                      {clipSaving ? t(lang, 'clipSaving') : t(lang, 'saveClip')}
-                    </button>
-                  </div>
-                </>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   )
 }
