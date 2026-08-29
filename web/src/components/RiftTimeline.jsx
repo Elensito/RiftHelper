@@ -2,7 +2,7 @@
 import { t } from '../i18n.js'
 import { isTauri, showInFolder, getAudioMode, vodThumbUrl, getDiskUsage, readVodEvents } from '../tauri.js'
 import { deleteRecordingBlob } from '../video-recorder.js'
-import { deleteVodFiles } from '../tauri.js'
+import { deleteVodFiles, exportHighlightCopy } from '../tauri.js'
 import { computeHighlights, highlightId } from '../highlights.js'
 
 const VOD_STORAGE_KEY = 'rh-vods'
@@ -70,19 +70,22 @@ function buildHlCards(store, vods, hlHidden) {
     .map(id => {
       const e = store[id]
       const vod = vodMap.get(e.vodId)
-      const hasVideo = !!(vod && vod.hasVideo && vod.videoPath)
+      const hasClip = !!e.clipPath
+      const vodPath = hasClip ? e.clipPath : (vod && vod.videoPath)
+      const hasVideo = hasClip || !!(vod && vod.hasVideo && vod.videoPath)
       return {
-        key: id,
+        key: hasClip ? `${id}::clip` : id,
         id,
         hl: e.hl,
         hasVideo,
         vod: {
-          id: e.vodId,
+          id: hasClip ? `${e.vodId}::clip` : e.vodId,
           champion: e.champion,
           championIcon: e.championIcon,
           date: e.date,
           queue: e.queue,
-          videoPath: vod ? vod.videoPath : null,
+          hasVideo,
+          videoPath: vodPath,
         },
       }
     })
@@ -309,8 +312,9 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
     return () => { dead = true }
   }, [subTab, vods, hlHidden, lang, settings.autoHighlights])
 
-  const toggleHlFavorite = useCallback((id, e) => {
+  const toggleHlFavorite = useCallback((id, e, hlItem) => {
     if (e) e.stopPropagation()
+    const currentlyFav = hlFav.has(id)
     setHlFav(prev => {
       const next = new Set(prev)
       if (next.has(id)) next.delete(id)
@@ -318,7 +322,24 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
       localStorage.setItem(HL_FAV_KEY, JSON.stringify([...next]))
       return next
     })
-  }, [])
+    if (!currentlyFav) {
+      ;(async () => {
+        const store = loadHlStore()
+        const entry = store[id]
+        if (!entry || entry.clipPath || !hlItem) return
+        const src = hlItem.vod && hlItem.vod.videoPath
+        if (!src) return
+        const clipPath = await exportHighlightCopy(src)
+        if (!clipPath) return
+        const st2 = loadHlStore()
+        if (st2[id]) {
+          st2[id].clipPath = clipPath
+          saveHlStore(st2)
+          setHlStore(st2)
+        }
+      })()
+    }
+  }, [hlFav])
 
   const hideHighlight = useCallback((id, e) => {
     if (e) e.stopPropagation()
@@ -629,7 +650,7 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
                         )}
                         <button
                           className={`rt-card-fav ${fav ? 'active' : ''}`}
-                          onClick={(e) => toggleHlFavorite(h.id, e)}
+                          onClick={(e) => toggleHlFavorite(h.id, e, h)}
                           title={fav ? t(lang, 'removeFavorite') : t(lang, 'addFavorite')}
                         >
                           <svg width="16" height="16" viewBox="0 0 24 24" fill={fav ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

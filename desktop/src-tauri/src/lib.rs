@@ -903,6 +903,41 @@ fn default_recordings_folder() -> String {
         .to_string()
 }
 
+/* Persist a highlight: copy the source VOD video file into a dedicated
+   `highlights/` folder so the highlight stays playable even after the original
+   VOD is deleted. Returns the new (absolute) file path, or NULL if the source
+   could not be copied. */
+#[tauri::command]
+async fn export_highlight_copy(
+    app: tauri::AppHandle,
+    video_path: String,
+) -> Result<Option<String>, String> {
+    let cfg = read_config(&app);
+    let recordings = cfg
+        .get("recordingsFolder")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string())
+        .unwrap_or_else(default_recordings_folder);
+    let hl_dir = std::path::Path::new(&recordings).join("highlights");
+    std::fs::create_dir_all(&hl_dir).map_err(|e| format!("create_dir_all: {e}"))?;
+
+    let src = std::path::Path::new(&video_path);
+    if !src.exists() {
+        return Ok(None);
+    }
+    let file_name = src
+        .file_name()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_else(|| format!("hl_{}.mp4", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)));
+
+    let stage = format!("hl_{}_{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis()).unwrap_or(0), file_name);
+    let dest = hl_dir.join(&stage);
+    if std::fs::copy(src, &dest).is_err() {
+        return Ok(None);
+    }
+    Ok(Some(dest.to_string_lossy().to_string()))
+}
+
 #[tauri::command]
 async fn set_recordings_folder(app: tauri::AppHandle, folder: String) -> Result<(), String> {
     let mut cfg = read_config(&app);
@@ -1977,6 +2012,7 @@ pub fn run() {
             get_recordings_folder,
             set_recordings_folder,
             select_recordings_folder,
+            export_highlight_copy,
             get_auto_record,
             set_auto_record,
             get_audio_mode,
