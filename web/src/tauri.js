@@ -399,3 +399,9 @@ export async function localFileSrc(path) {
     return convertFileSrc(path)
   } catch { return '' }
 }
+
+export async function createManualClip(videoPath, startSec, endSec, name) {
+  if (!isTauri() || !videoPath) return null
+  const { invoke } = await import('@tauri-apps/api/core')
+  try { return await invoke('create_manual_clip', { videoPath, startSec, endSec, name }) } catch { return null }
+}

@@ -9115,3 +9115,303 @@ body.sidebar-expanded .vod-player-view {
   box-shadow: 0 0 8px var(--cyan);
 }
 
+/* ── Clip editor overlay ──────────────────────────────────── */
+.clip-editor-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.7);
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(4px);
+  animation: fadeIn 0.15s ease;
+}
+
+@keyframes fadeIn { from { opacity: 0 } to { opacity: 1 } }
+
+.clip-editor-panel {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  width: 520px;
+  max-width: 94vw;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.5);
+}
+
+.clip-editor-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.clip-editor-header h3 {
+  flex: 1;
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.clip-editor-close {
+  background: none;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 6px;
+  transition: color 0.15s;
+}
+
+.clip-editor-close:hover { color: var(--text); }
+
+.clip-editor-body { padding: 20px; }
+
+/* Timeline range slider */
+.clip-editor-timeline {
+  margin-bottom: 16px;
+}
+
+.clip-editor-track {
+  position: relative;
+  height: 36px;
+  background: var(--bg-2);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.clip-editor-range {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: rgba(0, 243, 255, 0.18);
+  border: 1px solid rgba(0, 243, 255, 0.4);
+  border-radius: 4px;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.clip-editor-slider {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+  pointer-events: none;
+  outline: none;
+  margin: 0;
+  z-index: 2;
+}
+
+.clip-editor-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 36px;
+  background: var(--cyan);
+  border: 2px solid var(--bg);
+  border-radius: 4px;
+  cursor: ew-resize;
+  pointer-events: auto;
+  box-shadow: 0 0 10px rgba(0, 243, 255, 0.5);
+}
+
+.clip-editor-slider::-moz-range-thumb {
+  width: 16px;
+  height: 36px;
+  background: var(--cyan);
+  border: 2px solid var(--bg);
+  border-radius: 4px;
+  cursor: ew-resize;
+  pointer-events: auto;
+  box-shadow: 0 0 10px rgba(0, 243, 255, 0.5);
+}
+
+/* Time display row */
+.clip-editor-times {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.clip-editor-time-field {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.clip-editor-time-field label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.clip-editor-time-input {
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 600;
+  font-family: 'JetBrains Mono', monospace;
+  text-align: center;
+  outline: none;
+}
+
+.clip-editor-duration-badge {
+  background: rgba(0, 243, 255, 0.12);
+  border: 1px solid rgba(0, 243, 255, 0.3);
+  border-radius: 6px;
+  padding: 8px 12px;
+  color: var(--cyan);
+  font-size: 13px;
+  font-weight: 700;
+  font-family: 'JetBrains Mono', monospace;
+  white-space: nowrap;
+}
+
+/* Name input */
+.clip-editor-name-row {
+  margin-bottom: 12px;
+}
+
+.clip-editor-name-row label {
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 4px;
+}
+
+.clip-editor-name-input {
+  width: 100%;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 14px;
+  color: var(--text);
+  font-size: 14px;
+  outline: none;
+  transition: border-color 0.2s;
+  box-sizing: border-box;
+}
+
+.clip-editor-name-input:focus {
+  border-color: var(--cyan);
+  box-shadow: var(--glow-cyan);
+}
+
+.clip-editor-name-input::placeholder {
+  color: var(--muted);
+  opacity: 0.6;
+}
+
+.clip-editor-hint {
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.5;
+  margin: 0 0 16px 0;
+}
+
+.clip-editor-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+/* Success state */
+.clip-editor-success {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 20px 0;
+}
+
+.clip-editor-thumb-preview {
+  width: 280px;
+  aspect-ratio: 16 / 9;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 2px solid rgba(0, 243, 255, 0.4);
+}
+
+.clip-editor-thumb-preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.clip-editor-success-text {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--green);
+  margin: 0;
+}
+
+/* Clip button glow */
+.vod-clip-btn { transition: color 0.15s, background 0.15s; }
+.vod-clip-btn:hover { color: var(--cyan); background: rgba(0, 243, 255, 0.1); }
+
+/* ── VOD card hover overlay ────────────────────────────────── */
+.rt-card-hover-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.65);
+  backdrop-filter: blur(2px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  opacity: 0;
+  transition: opacity 0.18s ease;
+  pointer-events: none;
+  z-index: 5;
+  border-radius: 12px;
+}
+
+.rt-card:hover .rt-card-hover-overlay {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.rt-card-hover-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(0, 0, 0, 0.5);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+  white-space: nowrap;
+}
+
+.rt-card-hover-btn:hover {
+  background: rgba(0, 243, 255, 0.2);
+  border-color: rgba(0, 243, 255, 0.5);
+}
+
+.rt-card-hover-btn.primary {
+  background: rgba(0, 243, 255, 0.25);
+  border-color: rgba(0, 243, 255, 0.5);
+  color: var(--cyan);
+}
+

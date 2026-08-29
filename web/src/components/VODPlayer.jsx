@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react'
 import { t } from '../i18n.js'
 import Img from './Img.jsx'
-import { isTauri, readVodEvents, verifyVod, deleteVodFiles } from '../tauri.js'
+import { isTauri, readVodEvents, verifyVod, deleteVodFiles, createManualClip, localFileSrc } from '../tauri.js'
 import { fetchMatchEvents } from '../api.js'
 import { retryPendingMatches, loadVodsRaw, saveVodsRaw } from '../match-resolver.js'
 
@@ -384,7 +384,7 @@ function PlayerTeamPanel({ team, teamLabel, isWinner, lang }) {
 
 /* ── Player ────────────────────────────────────────────────── */
 
-export default function VODPlayer({ vod, lang, onBack, puuid, summoner, showTeamsProp, highlight }) {
+export default function VODPlayer({ vod, lang, onBack, puuid, summoner, showTeamsProp, highlight, startInClipEditor }) {
   /* personal events need the puuid the backend used to flag is_player;
      fall back to the puuid stored in the VOD when no profile is loaded */
   const evPuuid = puuid || vod.puuid || ''
@@ -402,6 +402,10 @@ export default function VODPlayer({ vod, lang, onBack, puuid, summoner, showTeam
   const [clipping, setClipping] = useState(false)
   const [clipStart, setClipStart] = useState(null)
   const [clipEnd, setClipEnd] = useState(null)
+  const [clipEditorOpen, setClipEditorOpen] = useState(false)
+  const [clipName, setClipName] = useState('')
+  const [clipSaving, setClipSaving] = useState(false)
+  const [clipReady, setClipReady] = useState(null)
   const [showTeams, setShowTeams] = useState(showTeamsProp !== false)
   const [videoUrl, setVideoUrl] = useState(null)
   const [videoError, setVideoError] = useState(false)
@@ -559,6 +563,12 @@ export default function VODPlayer({ vod, lang, onBack, puuid, summoner, showTeam
   useEffect(() => { setVideoError(false) }, [videoUrl])
 
   useEffect(() => {
+    if (startInClipEditor && hasVideoLive && duration > 0) {
+      openClipEditor()
+    }
+  }, [startInClipEditor, hasVideoLive])
+
+  useEffect(() => {
     if (showTeamsProp === false) setShowTeams(false)
   }, [showTeamsProp])
 
@@ -693,26 +703,53 @@ export default function VODPlayer({ vod, lang, onBack, puuid, summoner, showTeam
     setShowSpeed(false)
   }
 
-  /* Clip helpers */
-  const startClip = () => { setClipping(true); setClipStart(currentTime); setClipEnd(null) }
-  const endClip = () => { setClipping(false); setClipEnd(currentTime) }
-  const clearClip = () => { setClipping(false); setClipStart(null); setClipEnd(null) }
+  /* Clip editor */
+  const openClipEditor = () => {
+    const t = currentTime || 0
+    setClipStart(t)
+    setClipEnd(Math.min(t + 30, duration))
+    setClipName('')
+    setClipReady(null)
+    setClipEditorOpen(true)
+  }
+  const closeClipEditor = () => {
+    setClipEditorOpen(false)
+    setClipSaving(false)
+    setClipReady(null)
+  }
 
-  const createClip = async () => {
-    if (clipStart === null || clipEnd === null) return
-    const clip = {
-      id: `clip-${Date.now()}`,
-      vodId: vod.id,
-      start: Math.min(clipStart, clipEnd),
-      end: Math.max(clipStart, clipEnd),
-      date: Date.now(),
-    }
+  const saveClipToLibrary = async () => {
+    if (clipStart === null || clipEnd === null || clipStart >= clipEnd) return
+    setClipSaving(true)
     try {
-      const stored = JSON.parse(localStorage.getItem('rh-clips') || '[]')
-      stored.push(clip)
-      localStorage.setItem('rh-clips', JSON.stringify(stored))
+      const result = await createManualClip(
+        vod.videoPath,
+        Math.max(0, clipStart),
+        Math.min(clipEnd, duration),
+        clipName || 'clip'
+      )
+      if (result && result.path) {
+        try {
+          const thumbUrl = result.thumb ? (await localFileSrc(result.thumb)) || '' : ''
+          const existing = JSON.parse(localStorage.getItem('rh-clips') || '[]')
+          const clip = {
+            id: `clip-${Date.now()}`,
+            vodId: vod.id,
+            start: Math.max(0, clipStart),
+            end: Math.min(clipEnd, duration),
+            date: Date.now(),
+            name: clipName || '',
+            path: result.path,
+            thumb: thumbUrl,
+          }
+          existing.unshift(clip)
+          localStorage.setItem('rh-clips', JSON.stringify(existing))
+          window.dispatchEvent(new Event('rh-clips-changed'))
+          setClipReady(thumbUrl)
+        } catch {}
+      }
     } catch {}
-    clearClip()
+    setClipSaving(false)
   }
 
   const downloadVod = () => {
@@ -954,47 +991,15 @@ export default function VODPlayer({ vod, lang, onBack, puuid, summoner, showTeam
                     )}
                   </div>
 
-                  {clipping ? (
-                    <button className="vod-ctrl-btn vod-clip-active" onClick={endClip} title={t(lang, 'setClipEnd')}>
-                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--pink)" strokeWidth="2">
-                        <circle cx="6" cy="6" r="3" />
-                        <circle cx="6" cy="18" r="3" />
-                        <line x1="20" y1="4" x2="8.12" y2="15.88" />
-                        <line x1="14.47" y1="14.48" x2="20" y2="20" />
-                        <line x1="8.12" y1="8.12" x2="12" y2="12" />
-                      </svg>
-                      {clipEnd === null && <span className="clip-pulse" />}
-                    </button>
-                  ) : (
-                    <button className="vod-ctrl-btn" onClick={startClip} title={t(lang, 'createClip')}>
-                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <circle cx="6" cy="6" r="3" />
-                        <circle cx="6" cy="18" r="3" />
-                        <line x1="20" y1="4" x2="8.12" y2="15.88" />
-                        <line x1="14.47" y1="14.48" x2="20" y2="20" />
-                        <line x1="8.12" y1="8.12" x2="12" y2="12" />
-                      </svg>
-                    </button>
-                  )}
-
-                  {clipStart !== null && clipEnd !== null && (
-                    <button className="vod-ctrl-btn vod-clip-save" onClick={createClip} title={t(lang, 'saveClip')}>
-                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--green)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
-                        <polyline points="17 21 17 13 7 13 7 21" />
-                        <polyline points="7 3 7 8 15 8" />
-                      </svg>
-                    </button>
-                  )}
-
-                  {(clipStart !== null || clipEnd !== null) && (
-                    <button className="vod-ctrl-btn" onClick={clearClip} title={t(lang, 'clearClip')}>
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--red)" strokeWidth="2">
-                        <line x1="18" y1="6" x2="6" y2="18" />
-                        <line x1="6" y1="6" x2="18" y2="18" />
-                      </svg>
-                    </button>
-                  )}
+                  <button className="vod-ctrl-btn vod-clip-btn" onClick={openClipEditor} title={t(lang, 'clipEditor')}>
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <circle cx="6" cy="6" r="3" />
+                      <circle cx="6" cy="18" r="3" />
+                      <line x1="20" y1="4" x2="8.12" y2="15.88" />
+                      <line x1="14.47" y1="14.48" x2="20" y2="20" />
+                      <line x1="8.12" y1="8.12" x2="12" y2="12" />
+                    </svg>
+                  </button>
 
                   <button className="vod-ctrl-btn" onClick={(e) => { e.stopPropagation(); toggleFullscreen() }} title={t(lang, 'fullscreen')}>
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -1056,6 +1061,119 @@ export default function VODPlayer({ vod, lang, onBack, puuid, summoner, showTeam
           localData={localEvents}
           gameTimeOffset={mv.gameTimeOffset || 0}
         />
+      )}
+
+      {clipEditorOpen && (
+        <div className="clip-editor-overlay" onClick={closeClipEditor}>
+          <div className="clip-editor-panel" onClick={(e) => e.stopPropagation()}>
+            <div className="clip-editor-header">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--cyan)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="6" cy="6" r="3" />
+                <circle cx="6" cy="18" r="3" />
+                <line x1="20" y1="4" x2="8.12" y2="15.88" />
+                <line x1="14.47" y1="14.48" x2="20" y2="20" />
+                <line x1="8.12" y1="8.12" x2="12" y2="12" />
+              </svg>
+              <h3>{t(lang, 'clipEditor')}</h3>
+              <button className="clip-editor-close" onClick={closeClipEditor}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="clip-editor-body">
+              {clipReady ? (
+                <div className="clip-editor-success">
+                  <div className="clip-editor-thumb-preview">
+                    <img src={clipReady} alt="" />
+                  </div>
+                  <p className="clip-editor-success-text">{t(lang, 'clipSavedToast')}</p>
+                  <button className="rt-btn rt-btn-primary rt-btn-sm" onClick={closeClipEditor}>{t(lang, 'close')}</button>
+                </div>
+              ) : (
+                <>
+                  <div className="clip-editor-timeline">
+                    <div className="clip-editor-track">
+                      <div
+                        className="clip-editor-range"
+                        style={{
+                          left: `${(clipStart / duration) * 100}%`,
+                          width: `${((clipEnd - clipStart) / duration) * 100}%`,
+                        }}
+                      />
+                      <input
+                        type="range" className="clip-editor-slider clip-editor-slider-start"
+                        min={0} max={duration} step={0.1}
+                        value={clipStart || 0}
+                        onChange={(e) => {
+                          const v = Math.min(parseFloat(e.target.value), clipEnd - 0.5)
+                          setClipStart(Math.max(0, v))
+                        }}
+                      />
+                      <input
+                        type="range" className="clip-editor-slider clip-editor-slider-end"
+                        min={0} max={duration} step={0.1}
+                        value={clipEnd || 0}
+                        onChange={(e) => {
+                          const v = Math.max(parseFloat(e.target.value), clipStart + 0.5)
+                          setClipEnd(Math.min(duration, v))
+                        }}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="clip-editor-times">
+                    <div className="clip-editor-time-field">
+                      <label>{t(lang, 'clipStartLabel')}</label>
+                      <input
+                        type="text" className="clip-editor-time-input"
+                        value={fmt(clipStart || 0)}
+                        readOnly
+                      />
+                    </div>
+                    <div className="clip-editor-duration-badge">
+                      {fmt((clipEnd || 0) - (clipStart || 0))}
+                    </div>
+                    <div className="clip-editor-time-field">
+                      <label>{t(lang, 'clipEndLabel')}</label>
+                      <input
+                        type="text" className="clip-editor-time-input"
+                        value={fmt(clipEnd || 0)}
+                        readOnly
+                      />
+                    </div>
+                  </div>
+
+                  <div className="clip-editor-name-row">
+                    <label>{t(lang, 'clipName')}</label>
+                    <input
+                      className="clip-editor-name-input"
+                      type="text"
+                      placeholder={t(lang, 'clipNamePlaceholder')}
+                      value={clipName}
+                      onChange={(e) => setClipName(e.target.value)}
+                      maxLength={80}
+                    />
+                  </div>
+
+                  <p className="clip-editor-hint">{t(lang, 'clipEditorHint')}</p>
+
+                  <div className="clip-editor-actions">
+                    <button className="rt-btn rt-btn-ghost rt-btn-sm" onClick={closeClipEditor}>{t(lang, 'cancel')}</button>
+                    <button
+                      className="rt-btn rt-btn-primary"
+                      onClick={saveClipToLibrary}
+                      disabled={clipSaving || !clipStart || !clipEnd || clipStart >= clipEnd || !vod.videoPath}
+                    >
+                      {clipSaving ? t(lang, 'clipSaving') : t(lang, 'saveClip')}
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )

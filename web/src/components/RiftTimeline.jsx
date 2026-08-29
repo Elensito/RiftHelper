@@ -143,7 +143,7 @@ function VodThumb({ vod }) {
 
 export { loadVods, saveVods, loadSettings, saveSettings, VOD_STORAGE_KEY, VOD_SETTINGS_KEY }
 
-export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTabChange, onDelete, onSeekTo, onOpenHighlight }) {
+export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTabChange, onDelete, onSeekTo, onOpenHighlight, onOpenClipEditor }) {
   const [vods, setVods] = useState(loadVods)
   const [clips, setClips] = useState(() => {
     try { return JSON.parse(localStorage.getItem(CLIPS_STORAGE_KEY) || '[]') } catch { return [] }
@@ -518,7 +518,22 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
                     <span className="rt-card-date">{formatDate(vod.date)}</span>
                   </div>
                   <div className="rt-card-queue">{vod.queue || ''}</div>
-                </div>
+                  </div>
+                  <div className="rt-card-hover-overlay" onClick={(e) => e.stopPropagation()}>
+                    <button className="rt-card-hover-btn primary" onClick={() => onOpenVod(vod)}>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3" /></svg>
+                      {t(lang, 'watch')}
+                    </button>
+                    {vod.hasVideo && onOpenClipEditor && (
+                      <button className="rt-card-hover-btn" onClick={() => onOpenClipEditor(vod)}>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <circle cx="6" cy="6" r="3" /><circle cx="6" cy="18" r="3" />
+                          <line x1="20" y1="4" x2="8.12" y2="15.88" /><line x1="14.47" y1="14.48" x2="20" y2="20" /><line x1="8.12" y1="8.12" x2="12" y2="12" />
+                        </svg>
+                        {t(lang, 'clipEditor')}
+                      </button>
+                    )}
+                  </div>
               </div>
             ))}
           </div>

@@ -72,6 +72,7 @@ export default function App() {
 
   const [activeVod, setActiveVod] = useState(null)
   const [activeHighlight, setActiveHighlight] = useState(null)
+  const [openClipEditorNow, setOpenClipEditorNow] = useState(false)
   const [riftSubTab, setRiftSubTab] = useState('recordings')
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [isRecording, setIsRecording] = useState(false)
@@ -574,7 +575,7 @@ export default function App() {
       {view === 'rift-timeline' && activeVod ? (
         (() => {
           const isCompetitiveQueue = /solo|flex/i.test(activeVod.queue || '')
-          return <VODPlayer vod={activeVod} lang={lang} puuid={profile?.summoner?.puuid} summoner={profile?.summoner} onBack={() => { setActiveVod(null); setActiveHighlight(null) }} showTeamsProp={isCompetitiveQueue} highlight={activeHighlight} />
+          return <VODPlayer vod={activeVod} lang={lang} puuid={profile?.summoner?.puuid} summoner={profile?.summoner} onBack={() => { setActiveVod(null); setActiveHighlight(null); setOpenClipEditorNow(false) }} showTeamsProp={isCompetitiveQueue} highlight={activeHighlight} startInClipEditor={openClipEditorNow} />
         })()
       ) : view === 'rift-timeline' ? (
         <>
@@ -597,6 +598,7 @@ export default function App() {
             <RiftTimeline
               lang={lang}
               onOpenVod={(vod) => { setActiveVod(vod); setActiveHighlight(null) }}
+              onOpenClipEditor={(vod) => { setActiveVod(vod); setActiveHighlight(null); setOpenClipEditorNow(true) }}
               onOpenHighlight={(vod, hl) => { setActiveVod(vod); setActiveHighlight(hl) }}
               profile={profile}
               subTab={riftSubTab}

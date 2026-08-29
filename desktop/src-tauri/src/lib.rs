@@ -1275,9 +1275,69 @@ async fn export_highlight_copy(
 }
 
 #[tauri::command]
+async fn create_manual_clip(
+    app: tauri::AppHandle,
+    video_path: String,
+    start_sec: f64,
+    end_sec: f64,
+    name: String,
+) -> Result<Option<serde_json::Value>, String> {
+    let cfg = read_config(&app);
+    let recordings = cfg
+        .get("recordingsFolder")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string())
+        .unwrap_or_else(default_recordings_folder);
+    let clips_dir = std::path::Path::new(&recordings).join("clips");
+    let thumbs_dir = clips_dir.join("thumbnails");
+    std::fs::create_dir_all(&clips_dir).map_err(|e| format!("create_dir_all: {e}"))?;
+    std::fs::create_dir_all(&thumbs_dir).map_err(|e| format!("create_dir_all: {e}"))?;
+
+    let src = std::path::Path::new(&video_path);
+    if !src.exists() {
+        return Ok(None);
+    }
+    let safe_name: String = name
+        .chars()
+        .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' || c == ' ' { c } else { '_' })
+        .collect::<String>()
+        .trim()
+        .replace(' ', "_");
+    let safe_name = if safe_name.is_empty() { "clip".to_string() } else { safe_name };
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or(0);
+    let clip_path = clips_dir.join(format!("{safe_name}_{stamp}.mp4"));
+    let clip_str = clip_path.to_string_lossy().to_string();
+    let thumb_path = thumbs_dir.join(format!("{safe_name}_{stamp}.jpg"));
+    let thumb_str = thumb_path.to_string_lossy().to_string();
+
+    #[cfg(windows)]
+    {
+        if clip::cut_highlight(&video_path, &clip_str, start_sec, end_sec).is_err() {
+            if std::fs::copy(src, &clip_path).is_err() {
+                return Ok(None);
+            }
+        }
+        // Thumbnail at the very first second of the clip (second 1).
+        clip::extract_thumbnail(&clip_str, &thumb_str, 1.0).ok();
+        let thumb = if thumb_path.exists() { thumb_str.clone() } else { String::new() };
+        return Ok(Some(serde_json::json!({ "path": clip_str, "thumb": thumb })));
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = (start_sec, end_sec, &thumb_str);
+        if std::fs::copy(src, &clip_path).is_err() {
+            return Ok(None);
+        }
+        Ok(Some(serde_json::json!({ "path": clip_str, "thumb": "" })))
+    }
+}
+
+#[tauri::command]
 async fn set_recordings_folder(app: tauri::AppHandle, folder: String) -> Result<(), String> {
-    let mut cfg = read_config(&app);
-    cfg["recordingsFolder"] = serde_json::json!(folder);
+    let mut cfg = read_config(&app);    cfg["recordingsFolder"] = serde_json::json!(folder);
     write_config(&app, &cfg);
     Ok(())
 }
@@ -2376,6 +2436,7 @@ pub fn run() {
             set_recordings_folder,
             select_recordings_folder,
             export_highlight_copy,
+            create_manual_clip,
             get_auto_record,
             set_auto_record,
             get_audio_mode,
