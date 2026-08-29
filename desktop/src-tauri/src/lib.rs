@@ -2294,6 +2294,10 @@ fn overlay_hwnd(app: &tauri::AppHandle) -> Option<isize> {
 }
 
 /// Idempotent: strip any ability to take focus, even when clicked.
+/// WS_EX_TRANSPARENT makes the window completely click-through (mouse
+/// events pass to whatever is behind it).  WS_EX_LAYERED is required
+/// for TRANSPARENT to work and is already set by Tauri's transparent
+/// window flag.
 unsafe fn apply_overlay_noactivate(hwnd: isize) {
     use std::ffi::c_void;
     type HWND = *mut c_void;
@@ -2304,9 +2308,10 @@ unsafe fn apply_overlay_noactivate(hwnd: isize) {
     const GWL_EXSTYLE: i32 = -20;
     const WS_EX_NOACTIVATE: isize = 0x0800_0000;
     const WS_EX_TOOLWINDOW: isize = 0x0000_0080;
+    const WS_EX_TRANSPARENT: isize = 0x0000_0020;
     let h = hwnd as HWND;
     let st = GetWindowLongPtrW(h, GWL_EXSTYLE);
-    SetWindowLongPtrW(h, GWL_EXSTYLE, st | WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW);
+    SetWindowLongPtrW(h, GWL_EXSTYLE, st | WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW | WS_EX_TRANSPARENT);
 }
 
 #[tauri::command]
