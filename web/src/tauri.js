@@ -208,10 +208,10 @@ export async function deleteVodFiles(videoPath) {
   try { await invoke('delete_vod', { videoPath }) } catch {}
 }
 
-export async function exportHighlightCopy(videoPath) {
+export async function exportHighlightCopy(videoPath, startSec, endSec) {
   if (!isTauri() || !videoPath) return null
   const { invoke } = await import('@tauri-apps/api/core')
-  try { return await invoke('export_highlight_copy', { videoPath }) } catch { return null }
+  try { return await invoke('export_highlight_copy', { videoPath, startSec, endSec }) } catch { return null }
 }
 
 export async function verifyVod(videoPath) {

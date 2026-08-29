@@ -9,6 +9,10 @@ use std::os::windows::process::CommandExt;
 /// OBS engine is only used when it has been bootstrapped and enabled.
 mod obs_recorder;
 
+/// Highlight clip extraction (Windows Media Foundation transcode).
+#[cfg(windows)]
+mod clip;
+
 /// Recording engine switcher: true once a libobs session is active.
 static OBS_ACTIVE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 /// Path of the ongoing OBS recording so stop can finalize and report the file.
@@ -903,14 +907,15 @@ fn default_recordings_folder() -> String {
         .to_string()
 }
 
-/* Persist a highlight: copy the source VOD video file into a dedicated
-   `highlights/` folder so the highlight stays playable even after the original
-   VOD is deleted. Returns the new (absolute) file path, or NULL if the source
-   could not be copied. */
+/* Persist a highlight: extract the [start, end] window of the source VOD video
+   into a dedicated `highlights/` folder as a small, standalone clip. Returns the
+   new (absolute) clip path, or NULL if extraction failed. */
 #[tauri::command]
 async fn export_highlight_copy(
     app: tauri::AppHandle,
     video_path: String,
+    start_sec: f64,
+    end_sec: f64,
 ) -> Result<Option<String>, String> {
     let cfg = read_config(&app);
     let recordings = cfg
@@ -925,17 +930,37 @@ async fn export_highlight_copy(
     if !src.exists() {
         return Ok(None);
     }
-    let file_name = src
-        .file_name()
+    let file_stem = src
+        .file_stem()
         .map(|s| s.to_string_lossy().to_string())
-        .unwrap_or_else(|| format!("hl_{}.mp4", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)));
+        .unwrap_or_else(|| "highlight".to_string());
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or(0);
+    let dest = hl_dir.join(format!("{file_stem}_hl_{stamp}.mp4"));
+    let dest_str = dest.to_string_lossy().to_string();
 
-    let stage = format!("hl_{}_{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis()).unwrap_or(0), file_name);
-    let dest = hl_dir.join(&stage);
-    if std::fs::copy(src, &dest).is_err() {
+    #[cfg(windows)]
+    {
+        if clip::cut_highlight(&video_path, &dest_str, start_sec, end_sec).is_ok() {
+            return Ok(Some(dest_str));
+        }
+        // fall back to streaming copy if transcode fails
+        if std::fs::copy(src, &dest).is_ok() {
+            return Ok(Some(dest_str));
+        }
         return Ok(None);
     }
-    Ok(Some(dest.to_string_lossy().to_string()))
+    #[cfg(not(windows))]
+    {
+        let _ = start_sec;
+        let _ = end_sec;
+        if std::fs::copy(src, &dest).is_ok() {
+            return Ok(Some(dest_str));
+        }
+        return Ok(None);
+    }
 }
 
 #[tauri::command]

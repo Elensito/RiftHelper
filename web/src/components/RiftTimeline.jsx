@@ -73,10 +73,11 @@ function buildHlCards(store, vods, hlHidden) {
       const hasClip = !!e.clipPath
       const vodPath = hasClip ? e.clipPath : (vod && vod.videoPath)
       const hasVideo = hasClip || !!(vod && vod.hasVideo && vod.videoPath)
+      const hl = hasClip ? { ...e.hl, startVideoSec: 0 } : e.hl
       return {
         key: hasClip ? `${id}::clip` : id,
         id,
-        hl: e.hl,
+        hl,
         hasVideo,
         vod: {
           id: hasClip ? `${e.vodId}::clip` : e.vodId,
@@ -329,7 +330,8 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
         if (!entry || entry.clipPath || !hlItem) return
         const src = hlItem.vod && hlItem.vod.videoPath
         if (!src) return
-        const clipPath = await exportHighlightCopy(src)
+        const hl = hlItem.hl || {}
+        const clipPath = await exportHighlightCopy(src, hl.startVideoSec || 0, hl.endVideoSec || 0)
         if (!clipPath) return
         const st2 = loadHlStore()
         if (st2[id]) {
