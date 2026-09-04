@@ -106,6 +106,8 @@ export async function retryPendingMatches(summoner, excludeIds = []) {
       vod.kda = `${me.kills || 0}/${me.deaths || 0}/${me.assists || 0}`
       vod.champion = vod.champion || me.champion || ''
       vod.championIcon = vod.championIcon || me.champion_icon || ''
+      const mrole = (me.team_position || me.position || me.role || '').toUpperCase()
+      if (mrole) vod.role = mrole === 'MIDDLE' ? 'MID' : mrole === 'UTILITY' ? 'SUPPORT' : mrole === 'BOT' ? 'BOTTOM' : mrole
     }
     vod.pendingMatch = false
     changed = true

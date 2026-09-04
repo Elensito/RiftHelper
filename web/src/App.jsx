@@ -270,10 +270,18 @@ export default function App() {
       /* Champion snapshot from the live-game data captured at record time */
       let champion = ''
       let championIcon = ''
+      let role = ''
       {
         const lt = (gd.teams || []).find(t => (t.players || []).some(p => p.is_player))
         const lp = lt ? lt.players.find(p => p.is_player) : null
-        if (lp) { champion = lp.champion || ''; championIcon = lp.champion_icon || '' }
+        if (lp) {
+          champion = lp.champion || ''
+          championIcon = lp.champion_icon || ''
+          role = (lp.position || lp.role || '').toUpperCase()
+          if (role === 'MIDDLE') role = 'MID'
+          if (role === 'UTILITY') role = 'SUPPORT'
+          if (role === 'BOT') role = 'BOTTOM'
+        }
       }
 
       /* Riot takes 1–5 min to index a finished match, so the latest-match
@@ -288,6 +296,7 @@ export default function App() {
         duration: realDuration || duration,
         champion,
         championIcon,
+        role,
         result: '',
         kda: '',
         queue: queueName(queue),

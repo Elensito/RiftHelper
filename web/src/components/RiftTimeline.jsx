@@ -13,6 +13,32 @@ const HL_FAV_KEY = 'rh-hl-favorites'
 const HL_HIDDEN_KEY = 'rh-hl-hidden'
 const HL_STORE_KEY = 'rh-hl-store'
 
+const ROLE_COLORS = {
+  TOP: '#c87929',
+  JUNGLE: '#3f9e6d',
+  MID: '#4b7fce',
+  BOT: '#a04bc3',
+  SUPPORT: '#c2455a',
+}
+
+function RoleIcon({ role }) {
+  const c = ROLE_COLORS[String(role || '').toUpperCase()] || ROLE_COLORS.BOT
+  return (
+    <svg className="rt-role-icon" width="16" height="16" viewBox="0 0 24 24" fill="none">
+      <defs>
+        <linearGradient id={`rg-${role}`} x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stopColor={c} stopOpacity="0.85" />
+          <stop offset="1" stopColor={c} stopOpacity="0.45" />
+        </linearGradient>
+      </defs>
+      <rect x="1" y="1" width="22" height="22" rx="6" fill={`url(#rg-${role})`} stroke={c} strokeWidth="1" />
+      <text x="12" y="16.5" textAnchor="middle" fontSize="10.5" fontWeight="700" fill="#fff" fontFamily="inherit">
+        {String(role || '').toUpperCase().slice(0, 1)}
+      </text>
+    </svg>
+  )
+}
+
 function loadVods() {
   try {
     return JSON.parse(localStorage.getItem(VOD_STORAGE_KEY) || '[]')
@@ -156,6 +182,12 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
   const [hlLoading, setHlLoading] = useState(false)
   const [contextMenu, setContextMenu] = useState(null)
   const [deleteModal, setDeleteModal] = useState(null)
+  const [filterQueue, setFilterQueue] = useState('all')
+  const [filterRole, setFilterRole] = useState('all')
+  const [filterResult, setFilterResult] = useState('all')
+  const [filterChamp, setFilterChamp] = useState('all')
+  const [filterFav, setFilterFav] = useState('all')
+  const [openDropdown, setOpenDropdown] = useState(null)
   const [diskUsage, setDiskUsage] = useState(null)
   const [settings, setSettings] = useState(() => {
     const s = loadSettings()
@@ -381,6 +413,15 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
     }
   }, [contextMenu])
 
+  useEffect(() => {
+    if (!openDropdown) return
+    const close = () => setOpenDropdown(null)
+    window.addEventListener('click', close)
+    return () => {
+      window.removeEventListener('click', close)
+    }
+  }, [openDropdown])
+
   const openFolder = async () => {
     if (window.__TAURI_INTERNALS__) {
       try {
@@ -394,6 +435,73 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
 
   const totalGames = vods.length
   const totalDuration = vods.reduce((a, v) => a + (v.duration || 0), 0)
+
+  const matchQueue = (vod) => {
+    if (filterQueue === 'all') return true
+    const q = String(vod.queue || '').toLowerCase()
+    const has = (re) => re.test(q)
+    switch (filterQueue) {
+      case 'solo': return has(/solo\/duo|solo/)
+      case 'flex': return has(/flex/)
+      case 'aram': return has(/aram/)
+      case 'normal': return has(/blind pick|draft pick|normal/)
+      case 'custom': return has(/custom/)
+      default: return true
+    }
+  }
+  const matchRole = (vod) => {
+    if (filterRole === 'all') return true
+    const r = String(vod.role || '').toUpperCase()
+    switch (filterRole) {
+      case 'TOP': return r === 'TOP'
+      case 'JUNGLE': return r === 'JUNGLE'
+      case 'MID': return r === 'MID' || r === 'MIDDLE'
+      case 'BOT': return r === 'BOT' || r === 'BOTTOM' || r === 'ADC'
+      case 'SUPPORT': return r === 'SUPPORT' || r === 'UTILITY'
+      default: return true
+    }
+  }
+  const matchResult = (vod) => {
+    if (filterResult === 'all') return true
+    if (filterResult === 'win') return vod.result === 'win'
+    if (filterResult === 'loss') return vod.result === 'loss'
+    return true
+  }
+  const matchChamp = (vod) => {
+    if (filterChamp === 'all') return true
+    return String(vod.champion || '') === filterChamp
+  }
+  const matchFav = (vod) => {
+    if (filterFav === 'all') return true
+    if (filterFav === 'fav') return favorites.has(vod.id)
+    if (filterFav === 'nofav') return !favorites.has(vod.id)
+    return true
+  }
+  const filteredVods = vods.filter(v => matchQueue(v) && matchRole(v) && matchResult(v) && matchChamp(v) && matchFav(v))
+
+  /* Distinct champions present in VODs, A-Z */
+  const championList = [...new Set(vods.map(v => v.champion).filter(Boolean))].sort((a, b) => a.localeCompare(b))
+  const champIconMap = {}
+  vods.forEach(v => { if (v.champion && v.championIcon && !champIconMap[v.champion]) champIconMap[v.champion] = v.championIcon })
+
+  const roleOptions = [
+    { id: 'support', key: 'Support' },
+    { id: 'top', key: 'Top' },
+    { id: 'jungle', key: 'Jungle' },
+    { id: 'mid', key: 'Mid' },
+    { id: 'bot', key: 'Bottom' },
+  ]
+
+  const toggleDropdown = (name) => setOpenDropdown(openDropdown === name ? null : name)
+
+  const setFilter = (name, value) => {
+    if (name === 'queue') setFilterQueue(value)
+    else if (name === 'role') setFilterRole(value)
+    else if (name === 'result') setFilterResult(value)
+    else if (name === 'champ') setFilterChamp(value)
+    else if (name === 'fav') setFilterFav(value)
+    setOpenDropdown(null)
+  }
 
   return (
     <div className="rt-view">
@@ -469,19 +577,113 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
         )
       })()}
 
+      {subTab === 'recordings' && (
+        <div className="rt-filterbar">
+          {[
+            {
+              name: 'queue',
+              label: filterQueue === 'all' ? t(lang, 'allQueues') : t(lang, filterQueue === 'solo' ? 'soloDuo' : filterQueue === 'flex' ? 'flex' : filterQueue === 'aram' ? 'aram' : filterQueue === 'normal' ? 'normal' : 'custom'),
+              options: [
+                ['all', t(lang, 'allQueues')],
+                ['solo', t(lang, 'soloDuo')],
+                ['flex', t(lang, 'flex')],
+                ['aram', t(lang, 'aram')],
+                ['normal', t(lang, 'normal')],
+                ['custom', t(lang, 'custom')],
+              ],
+            },
+            {
+              name: 'role',
+              label: filterRole === 'all' ? t(lang, 'allRoles') : t(lang, filterRole.toLowerCase()),
+              options: [
+                ['all', t(lang, 'allRoles')],
+                ['TOP', t(lang, 'top')],
+                ['JUNGLE', t(lang, 'jungle')],
+                ['MID', t(lang, 'mid')],
+                ['BOT', t(lang, 'bot')],
+                ['SUPPORT', t(lang, 'support')],
+              ],
+              role: true,
+            },
+            {
+              name: 'result',
+              label: filterResult === 'all' ? t(lang, 'allResults') : t(lang, filterResult === 'win' ? 'victory' : 'defeat'),
+              options: [
+                ['all', t(lang, 'allResults')],
+                ['win', t(lang, 'victory')],
+                ['loss', t(lang, 'defeat')],
+              ],
+              result: true,
+            },
+            {
+              name: 'champ',
+              label: filterChamp === 'all' ? t(lang, 'allChampions') : filterChamp,
+              options: [['all', t(lang, 'allChampions')], ...championList.map(c => [c, c])],
+              champs: true,
+            },
+            {
+              name: 'fav',
+              label: filterFav === 'all' ? t(lang, 'allGames') : t(lang, filterFav === 'fav' ? 'favorites' : 'noFavorites'),
+              options: [
+                ['all', t(lang, 'allGames')],
+                ['fav', t(lang, 'favorites')],
+                ['nofav', t(lang, 'noFavorites')],
+              ],
+            },
+          ].map((f) => (
+            <div key={f.name} className="rt-filter">
+              <button className={`rt-filter-btn ${openDropdown === f.name ? 'open' : ''}`} onClick={(e) => { e.stopPropagation(); toggleDropdown(f.name) }}>
+                {f.role && filterRole !== 'all' && <RoleIcon role={filterRole} />}
+                {f.champs && filterChamp !== 'all' && champIconMap[filterChamp] && (
+                  <img className="rt-filter-champ-icon" src={champIconMap[filterChamp]} alt="" />
+                )}
+                <span>{f.label}</span>
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="rt-filter-chev">
+                  <polyline points="6 9 12 15 18 9" />
+                </svg>
+              </button>
+              {openDropdown === f.name && (
+                <div className="rt-filter-menu">
+                  {f.options.map(([val, text]) => {
+                    const active = val === (f.name === 'queue' ? filterQueue : f.name === 'role' ? filterRole : f.name === 'result' ? filterResult : f.name === 'champ' ? filterChamp : filterFav)
+                    return (
+                      <button key={val} className={`rt-filter-opt ${active ? 'active' : ''}`} onClick={() => setFilter(f.name, val)}>
+                        {f.role && val !== 'all' && <RoleIcon role={val} />}
+                        {f.champs && val !== 'all' && champIconMap[val] && (
+                          <img className="rt-filter-menu-icon" src={champIconMap[val]} alt="" />
+                        )}
+                        {f.result && val !== 'all' && (
+                          <span className={`rt-filter-dot ${val}`} />
+                        )}
+                        <span>{val === 'all' ? text : text || val}</span>
+                        {active && (
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--cyan)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="rt-filter-check">
+                            <polyline points="20 6 9 17 4 12" />
+                          </svg>
+                        )}
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
       {subTab === 'recordings' ? (
-        vods.length === 0 ? (
+        filteredVods.length === 0 ? (
           <div className="rt-empty">
             <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" opacity="0.3">
               <circle cx="12" cy="12" r="10" />
               <polygon points="10 8 16 12 10 16 10 8" />
             </svg>
-            <p className="rt-empty-title">{t(lang, 'noVods')}</p>
-            <p className="rt-empty-sub">{t(lang, 'noVodsHint')}</p>
+            <p className="rt-empty-title">{vods.length === 0 ? t(lang, 'noVods') : t(lang, 'noMatchesFilter')}</p>
+            <p className="rt-empty-sub">{vods.length === 0 ? t(lang, 'noVodsHint') : t(lang, 'noMatchesFilterHint')}</p>
           </div>
         ) : (
           <div className="rt-grid">
-            {[...vods].sort((a, b) => {
+            {[...filteredVods].sort((a, b) => {
               const fa = favorites.has(a.id) ? 0 : 1
               const fb = favorites.has(b.id) ? 0 : 1
               if (fa !== fb) return fa - fb
