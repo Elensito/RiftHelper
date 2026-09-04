@@ -13,28 +13,43 @@ const HL_FAV_KEY = 'rh-hl-favorites'
 const HL_HIDDEN_KEY = 'rh-hl-hidden'
 const HL_STORE_KEY = 'rh-hl-store'
 
-const ROLE_COLORS = {
-  TOP: '#c87929',
-  JUNGLE: '#3f9e6d',
-  MID: '#4b7fce',
-  BOT: '#a04bc3',
-  SUPPORT: '#c2455a',
+const ROLE_GLYPHS = {
+  TOP: (
+    <>
+      <path opacity="0.5" fill="#785a28" fillRule="evenodd" d="M21,14H14v7h7V14Zm5-3V26L11.014,26l-4,4H30V7.016Z" />
+      <polygon fill="#c8aa6e" points="4 4 4.003 28.045 9 23 9 9 23 9 28.045 4.003 4 4" />
+    </>
+  ),
+  JUNGLE: (
+    <path fill="#c8aa6e" fillRule="evenodd" d="M25,3c-2.128,3.3-5.147,6.851-6.966,11.469A42.373,42.373,0,0,1,20,20a27.7,27.7,0,0,1,1-3C21,12.023,22.856,8.277,25,3ZM13,20c-1.488-4.487-4.76-6.966-9-9,3.868,3.136,4.422,7.52,5,12l3.743,3.312C14.215,27.917,16.527,30.451,17,31c4.555-9.445-3.366-20.8-8-28C11.67,9.573,13.717,13.342,13,20Zm8,5a15.271,15.271,0,0,1,0,2l4-4c0.578-4.48,1.132-8.864,5-12C24.712,13.537,22.134,18.854,21,25Z" />
+  ),
+  MID: (
+    <>
+      <path opacity="0.5" fill="#785a28" fillRule="evenodd" d="M30,12.968l-4.008,4L26,26H17l-4,4H30ZM16.979,8L21,4H4V20.977L8,17,8,8h8.981Z" />
+      <polygon fill="#c8aa6e" points="25 4 4 25 4 30 9 30 30 9 30 4 25 4" />
+    </>
+  ),
+  BOT: (
+    <>
+      <path opacity="0.5" fill="#785a28" fillRule="evenodd" d="M13,20h7V13H13v7ZM4,4V26.984l3.955-4L8,8,22.986,8l4-4H4Z" />
+      <polygon fill="#c8aa6e" points="29.997 5.955 25 11 25 25 11 25 5.955 29.997 30 30 29.997 5.955" />
+    </>
+  ),
+  SUPPORT: (
+    <path fill="#c8aa6e" fillRule="evenodd" d="M26,13c3.535,0,8-4,8-4H23l-3,3,2,7,5-2-3-4h2ZM22,5L20.827,3H13.062L12,5l5,6Zm-5,9-1-1L13,28l4,3,4-3L18,13ZM11,9H0s4.465,4,8,4h2L7,17l5,2,2-7Z" />
+  ),
 }
 
 function RoleIcon({ role }) {
-  const c = ROLE_COLORS[String(role || '').toUpperCase()] || ROLE_COLORS.BOT
+  const key = String(role || '').toUpperCase()
+  const norm = key === 'TOP' ? 'TOP'
+    : key === 'JUNGLE' ? 'JUNGLE'
+    : (key === 'MID' || key === 'MIDDLE') ? 'MID'
+    : (key === 'BOT' || key === 'BOTTOM' || key === 'ADC') ? 'BOT'
+    : 'SUPPORT'
   return (
-    <svg className="rt-role-icon" width="16" height="16" viewBox="0 0 24 24" fill="none">
-      <defs>
-        <linearGradient id={`rg-${role}`} x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0" stopColor={c} stopOpacity="0.85" />
-          <stop offset="1" stopColor={c} stopOpacity="0.45" />
-        </linearGradient>
-      </defs>
-      <rect x="1" y="1" width="22" height="22" rx="6" fill={`url(#rg-${role})`} stroke={c} strokeWidth="1" />
-      <text x="12" y="16.5" textAnchor="middle" fontSize="10.5" fontWeight="700" fill="#fff" fontFamily="inherit">
-        {String(role || '').toUpperCase().slice(0, 1)}
-      </text>
+    <svg className="rt-role-icon" width="16" height="16" viewBox="0 0 34 34" aria-hidden="true">
+      {ROLE_GLYPHS[norm]}
     </svg>
   )
 }
