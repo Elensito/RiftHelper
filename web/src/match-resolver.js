@@ -101,7 +101,7 @@ export async function retryPendingMatches(summoner, excludeIds = []) {
     vod.winner = t.winner
     vod.team1 = t.team1
     vod.team2 = t.team2
-    const me = (cand.players || []).find(p => p.puuid === summoner.puuid)
+    const me = (cand.players || []).find(p => p.is_player || (summoner.puuid && p.puuid === summoner.puuid) || String(p.player_name || '').toLowerCase() === String(summoner.name || '').toLowerCase())
     if (me) {
       vod.result = me.win ? 'win' : 'loss'
       vod.kda = `${me.kills || 0}/${me.deaths || 0}/${me.assists || 0}`
@@ -142,6 +142,7 @@ export async function backfillVodRoles(summoner, { maxPages = 5, cooldownMs = 10
     for (const m of ms) {
       if (!want.has(m.match_id)) continue
       const me = (m.players || []).find(p =>
+        p.is_player ||
         (summoner.puuid && p.puuid === summoner.puuid) ||
         String(p.player_name || '').toLowerCase() === String(summoner.name || '').toLowerCase()
       )

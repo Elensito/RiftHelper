@@ -253,6 +253,7 @@ def _participant_summary(
 
     return {
         "is_player": p.get("puuid") == puuid,
+        "puuid": p.get("puuid", ""),
         "team": p.get("teamId", 0),
         "participant_id": p.get("participantId"),
         "champion": champ.get("name", f"ID {p.get('championId')}"),
@@ -1067,6 +1068,19 @@ async def fetch_mastery(name: str, tag: str) -> dict:
     return result
 
 
+def _spectator_lane(lane: str) -> str:
+    ups = (lane or "").upper()
+    if ups.startswith("TOP"):
+        return "TOP"
+    if ups.startswith("JUNGLE"):
+        return "JUNGLE"
+    if ups.startswith("MID"):
+        return "MID"
+    if ups.startswith("BOT"):
+        return "BOT"
+    return ""
+
+
 async def fetch_live_game(name: str, tag: str) -> dict:
 
     region = config.RIOT_REGION
@@ -1139,6 +1153,7 @@ async def fetch_live_game(name: str, tag: str) -> dict:
                 "keystone": _runed(perk_ids[0], rune_names) if perk_ids else None,
                 "runes": [_runed(r, rune_names) for r in perk_ids],
                 "is_player": (p.get("puuid") == puuid) or (p.get("summonerId") == my_id),
+                "position": _spectator_lane(p.get("lane", "")),
             }
         )
 
