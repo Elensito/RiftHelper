@@ -466,7 +466,13 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
   }
   const matchRole = (vod) => {
     if (filterRole === 'all') return true
-    const r = String(vod.role || '').toUpperCase()
+    let r = String(vod.role || '').toUpperCase()
+    /* Fallback: some VODs (pre-role-capture or ARAM) have no stored role, so
+       derive it from the resolved match participants' lane/role. */
+    if (!r) {
+      const me = [...(vod.team1 || []), ...(vod.team2 || [])].find(p => p.isPlayer || p.is_player)
+      if (me) r = String(me.lane || me.role || me.position || '').toUpperCase()
+    }
     switch (filterRole) {
       case 'TOP': return r === 'TOP'
       case 'JUNGLE': return r === 'JUNGLE'

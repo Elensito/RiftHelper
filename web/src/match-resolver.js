@@ -21,6 +21,7 @@ function mapPlayer(p) {
     gold: p.gold || 0,
     items: (p.items || []).map(it => it ? (it.src || '') : '').filter(Boolean),
     isPlayer: p.is_player || false,
+    lane: p.team_position || p.lane || p.role || '',
   }
 }
 
@@ -114,4 +115,49 @@ export async function retryPendingMatches(summoner, excludeIds = []) {
   }
   if (changed) saveVodsRaw(vods)
   return vods.filter(v => v.pendingMatch).length
+}
+
+/* One-time best-effort backfill: existing VODs recorded before role capture
+   (~v1.8.10) have an empty `role`. Re-fetch the summoner's recent matches and
+   patch `vod.role` from each match participant's team_position/lane/role.
+   ARAM and other cross-map modes report no position, so those stay empty and
+   are correctly excluded by the role filter. Cooldown prevents the caller's
+   25s poll loop from hammering the Riot API. */
+let lastRoleBackfill = 0
+
+export async function backfillVodRoles(summoner, { maxPages = 5, cooldownMs = 10 * 60 * 1000 } = {}) {
+  const now = Date.now()
+  if (now - lastRoleBackfill < cooldownMs) return
+  lastRoleBackfill = now
+  const vods = loadVodsRaw()
+  const missing = vods.filter(v => !v.role && v.matchId)
+  if (!missing.length || !summoner || !summoner.name) return
+  const want = new Set(missing.map(v => v.matchId))
+  const found = new Map()
+  const count = 20
+  for (let start = 0; start < maxPages * count && found.size < want.size; start += count) {
+    let data
+    try { data = await fetchSummoner(summoner.name, summoner.tag, count, start, true) } catch { break }
+    const ms = data.matches || []
+    for (const m of ms) {
+      if (!want.has(m.match_id)) continue
+      const me = (m.players || []).find(p =>
+        (summoner.puuid && p.puuid === summoner.puuid) ||
+        String(p.player_name || '').toLowerCase() === String(summoner.name || '').toLowerCase()
+      )
+      if (me) found.set(m.match_id, me)
+    }
+    if (ms.length < count) break
+  }
+  if (!found.size) return
+  let changed = false
+  for (const vod of vods) {
+    const me = found.get(vod.matchId)
+    if (!me || vod.role) continue
+    const raw = (me.team_position || me.lane || me.position || me.role || '').toUpperCase()
+    if (!raw || raw === 'NONE') continue
+    vod.role = raw === 'MIDDLE' ? 'MID' : raw === 'UTILITY' ? 'SUPPORT' : raw === 'BOT' ? 'BOTTOM' : raw
+    changed = true
+  }
+  if (changed) saveVodsRaw(vods)
 }

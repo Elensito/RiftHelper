@@ -1808,6 +1808,16 @@ fn vod_sibling(video_path: &str, subdir: &str, ext: &str) -> std::path::PathBuf 
     parent.join(subdir).join(format!("{}.{}", stem, ext))
 }
 
+/// Legacy layout (recordings before the v1.5.90 "organized folders" change):
+/// the mp4 sat directly in the recordings folder, with sibling
+/// `.thumb.jpg` / `.events.json` / `.ffmpeg.log` files next to it. Used as a
+/// fallback so old recordings keep their thumbnails/timeline after updates.
+fn vod_legacy_sibling(video_path: &str, ext: &str) -> std::path::PathBuf {
+    let mut p = std::path::PathBuf::from(video_path);
+    p.set_extension(ext);
+    p
+}
+
 fn find_lol_hwnd() -> isize {
     use std::ffi::c_void;
     type HWND = *mut c_void;
@@ -2168,9 +2178,14 @@ async fn stop_recording(app: tauri::AppHandle) -> Result<Option<VodFile>, String
 fn delete_vod(video_path: String) -> Result<(), String> {
     let base = std::path::Path::new(&video_path);
     let _ = std::fs::remove_file(base);
+    // Organized layout (v1.5.90+)
     let _ = std::fs::remove_file(vod_sibling(&video_path, "timeline", "events.json"));
     let _ = std::fs::remove_file(vod_sibling(&video_path, "thumbnails", "thumb.jpg"));
     let _ = std::fs::remove_file(vod_sibling(&video_path, "logs", "ffmpeg.log"));
+    // Legacy layout (pre-v1.5.90): siblings sat next to the video file.
+    let _ = std::fs::remove_file(vod_legacy_sibling(&video_path, "events.json"));
+    let _ = std::fs::remove_file(vod_legacy_sibling(&video_path, "thumb.jpg"));
+    let _ = std::fs::remove_file(vod_legacy_sibling(&video_path, "ffmpeg.log"));
     Ok(())
 }
 
@@ -2248,7 +2263,21 @@ fn is_lol_window_open() -> bool {
 #[tauri::command]
 fn read_vod_events(video_path: String) -> Option<String> {
     let p = vod_sibling(&video_path, "timeline", "events.json");
-    std::fs::read_to_string(&p).ok().filter(|s| !s.trim().is_empty())
+    if let Ok(s) = std::fs::read_to_string(&p) {
+        let t = s.trim();
+        if !t.is_empty() {
+            return Some(s);
+        }
+    }
+    // Legacy layout: events file sat next to the video.
+    let legacy = vod_legacy_sibling(&video_path, "events.json");
+    if let Ok(s) = std::fs::read_to_string(&legacy) {
+        let t = s.trim();
+        if !t.is_empty() {
+            return Some(s);
+        }
+    }
+    None
 }
 
 /// Raw "gameMode\tgameType" of the last recorded game (from the LCD API).
@@ -2264,7 +2293,12 @@ fn get_last_game_mode() -> Option<String> {
 fn get_vod_thumb(video_path: String) -> Option<String> {
     let p = vod_sibling(&video_path, "thumbnails", "thumb.jpg");
     if p.is_file() {
-        Some(p.to_string_lossy().to_string())
+        return Some(p.to_string_lossy().to_string());
+    }
+    // Legacy layout: thumb sat next to the video file.
+    let legacy = vod_legacy_sibling(&video_path, "thumb.jpg");
+    if legacy.is_file() {
+        Some(legacy.to_string_lossy().to_string())
     } else {
         None
     }

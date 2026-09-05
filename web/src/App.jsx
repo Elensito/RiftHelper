@@ -18,7 +18,7 @@ import RiftTimeline from './components/RiftTimeline.jsx'
 import VODPlayer from './components/VODPlayer.jsx'
 import AppSettings from './components/AppSettings.jsx'
 import { fetchSummoner, fetchLatestMatch, fetchLiveGame, fetchMastery, fetchChampions, fetchChampion } from './api.js'
-import { retryPendingMatches, loadVodsRaw, saveVodsRaw } from './match-resolver.js'
+import { retryPendingMatches, loadVodsRaw, saveVodsRaw, backfillVodRoles } from './match-resolver.js'
 import { isTauri, getRiotClientSession, notifyGameEnded, startRecordingTauri, stopRecordingTauri, getAutoRecord, isLolWindowOpen, getLastGameMode, deleteVodFiles, getFocusAfterGame, focusWindow, localFileSrc } from './tauri.js'
 import { matchGroup, t } from './i18n.js'
 
@@ -464,8 +464,10 @@ export default function App() {
     /* Resume pending VODs (app may have been closed before Riot indexed the
        match): patch them with real data every 25s while any remain pending. */
     const id = setInterval(() => {
-      if (!loadVodsRaw().some(v => v.pendingMatch)) return
-      retryPendingMatches(profile.summoner).catch(() => {})
+      if (loadVodsRaw().some(v => v.pendingMatch)) {
+        retryPendingMatches(profile.summoner).catch(() => {})
+      }
+      backfillVodRoles(profile.summoner).catch(() => {})
     }, 25000)
     return () => clearInterval(id)
   }, [profile])
