@@ -29,6 +29,9 @@ assets/profileicons/
 assets/spells/
 assets/runetrees/
 
+web/src/test-timeline.js
+temp_fantome/
+
 *.exe
 *.msi
 !desktop/src-tauri/obs-runtime/**/*.exe
