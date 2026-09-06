@@ -1162,6 +1162,15 @@ async fn create_manual_clip(
 /// Public share server the desktop app uploads clips/highlights to.
 const SHARE_ENDPOINT: &str = "https://rift-helper.com/api/share";
 
+/// Backoff (in seconds) between share-upload retries. Render free tier cold
+/// starts take ~30-60s, so we go 3s, 6s, 9s ... up to 20s.
+fn share_backoff(attempt: usize) -> u64 {
+    (attempt as u64 * 3).min(20)
+}
+
+/// How many upload attempts before giving up (covers Render cold starts).
+const SHARE_MAX_ATTEMPTS: usize = 8;
+
 async fn post_bytes_limited(base: &str, suffix: &str, bytes: Vec<u8>, mime: &str) -> Result<serde_json::Value, String> {
     let url = format!("{base}{suffix}");
     let mime = mime.to_string();
@@ -1171,17 +1180,19 @@ async fn post_bytes_limited(base: &str, suffix: &str, bytes: Vec<u8>, mime: &str
             .build()
             .map_err(|e| format!("http client: {e}"))?;
         let mut last_err: Option<String> = None;
-        for _attempt in 0..3 {
-            let resp = client
+        for attempt in 0..SHARE_MAX_ATTEMPTS {
+            let resp = match client
                 .post(&url)
                 .header(reqwest::header::CONTENT_TYPE, &mime)
                 .body(bytes.clone())
-                .send();
-            let resp = match resp {
+                .send()
+            {
                 Ok(r) => r,
                 Err(e) => {
                     last_err = Some(format!("upload request: {e}"));
-                    std::thread::sleep(std::time::Duration::from_secs(2));
+                    if attempt + 1 < SHARE_MAX_ATTEMPTS {
+                        std::thread::sleep(std::time::Duration::from_secs(share_backoff(attempt + 1)));
+                    }
                     continue;
                 }
             };
@@ -1190,8 +1201,8 @@ async fn post_bytes_limited(base: &str, suffix: &str, bytes: Vec<u8>, mime: &str
                 Ok(t) => t,
                 Err(e) => {
                     last_err = Some(format!("upload response: {e}"));
-                    if status.is_server_error() {
-                        std::thread::sleep(std::time::Duration::from_secs(2));
+                    if status.is_server_error() && attempt + 1 < SHARE_MAX_ATTEMPTS {
+                        std::thread::sleep(std::time::Duration::from_secs(share_backoff(attempt + 1)));
                         continue;
                     }
                     break;
@@ -1208,7 +1219,9 @@ async fn post_bytes_limited(base: &str, suffix: &str, bytes: Vec<u8>, mime: &str
                     let snippet: String = body_text.chars().take(300).collect();
                     last_err = Some(format!("upload response not JSON ({status}): {snippet}"));
                     if status.is_server_error() || body_text.trim_start().starts_with('<') {
-                        std::thread::sleep(std::time::Duration::from_secs(2));
+                        if attempt + 1 < SHARE_MAX_ATTEMPTS {
+                            std::thread::sleep(std::time::Duration::from_secs(share_backoff(attempt + 1)));
+                        }
                         continue;
                     }
                     break;
