@@ -1162,6 +1162,39 @@ async fn create_manual_clip(
 /// Public share server the desktop app uploads clips/highlights to.
 const SHARE_ENDPOINT: &str = "https://rift-helper.com/api/share";
 
+/// Render free tier sleeps after ~15 min without traffic and answers with
+/// 503 (plus an HTML page while booting). GitHub Actions cron is unreliable
+/// (runs can lag hours), so the app also warms the server up right before
+/// sharing: cheap GETs until the server answers like itself (any non-503).
+async fn wake_share_server(endpoint: &str) {
+    let endpoint = endpoint.to_string();
+    tauri::async_runtime::spawn_blocking(move || {
+        let client = match reqwest::blocking::Client::builder()
+            .timeout(std::time::Duration::from_secs(10))
+            .build()
+        {
+            Ok(c) => c,
+            Err(_) => return,
+        };
+        for _ in 0..18 {
+            let status = client
+                .get(&endpoint)
+                .send()
+                .map(|r| r.status())
+                .unwrap_or(reqwest::StatusCode::SERVICE_UNAVAILABLE);
+            let warm = status != reqwest::StatusCode::SERVICE_UNAVAILABLE
+                && status != reqwest::StatusCode::BAD_GATEWAY
+                && status != reqwest::StatusCode::GATEWAY_TIMEOUT;
+            if warm {
+                return;
+            }
+            std::thread::sleep(std::time::Duration::from_secs(5));
+        }
+    })
+    .await
+    .ok();
+}
+
 /// Backoff (in seconds) between share-upload retries. Render free tier cold
 /// starts take ~30-60s, so we go 3s, 6s, 9s ... up to 20s.
 fn share_backoff(attempt: usize) -> u64 {
@@ -1249,6 +1282,7 @@ async fn share_clip(
         return Err("El archivo del vídeo no existe (puede que se haya movido o borrado).".to_string());
     }
     let base = std::env::var("RIFTHELPER_SHARE_URL").unwrap_or_else(|_| SHARE_ENDPOINT.to_string());
+    wake_share_server(&base).await;
     let video_bytes = std::fs::read(&video).map_err(|e| format!("read video: {e}"))?;
 
     let mut result = post_bytes_limited(
