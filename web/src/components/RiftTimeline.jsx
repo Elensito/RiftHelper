@@ -310,6 +310,16 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
     try { localStorage.setItem(CLIPS_STORAGE_KEY, JSON.stringify(filtered)) } catch {}
   }, [clips])
 
+  const openClipItem = useCallback((clip) => {
+    const vod = vods.find(v => v.id === clip.vodId)
+    if (clip.path) {
+      onOpenVod({ ...vod, videoPath: clip.path })
+    } else {
+      onOpenVod(vod)
+      if (onSeekTo) onSeekTo(clip.start)
+    }
+  }, [vods, onOpenVod, onSeekTo])
+
   /* Automatic highlights: load each recorded match's local LCD events, detect
      plays, and build cards (chronologically + favorites first). */
   useEffect(() => {
@@ -567,6 +577,18 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
     e.preventDefault()
     e.stopPropagation()
     setContextMenu({ x: e.clientX, y: e.clientY, vod })
+  }, [])
+
+  const handleHlContextMenu = useCallback((e, hlCard) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setContextMenu({ x: e.clientX, y: e.clientY, kind: 'highlight', hl: hlCard })
+  }, [])
+
+  const handleClipContextMenu = useCallback((e, clip) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setContextMenu({ x: e.clientX, y: e.clientY, kind: 'clip', clip })
   }, [])
 
   useEffect(() => {
@@ -916,16 +938,13 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
             {clips.map((clip) => {
               const vod = vods.find(v => v.id === clip.vodId)
               const duration = clip.end - clip.start
-              const openClip = () => {
-                if (clip.path) {
-                  onOpenVod({ ...vod, videoPath: clip.path })
-                } else {
-                  onOpenVod(vod)
-                  if (onSeekTo) onSeekTo(clip.start)
-                }
-              }
               return (
-                <div key={clip.id} className="rt-card rt-card-clip" onClick={openClip}>
+                <div
+                  key={clip.id}
+                  className="rt-card rt-card-clip"
+                  onClick={() => openClipItem(clip)}
+                  onContextMenu={(e) => handleClipContextMenu(e, clip)}
+                >
                   <div className="rt-card-clip-thumb">
                     {clip.thumb ? (
                       <img src={clip.thumb} alt="" />
@@ -946,27 +965,6 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
                       {vod?.championIcon && <img className="rt-card-clip-champ" src={vod.championIcon} alt="" />}
                       <span className="rt-card-clip-range">{formatDuration(clip.start)} — {formatDuration(clip.end)}</span>
                     </div>
-                    <button
-                      className="rt-card-clip-share"
-                      disabled={!clip.path || !isTauri() || sharingId === clip.id}
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        doShare({ id: clip.id, kind: 'clip' })
-                      }}
-                      title={t(lang, 'shareClip')}
-                    >
-                      {sharingId === clip.id ? (
-                        <span className="rt-btn-spin" />
-                      ) : (
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <circle cx="18" cy="5" r="3" />
-                          <circle cx="6" cy="12" r="3" />
-                          <circle cx="18" cy="19" r="3" />
-                          <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" />
-                          <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
-                        </svg>
-                      )}
-                    </button>
                     <button
                       className="rt-card-clip-delete"
                       onClick={(e) => {
@@ -1039,8 +1037,9 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
                   return (
                     <div
                       key={h.id}
-                      className={`rt-card rt-card-hl ${fav ? 'rt-card-hl-fav' : ''} ${hasVideo ? '' : 'rt-card-hl-novideo'}`}
+                      className={`rt-card rt-card-hl ${fav ? 'rt-card-hl-fav' : ''} ${hasVideo ? '' : 'rt-card-hl-novideo rt-card-nodrop'}`}
                       onClick={() => { if (hasVideo) openHighlight(h) }}
+                      onContextMenu={(e) => handleHlContextMenu(e, h)}
                     >
                       {hlBuilding === h.id && (
                         <div className="rt-hl-building">
@@ -1088,24 +1087,6 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
                       </div>
                       <div className="rt-hl-actions">
                         <button
-                          className="rt-btn rt-btn-sm rt-btn-hl-share"
-                          disabled={!hasVideo || !isTauri() || sharingId === h.id}
-                          onClick={(e) => { e.stopPropagation(); doShare({ id: h.id, kind: 'highlight' }) }}
-                          title={t(lang, 'shareHighlight')}
-                        >
-                          {sharingId === h.id ? (
-                            <span className="rt-btn-spin" />
-                          ) : (
-                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                              <circle cx="18" cy="5" r="3" />
-                              <circle cx="6" cy="12" r="3" />
-                              <circle cx="18" cy="19" r="3" />
-                              <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" />
-                              <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
-                            </svg>
-                          )}
-                        </button>
-                        <button
                           className={`rt-btn rt-btn-sm rt-btn-hl-ghost ${fav ? 'locked' : ''}`}
                           onClick={(e) => hideHighlight(h.id, e)}
                           disabled={fav}
@@ -1133,51 +1114,143 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
         </div>
       )}
 
-      {contextMenu && (
-        <div
-          className="rt-context-menu"
-          style={{ left: contextMenu.x, top: contextMenu.y }}
-          onClick={(e) => e.stopPropagation()}
-        >
-          <button className="rt-context-item" onClick={() => { onOpenVod(contextMenu.vod); setContextMenu(null) }}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <polygon points="5 3 19 12 5 21 5 3" />
-            </svg>
-            {t(lang, 'open')}
-          </button>
-          {(contextMenu.vod.videoPath || isTauri()) && (
-            <button className="rt-context-item" onClick={() => { showInFolder(contextMenu.vod.videoPath); setContextMenu(null) }}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
-                <line x1="12" y1="11" x2="12" y2="17" />
-                <line x1="9" y1="14" x2="15" y2="14" />
-              </svg>
-              {t(lang, 'showInFolder')}
-            </button>
-          )}
-          <button className="rt-context-item" onClick={() => { toggleFavorite(contextMenu.vod.id, { stopPropagation: () => {} }); setContextMenu(null) }}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill={favorites.has(contextMenu.vod.id) ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
-            </svg>
-            {favorites.has(contextMenu.vod.id) ? t(lang, 'removeFavorite') : t(lang, 'addFavorite')}
-          </button>
-          <button
-            className={`rt-context-item rt-context-danger ${favorites.has(contextMenu.vod.id) ? 'rt-context-disabled' : ''}`}
-            title={favorites.has(contextMenu.vod.id) ? t(lang, 'cannotDeleteFav') : ''}
-            onClick={() => {
-              if (favorites.has(contextMenu.vod.id)) return
-              setDeleteModal(contextMenu.vod)
-              setContextMenu(null)
-            }}
+      {contextMenu && (() => {
+        const isHl = contextMenu.kind === 'highlight'
+        const isClip = contextMenu.kind === 'clip'
+        return (
+          <div
+            className="rt-context-menu"
+            style={{ left: contextMenu.x, top: contextMenu.y }}
+            onClick={(e) => e.stopPropagation()}
           >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <polyline points="3 6 5 6 21 6" />
-              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-            </svg>
-            {t(lang, 'deleteVod')}
-          </button>
-        </div>
-      )}
+            {isHl && (
+              <>
+                {contextMenu.hl.hasVideo && (
+                  <button className="rt-context-item" onClick={() => { openHighlight(contextMenu.hl); setContextMenu(null) }}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <polygon points="5 3 19 12 5 21 5 3" />
+                    </svg>
+                    {t(lang, 'open')}
+                  </button>
+                )}
+                <button
+                  className="rt-context-item"
+                  disabled={!contextMenu.hl.hasVideo}
+                  title={contextMenu.hl.hasVideo ? '' : t(lang, 'shareHighlight')}
+                  onClick={() => { doShare({ id: contextMenu.hl.id, kind: 'highlight' }); setContextMenu(null) }}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="18" cy="5" r="3" />
+                    <circle cx="6" cy="12" r="3" />
+                    <circle cx="18" cy="19" r="3" />
+                    <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" />
+                    <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
+                  </svg>
+                  {t(lang, 'shareHighlight')}
+                </button>
+                <button
+                  className="rt-context-item"
+                  onClick={() => { toggleHlFavorite(contextMenu.hl.id, { stopPropagation: () => {} }, contextMenu.hl); setContextMenu(null) }}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill={hlFav.has(contextMenu.hl.id) ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+                  </svg>
+                  {hlFav.has(contextMenu.hl.id) ? t(lang, 'removeFavorite') : t(lang, 'addFavorite')}
+                </button>
+                <button
+                  className={`rt-context-item rt-context-danger ${hlFav.has(contextMenu.hl.id) ? 'rt-context-disabled' : ''}`}
+                  title={hlFav.has(contextMenu.hl.id) ? t(lang, 'hlLocked') : ''}
+                  onClick={() => {
+                    if (hlFav.has(contextMenu.hl.id)) return
+                    hideHighlight(contextMenu.hl.id)
+                    setContextMenu(null)
+                  }}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="3 6 5 6 21 6" />
+                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                  </svg>
+                  {t(lang, 'deleteVod')}
+                </button>
+              </>
+            )}
+            {isClip && (
+              <>
+                <button className="rt-context-item" onClick={() => { openClipItem(contextMenu.clip); setContextMenu(null) }}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <polygon points="5 3 19 12 5 21 5 3" />
+                  </svg>
+                  {t(lang, 'open')}
+                </button>
+                <button className="rt-context-item" onClick={() => { doShare({ id: contextMenu.clip.id, kind: 'clip' }); setContextMenu(null) }}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="18" cy="5" r="3" />
+                    <circle cx="6" cy="12" r="3" />
+                    <circle cx="18" cy="19" r="3" />
+                    <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" />
+                    <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
+                  </svg>
+                  {t(lang, 'shareClip')}
+                </button>
+                <button
+                  className="rt-context-item rt-context-danger"
+                  onClick={() => {
+                    if (confirm(t(lang, 'confirmDeleteClip'))) deleteClip(contextMenu.clip.id)
+                    setContextMenu(null)
+                  }}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="3 6 5 6 21 6" />
+                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                  </svg>
+                  {t(lang, 'deleteVod')}
+                </button>
+              </>
+            )}
+            {!isHl && !isClip && (
+              <>
+                <button className="rt-context-item" onClick={() => { onOpenVod(contextMenu.vod); setContextMenu(null) }}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <polygon points="5 3 19 12 5 21 5 3" />
+                  </svg>
+                  {t(lang, 'open')}
+                </button>
+                {(contextMenu.vod.videoPath || isTauri()) && (
+                  <button className="rt-context-item" onClick={() => { showInFolder(contextMenu.vod.videoPath); setContextMenu(null) }}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+                      <line x1="12" y1="11" x2="12" y2="17" />
+                      <line x1="9" y1="14" x2="15" y2="14" />
+                    </svg>
+                    {t(lang, 'showInFolder')}
+                  </button>
+                )}
+                <button className="rt-context-item" onClick={() => { toggleFavorite(contextMenu.vod.id, { stopPropagation: () => {} }); setContextMenu(null) }}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill={favorites.has(contextMenu.vod.id) ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+                  </svg>
+                  {favorites.has(contextMenu.vod.id) ? t(lang, 'removeFavorite') : t(lang, 'addFavorite')}
+                </button>
+                <button
+                  className={`rt-context-item rt-context-danger ${favorites.has(contextMenu.vod.id) ? 'rt-context-disabled' : ''}`}
+                  title={favorites.has(contextMenu.vod.id) ? t(lang, 'cannotDeleteFav') : ''}
+                  onClick={() => {
+                    if (favorites.has(contextMenu.vod.id)) return
+                    setDeleteModal(contextMenu.vod)
+                    setContextMenu(null)
+                  }}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="3 6 5 6 21 6" />
+                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                  </svg>
+                  {t(lang, 'deleteVod')}
+                </button>
+              </>
+            )}
+          </div>
+        )
+      })()}
 
       {deleteModal && (
         <div className="rt-modal-backdrop" onClick={() => setDeleteModal(null)}>

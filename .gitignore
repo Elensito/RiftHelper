@@ -32,6 +32,8 @@ assets/runetrees/
 web/src/test-timeline.js
 temp_fantome/
 
+web/server/share/
+
 *.exe
 *.msi
 !desktop/src-tauri/obs-runtime/**/*.exe
