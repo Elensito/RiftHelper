@@ -2,6 +2,7 @@ import { useState } from 'react'
 import Img from './Img.jsx'
 import { t } from '../i18n.js'
 import { isFavorite, addFavorite, removeFavorite } from '../storage.js'
+import { isTauri } from '../tauri.js'
 import StreakChart from './StreakChart.jsx'
 
 export default function ProfileHeader({ summoner, matches, lang, inGame = false }) {
@@ -10,7 +11,8 @@ export default function ProfileHeader({ summoner, matches, lang, inGame = false 
   const [copied, setCopied] = useState(false)
 
   const share = async () => {
-    const url = `${location.origin}${location.pathname}?name=${encodeURIComponent(summoner.name)}&tag=${encodeURIComponent(summoner.tag)}`
+    const base = isTauri() ? 'https://rift-helper.com' : location.origin
+    const url = `${base}${location.pathname}?name=${encodeURIComponent(summoner.name)}&tag=${encodeURIComponent(summoner.tag)}`
     try {
       await navigator.clipboard.writeText(url)
     } catch (e) {
