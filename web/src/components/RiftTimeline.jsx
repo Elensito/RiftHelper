@@ -1323,6 +1323,11 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
               </>
             )}
             <div className="rt-modal-actions">
+              {shareModal.error && (
+                <button className="rt-btn rt-btn-primary" onClick={() => doShare({ id: shareModal.id, kind: shareModal.kind })}>
+                  {t(lang, 'retry')}
+                </button>
+              )}
               <button className="rt-btn rt-btn-ghost" onClick={() => setShareModal(null)}>
                 {t(lang, 'close')}
               </button>

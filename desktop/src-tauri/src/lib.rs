@@ -1170,18 +1170,52 @@ async fn post_bytes_limited(base: &str, suffix: &str, bytes: Vec<u8>, mime: &str
             .timeout(std::time::Duration::from_secs(300))
             .build()
             .map_err(|e| format!("http client: {e}"))?;
-        let resp = client
-            .post(&url)
-            .header(reqwest::header::CONTENT_TYPE, &mime)
-            .body(bytes)
-            .send()
-            .map_err(|e| format!("upload request: {e}"))?;
-        let status = resp.status();
-        let data: serde_json::Value = resp.json().map_err(|e| format!("upload response: {e}"))?;
-        if !status.is_success() {
-            return Err(format!("upload failed ({status}): {data}"));
+        let mut last_err: Option<String> = None;
+        for _attempt in 0..3 {
+            let resp = client
+                .post(&url)
+                .header(reqwest::header::CONTENT_TYPE, &mime)
+                .body(bytes.clone())
+                .send();
+            let resp = match resp {
+                Ok(r) => r,
+                Err(e) => {
+                    last_err = Some(format!("upload request: {e}"));
+                    std::thread::sleep(std::time::Duration::from_secs(2));
+                    continue;
+                }
+            };
+            let status = resp.status();
+            let body_text = match resp.text() {
+                Ok(t) => t,
+                Err(e) => {
+                    last_err = Some(format!("upload response: {e}"));
+                    if status.is_server_error() {
+                        std::thread::sleep(std::time::Duration::from_secs(2));
+                        continue;
+                    }
+                    break;
+                }
+            };
+            match serde_json::from_str::<serde_json::Value>(&body_text) {
+                Ok(data) => {
+                    if !status.is_success() {
+                        return Err(format!("upload failed ({status}): {data}"));
+                    }
+                    return Ok(data);
+                }
+                Err(_) => {
+                    let snippet: String = body_text.chars().take(300).collect();
+                    last_err = Some(format!("upload response not JSON ({status}): {snippet}"));
+                    if status.is_server_error() || body_text.trim_start().starts_with('<') {
+                        std::thread::sleep(std::time::Duration::from_secs(2));
+                        continue;
+                    }
+                    break;
+                }
+            }
         }
-        Ok(data)
+        Err(last_err.unwrap_or_else(|| "upload failed".to_string()))
     })
     .await
     .map_err(|e| format!("upload task: {e}"))?
