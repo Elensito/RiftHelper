@@ -7,12 +7,14 @@ use windows::core::PCWSTR;
 use windows::Win32::Foundation::{FALSE, RPC_E_CHANGED_MODE, TRUE};
 use windows::Win32::Media::MediaFoundation::{
     MF_READWRITE_ENABLE_HARDWARE_TRANSFORMS, MF_MT_AAC_PAYLOAD_TYPE, MF_MT_AUDIO_BITS_PER_SAMPLE,
-    MF_MT_AUDIO_NUM_CHANNELS, MF_MT_AUDIO_SAMPLES_PER_SECOND, MF_MT_AVG_BITRATE, MF_MT_FRAME_RATE,
-    MF_MT_FRAME_SIZE, MF_MT_MAJOR_TYPE, MF_MT_SUBTYPE, MF_SOURCE_READERF_ENDOFSTREAM,
-    MF_SOURCE_READERF_STREAMTICK, MF_SOURCE_READER_ANY_STREAM, MFAudioFormat_AAC,
+    MF_MT_AUDIO_BLOCK_ALIGNMENT, MF_MT_AUDIO_NUM_CHANNELS, MF_MT_AUDIO_SAMPLES_PER_SECOND,
+    MF_MT_AVG_BITRATE, MF_MT_FRAME_RATE, MF_MT_FRAME_SIZE,
+    MF_MT_INTERLACE_MODE, MF_MT_MAJOR_TYPE, MF_MT_SUBTYPE, MF_SOURCE_READERF_ENDOFSTREAM,
+    MF_SOURCE_READERF_STREAMTICK, MF_SOURCE_READER_ANY_STREAM, MFAudioFormat_AAC, MFAudioFormat_PCM,
     MFCreateAttributes, MFCreateMediaType, MFCreateSinkWriterFromURL, MFCreateSourceReaderFromURL,
-    MFMediaType_Audio, MFMediaType_Video, MFVideoFormat_H264, MFVideoFormat_RGB32, IMFAttributes,
-    IMFMediaType, IMFSample,
+    MFMediaType_Audio, MFMediaType_Video, MFShutdown, MFStartup, MFVideoFormat_H264,
+    MFVideoFormat_NV12, MFVideoFormat_RGB32, MFVideoInterlace_Progressive, MF_VERSION, MFSTARTUP_FULL,
+    IMFAttributes, IMFMediaType, IMFSample,
 };
 use windows::Win32::System::Com::{CoInitializeEx, CoUninitialize, COINIT_APARTMENTTHREADED};
 
@@ -28,7 +30,15 @@ pub fn cut_highlight(in_path: &str, out_path: &str, start_sec: f64, end_sec: f64
         if hr.is_err() && hr != RPC_E_CHANGED_MODE {
             return Err(format!("CoInitializeEx: {hr:?}"));
         }
+        // Without MFStartup the platform reports MF_E_SHUTDOWN (0xC00D3E85)
+        // and the source/sink objects fail to create, which made every clip
+        // silently fall back to a full VOD copy.
+        let mf = MFStartup(MF_VERSION, MFSTARTUP_FULL);
+        if mf.is_err() {
+            return Err(format!("MFStartup: {mf:?}"));
+        }
         let result = cut_highlight_inner(in_path, out_path, start_sec, end_sec);
+        let _ = MFShutdown();
         CoUninitialize();
         result
     }
@@ -101,19 +111,37 @@ unsafe fn cut_highlight_inner(in_path: &str, out_path: &str, start_sec: f64, end
     let writer = MFCreateSinkWriterFromURL(PCWSTR(out_url.as_ptr()), None, sink_attrs.as_ref())
         .map_err(|e| format!("MFCreateSinkWriterFromURL: {e:?}"))?;
 
-    // Configure each selected stream. For a `MFCreateSinkWriterFromURL`-based
-    // transcode (no separate transcode sink in windows-rs 0.58) we give the
-    // sink writer the desired ENCODED type via SetInputMediaType; the writer's
-    // MFT inserts the H.264/AAC encoder and reads the source's native frames.
-    for &(stidx, is_video) in &stream_ids {
-        let in_type = reader.GetCurrentMediaType(stidx).map_err(|e| format!("GetCurrentMediaType({stidx}): {e:?}"))?;
-        let out_type = make_output_type(&in_type, is_video)?;
+    let mut stream_map: Vec<(u32, u32)> = Vec::new(); // (source index, sink index)
+    // Ask the reader for DECODED samples (NV12 / PCM) and let the Sink Writer
+    // insert the H.264 / AAC encoders: the encoders generate the SPS/PPS
+    // headers the MP4 sink needs. Passing the source's compressed samples
+    // through directly leaves the sink unable to produce its file headers and
+    // Finalize fails with 0xC00D4A45 (MF_E_SINK_HEADERS_NOT_FOUND).
+    let mut ordered: Vec<(u32, bool)> = stream_ids.clone();
+    ordered.sort_by_key(|(_, is_video)| !*is_video);
+    for &(stidx, is_video) in &ordered {
+        let native = reader.GetCurrentMediaType(stidx).map_err(|e| format!("GetCurrentMediaType({stidx}): {e:?}"))?;
+        let decoded = make_decoded_input_type(&native, is_video)?;
+        reader
+            .SetCurrentMediaType(stidx, None, &decoded)
+            .map_err(|e| format!("SetCurrentMediaType({stidx}): {e:?}"))?;
+        let decoded = reader.GetCurrentMediaType(stidx).map_err(|e| format!("GetCurrentMediaType({stidx}): {e:?}"))?;
+        let encoded = make_output_type(&decoded, is_video)?;
 
-        // Sink writer input stream index == source stream index by default.
+        // Sink stream indexes are NOT the same as source indexes: ask the sink
+        // writer to create each stream and use the index it returns.
+        let sink_idx = writer
+            .AddStream(&encoded)
+            .map_err(|e| format!("AddStream({stidx}): {e:?}"))?;
         writer
-            .SetInputMediaType(stidx, &out_type, None)
-            .map_err(|e| format!("SetInputMediaType({stidx}): {e:?}"))?;
+            .SetInputMediaType(sink_idx, &decoded, None)
+            .map_err(|e| format!("SetInputMediaType({stidx}->{sink_idx}): {e:?}"))?;
+        stream_map.push((stidx, sink_idx));
     }
+
+    let sink_for = |src_idx: u32| -> Option<u32> {
+        stream_map.iter().find(|(s, _)| *s == src_idx).map(|(_, si)| *si)
+    };
 
     writer.BeginWriting().map_err(|e| format!("BeginWriting: {e:?}"))?;
 
@@ -125,8 +153,7 @@ unsafe fn cut_highlight_inner(in_path: &str, out_path: &str, start_sec: f64, end
         let mut flags: u32 = 0;
         let mut ts: i64 = 0;
         let mut sample: Option<IMFSample> = None;
-        if reader
-            .ReadSample(
+        if let Err(e) = reader.ReadSample(
                 MF_SOURCE_READER_ANY_STREAM.0 as u32,
                 0,
                 Some(&mut actual_stream),
@@ -134,9 +161,8 @@ unsafe fn cut_highlight_inner(in_path: &str, out_path: &str, start_sec: f64, end
                 Some(&mut ts),
                 Some(&mut sample),
             )
-            .is_err()
         {
-            break;
+            return Err(format!("ReadSample: {e:?}"));
         }
 
         if flags & MF_SOURCE_READERF_ENDOFSTREAM.0 as u32 != 0 {
@@ -154,9 +180,16 @@ unsafe fn cut_highlight_inner(in_path: &str, out_path: &str, start_sec: f64, end
                 if end_hns > 0 && ts > end_hns {
                     break;
                 }
-                writer
-                    .WriteSample(actual_stream, Some(s))
-                    .map_err(|e| format!("WriteSample({actual_stream}): {e:?}"))?;
+                if let Some(sink_idx) = sink_for(actual_stream) {
+                    // Rebase presentation timestamps onto the window start so
+                    // the clip begins at t=0 instead of carrying the source's
+                    // absolute times (which leaves a blank gap in the file).
+                    let t = (ts - start_hns).max(0);
+                    s.SetSampleTime(t).map_err(|e| format!("SetSampleTime({sink_idx}): {e:?}"))?;
+                    writer
+                        .WriteSample(sink_idx, Some(s))
+                        .map_err(|e| format!("WriteSample({sink_idx}): {e:?}"))?;
+                }
             }
         } else if started && end_hns > 0 && ts > end_hns {
             saw_end = true;
@@ -215,8 +248,46 @@ fn pack_ratio(num: u32, den: u32) -> u64 {
     ((num as u64) << 32) | (den as u64)
 }
 
+/// Build the DECODED type (NV12 / PCM) the Source Reader should hand us so the
+/// Sink Writer can chain its H.264 / AAC encoders (which produce the file
+/// headers Finalize requires).
+unsafe fn make_decoded_input_type(native: &IMFMediaType, is_video: bool) -> Result<IMFMediaType, String> {
+    let out = MFCreateMediaType().map_err(|e| format!("MFCreateMediaType: {e:?}"))?;
+
+    if is_video {
+        out.SetGUID(&MF_MT_MAJOR_TYPE, &MFMediaType_Video)
+            .map_err(|e| format!("in major: {e:?}"))?;
+        out.SetGUID(&MF_MT_SUBTYPE, &MFVideoFormat_NV12)
+            .map_err(|e| format!("in subtype: {e:?}"))?;
+        let frame_size = native.GetUINT64(&MF_MT_FRAME_SIZE).unwrap_or(pack_ratio(1920, 1080));
+        let frame_rate = native.GetUINT64(&MF_MT_FRAME_RATE).unwrap_or(pack_ratio(30, 1));
+        out.SetUINT64(&MF_MT_FRAME_SIZE, frame_size).map_err(|e| format!("in frame: {e:?}"))?;
+        out.SetUINT64(&MF_MT_FRAME_RATE, frame_rate).map_err(|e| format!("in fps: {e:?}"))?;
+        out.SetUINT32(&MF_MT_INTERLACE_MODE, MFVideoInterlace_Progressive.0 as u32)
+            .map_err(|e| format!("in interlace: {e:?}"))?;
+    } else {
+        out.SetGUID(&MF_MT_MAJOR_TYPE, &MFMediaType_Audio)
+            .map_err(|e| format!("in major: {e:?}"))?;
+        out.SetGUID(&MF_MT_SUBTYPE, &MFAudioFormat_PCM)
+            .map_err(|e| format!("in subtype: {e:?}"))?;
+        let nchans = native.GetUINT32(&MF_MT_AUDIO_NUM_CHANNELS).unwrap_or(2).max(1);
+        let samples = native.GetUINT32(&MF_MT_AUDIO_SAMPLES_PER_SECOND).unwrap_or(48000).max(1);
+        let bits = 16u32;
+        out.SetUINT32(&MF_MT_AUDIO_NUM_CHANNELS, nchans).map_err(|e| format!("in chan: {e:?}"))?;
+        out.SetUINT32(&MF_MT_AUDIO_SAMPLES_PER_SECOND, samples).map_err(|e| format!("in srate: {e:?}"))?;
+        out.SetUINT32(&MF_MT_AUDIO_BITS_PER_SAMPLE, bits).map_err(|e| format!("in bits: {e:?}"))?;
+        out.SetUINT32(&MF_MT_AUDIO_BLOCK_ALIGNMENT, bits / 8 * nchans).map_err(|e| format!("in align: {e:?}"))?;
+    }
+    Ok(out)
+}
+
 fn to_wide_url(p: &str) -> Result<Vec<u16>, String> {
-    Ok(p.encode_utf16().collect())
+    // PCWSTR requires a null-terminated UTF-16 string; encode_utf16 alone
+    // does NOT append the terminator, which made every MF URL read garbage
+    // (0x80070002 / "file not found") and silently broke clip cutting.
+    let mut out: Vec<u16> = p.encode_utf16().collect();
+    out.push(0);
+    Ok(out)
 }
 
 /// Extract a single frame (at `at_sec` into the video) from a finalized MP4 and
@@ -229,7 +300,12 @@ pub fn extract_thumbnail(in_path: &str, out_path: &str, at_sec: f64) -> Result<(
         if hr.is_err() && hr != RPC_E_CHANGED_MODE {
             return Err(format!("CoInitializeEx: {hr:?}"));
         }
+        let mf = MFStartup(MF_VERSION, MFSTARTUP_FULL);
+        if mf.is_err() {
+            return Err(format!("MFStartup: {mf:?}"));
+        }
         let result = extract_thumbnail_inner(in_path, out_path, at_sec);
+        let _ = MFShutdown();
         CoUninitialize();
         result
     }

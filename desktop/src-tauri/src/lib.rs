@@ -1139,10 +1139,12 @@ async fn create_manual_clip(
 
     #[cfg(windows)]
     {
-        if clip::cut_highlight(&video_path, &clip_str, start_sec, end_sec).is_err() {
-            if std::fs::copy(src, &clip_path).is_err() {
-                return Ok(None);
-            }
+        // Cut the window to a small clip. If the cut fails we do NOT copy the
+        // whole source VOD (that produced multi-GB "clips" impossible to share)
+        // — we clean up and report failure so the UI can show a real reason.
+        if let Err(e) = clip::cut_highlight(&video_path, &clip_str, start_sec, end_sec) {
+            let _ = std::fs::remove_file(&clip_path);
+            return Err(format!("No se pudo generar el clip del highlight: {e}"));
         }
         // Thumbnail at the very first second of the clip (second 1).
         clip::extract_thumbnail(&clip_str, &thumb_str, 1.0).ok();
@@ -1182,10 +1184,10 @@ async fn wake_share_server(endpoint: &str) {
                 .send()
                 .map(|r| r.status())
                 .unwrap_or(reqwest::StatusCode::SERVICE_UNAVAILABLE);
-            let warm = status != reqwest::StatusCode::SERVICE_UNAVAILABLE
-                && status != reqwest::StatusCode::BAD_GATEWAY
-                && status != reqwest::StatusCode::GATEWAY_TIMEOUT;
-            if warm {
+            if status == reqwest::StatusCode::TOO_MANY_REQUESTS || status == reqwest::StatusCode::FORBIDDEN {
+                return;
+            }
+            if !share_retryable(status) {
                 return;
             }
             std::thread::sleep(std::time::Duration::from_secs(5));
@@ -1193,6 +1195,18 @@ async fn wake_share_server(endpoint: &str) {
     })
     .await
     .ok();
+}
+
+/// Render free tier answers 503 (with an empty/HTML body) while it boots, so
+/// only those are retried. Cloudflare 429/403 challenges and other 4xx must
+/// NOT be hammered — repeating them only makes the block worse.
+fn share_retryable(status: reqwest::StatusCode) -> bool {
+    matches!(
+        status,
+        reqwest::StatusCode::SERVICE_UNAVAILABLE
+            | reqwest::StatusCode::BAD_GATEWAY
+            | reqwest::StatusCode::GATEWAY_TIMEOUT
+    )
 }
 
 /// Backoff (in seconds) between share-upload retries. Render free tier cold
@@ -1234,7 +1248,7 @@ async fn post_bytes_limited(base: &str, suffix: &str, bytes: Vec<u8>, mime: &str
                 Ok(t) => t,
                 Err(e) => {
                     last_err = Some(format!("upload response: {e}"));
-                    if status.is_server_error() && attempt + 1 < SHARE_MAX_ATTEMPTS {
+                    if share_retryable(status) && attempt + 1 < SHARE_MAX_ATTEMPTS {
                         std::thread::sleep(std::time::Duration::from_secs(share_backoff(attempt + 1)));
                         continue;
                     }
@@ -1251,7 +1265,7 @@ async fn post_bytes_limited(base: &str, suffix: &str, bytes: Vec<u8>, mime: &str
                 Err(_) => {
                     let snippet: String = body_text.chars().take(300).collect();
                     last_err = Some(format!("upload response not JSON ({status}): {snippet}"));
-                    if status.is_server_error() || body_text.trim_start().starts_with('<') {
+                    if share_retryable(status) {
                         if attempt + 1 < SHARE_MAX_ATTEMPTS {
                             std::thread::sleep(std::time::Duration::from_secs(share_backoff(attempt + 1)));
                         }
