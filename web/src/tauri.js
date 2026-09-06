@@ -173,7 +173,7 @@ export async function vodThumbUrl(videoPath) {
   if (!isTauri() || !videoPath) return null
   const { invoke, convertFileSrc } = await import('@tauri-apps/api/core')
   try {
-    const p = await invoke('get_vod_thumb', { videoPath })
+    const p = await invoke('ensure_vod_thumb', { videoPath })
     return p ? convertFileSrc(p) : null
   } catch { return null }
 }

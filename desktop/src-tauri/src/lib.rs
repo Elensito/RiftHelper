@@ -146,189 +146,6 @@ fn stop_event_capture() {
     }
 }
 
-/* Generates the VOD thumbnail by grabbing a live frame of the game window
-   once the in-game clock reaches ~60s (the recording starts at that point,
-   and OBS is capturing whatever is on screen). No ffmpeg involved: we BitBlt
-   the game window's DC and encode the pixels to JPEG with the `image` crate.
-   The recording session is long-lived (10-40+ min), so we keep polling until
-   the in-game clock hits ~60s and take a shot. */
-fn start_thumbnail_worker(thumb_path: String) {
-    let spawned = std::thread::Builder::new().name("vod-thumb".into()).spawn(move || {
-        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(50 * 60);
-        while std::time::Instant::now() < deadline {
-            std::thread::sleep(std::time::Duration::from_millis(500));
-            if std::path::Path::new(&thumb_path).exists() {
-                return;
-            }
-            let gt = query_current_game_time().unwrap_or(0.0);
-            if gt >= 55.0 && gt <= 85.0 {
-                // Try a few times to catch a clean frame.
-                for _ in 0..5 {
-                    if capture_window_to_jpeg(&thumb_path) {
-                        return;
-                    }
-                    std::thread::sleep(std::time::Duration::from_millis(300));
-                }
-                return;
-            }
-        }
-    });
-    if let Ok(handle) = spawned {
-        std::mem::forget(handle);
-    }
-}
-
-/* BitBlt's the LoL game window into a JPEG thumbnail. Top-down BGRA pixels are
-   captured via GetDIBits and encoded with the `image` crate. Returns true on
-   success. The window must be visible (it is, while OBS records it). */
-fn capture_window_to_jpeg(path: &str) -> bool {
-    let hwnd = find_lol_hwnd();
-    if hwnd == 0 {
-        return false;
-    }
-    let Some((_x, _y, w, h)) = lol_client_rect(hwnd) else {
-        return false;
-    };
-    if w == 0 || h == 0 || w > 8192 || h > 8192 {
-        return false;
-    }
-
-    #[repr(C)]
-    #[allow(non_snake_case)]
-    struct BITMAPINFOHEADER {
-        biSize: u32,
-        biWidth: i32,
-        biHeight: i32,
-        biPlanes: u16,
-        biBitCount: u16,
-        biCompression: u32,
-        biSizeImage: u32,
-        biXPelsPerMeter: i32,
-        biYPelsPerMeter: i32,
-        biClrUsed: u32,
-        biClrImportant: u32,
-    }
-    #[repr(C)]
-    #[allow(non_snake_case)]
-    struct BITMAPINFO {
-        bmiHeader: BITMAPINFOHEADER,
-        bmiColors: [u32; 0],
-    }
-
-    unsafe {
-        use std::ffi::c_void;
-        type HWND = *mut c_void;
-        type HDC = *mut c_void;
-        type HBITMAP = *mut c_void;
-        extern "system" {
-            fn GetDC(hWnd: HWND) -> HDC;
-            fn ReleaseDC(hWnd: HWND, hDC: HDC) -> i32;
-            fn CreateCompatibleDC(hDC: HDC) -> HDC;
-            fn CreateCompatibleBitmap(hDC: HDC, w: i32, h: i32) -> HBITMAP;
-            fn SelectObject(hDC: HDC, h: *mut c_void) -> *mut c_void;
-            fn BitBlt(
-                hdcDest: HDC,
-                x: i32,
-                y: i32,
-                w: i32,
-                h: i32,
-                hdcSrc: HDC,
-                x1: i32,
-                y1: i32,
-                rop: u32,
-            ) -> i32;
-            fn GetDIBits(
-                hdc: HDC,
-                hbm: HBITMAP,
-                start: u32,
-                lines: u32,
-                lpvBits: *mut c_void,
-                lpbi: *mut BITMAPINFO,
-                usage: u32,
-            ) -> i32;
-            fn DeleteObject(h: *mut c_void) -> i32;
-            fn DeleteDC(hdc: HDC) -> i32;
-        }
-        const SRCCOPY: u32 = 0x00CC0020;
-        const BI_RGB: u32 = 0;
-        const DIB_RGB_COLORS: u32 = 0;
-
-        let hw = hwnd as HWND;
-        let wdc = GetDC(hw);
-        if wdc.is_null() {
-            return false;
-        }
-        let mem = CreateCompatibleDC(wdc);
-        let bmp = CreateCompatibleBitmap(wdc, w as i32, h as i32);
-        if mem.is_null() || bmp.is_null() {
-            let _ = ReleaseDC(hw, wdc);
-            if !mem.is_null() {
-                let _ = DeleteDC(mem);
-            }
-            if !bmp.is_null() {
-                let _ = DeleteObject(bmp as *mut c_void);
-            }
-            return false;
-        }
-        let _old = SelectObject(mem, bmp as *mut c_void);
-        let blt_ok = BitBlt(mem, 0, 0, w as i32, h as i32, wdc, 0, 0, SRCCOPY);
-
-        let real_stride = (w as usize) * 4;
-        let mut buf = vec![0u8; real_stride * (h as usize)];
-        let mut bi = BITMAPINFO {
-            bmiHeader: BITMAPINFOHEADER {
-                biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
-                biWidth: w as i32,
-                biHeight: -(h as i32),
-                biPlanes: 1,
-                biBitCount: 32,
-                biCompression: BI_RGB,
-                biSizeImage: (real_stride * h as usize) as u32,
-                biXPelsPerMeter: 0,
-                biYPelsPerMeter: 0,
-                biClrUsed: 0,
-                biClrImportant: 0,
-            },
-            bmiColors: [],
-        };
-        let got = GetDIBits(
-            mem,
-            bmp,
-            0,
-            h,
-            buf.as_mut_ptr() as *mut c_void,
-            &mut bi as *mut BITMAPINFO,
-            DIB_RGB_COLORS,
-        );
-
-        let _ = ReleaseDC(hw, wdc);
-        let _ = SelectObject(mem, _old);
-        let _ = DeleteObject(bmp as *mut c_void);
-        let _ = DeleteDC(mem);
-
-        if got <= 0 || blt_ok == 0 {
-            return false;
-        }
-
-        // BGRA -> RGB, then encode to JPEG.
-        let n = (w as usize) * (h as usize);
-        let mut rgb = vec![0u8; n * 3];
-        let mut si = 0usize;
-        let mut di = 0usize;
-        for _ in 0..n {
-            rgb[di] = buf[si + 2];
-            rgb[di + 1] = buf[si + 1];
-            rgb[di + 2] = buf[si];
-            si += 4;
-            di += 3;
-        }
-        let Some(img) = image::RgbImage::from_raw(w, h, rgb) else {
-            return false;
-        };
-        img.save(path).is_ok()
-    }
-}
-
 fn run_event_capture(events_path: String, stop: Arc<std::sync::atomic::AtomicBool>) {
     let client = lcd_client();
 
@@ -1855,38 +1672,6 @@ fn find_lol_hwnd() -> isize {
     result.lock().ok().and_then(|mut g| g.take()).unwrap_or(0)
 }
 
-/// Client area of the window in screen coordinates (excludes borders/titlebar).
-fn lol_client_rect(hwnd: isize) -> Option<(i32, i32, u32, u32)> {
-    use std::ffi::c_void;
-    type HWND = *mut c_void;
-    type BOOL = i32;
-
-    #[repr(C)]
-    struct RECT { left: i32, top: i32, right: i32, bottom: i32 }
-    #[repr(C)]
-    struct POINT { x: i32, y: i32 }
-
-    extern "system" {
-        fn GetClientRect(hWnd: HWND, lpRect: *mut RECT) -> BOOL;
-        fn ClientToScreen(hWnd: HWND, lpPoint: *mut POINT) -> BOOL;
-    }
-
-    unsafe {
-        let h = hwnd as HWND;
-        let mut r = RECT { left: 0, top: 0, right: 0, bottom: 0 };
-        let mut o = POINT { x: 0, y: 0 };
-        if GetClientRect(h, &mut r) == 0 || ClientToScreen(h, &mut o) == 0 {
-            return None;
-        }
-        let w = (r.right - r.left).max(0) as u32;
-        let hgt = (r.bottom - r.top).max(0) as u32;
-        if w == 0 || hgt == 0 {
-            return None;
-        }
-        Some((o.x, o.y, w, hgt))
-    }
-}
-
 #[derive(Serialize)]
 struct VodFile {
     path: String,
@@ -1951,7 +1736,6 @@ fn start_focus_watchdog(hwnd: isize) {
 /// prepare step and the timeline/thumbnail workers started after `begin`.
 struct ObsPaths {
     output: String,
-    thumb: String,
     events: String,
 }
 
@@ -1983,10 +1767,6 @@ fn build_obs_config(
     let stem = format!("recording-{}", ts);
     let output_str = vods_dir
         .join(format!("{}.mp4", stem))
-        .to_string_lossy()
-        .to_string();
-    let thumb_str = thumbs_dir
-        .join(format!("{}.thumb.jpg", stem))
         .to_string_lossy()
         .to_string();
     let events_str = timeline_dir
@@ -2042,7 +1822,6 @@ fn build_obs_config(
         config,
         ObsPaths {
             output: output_str,
-            thumb: thumb_str,
             events: events_str,
         },
     ))
@@ -2123,9 +1902,10 @@ async fn start_recording(app: tauri::AppHandle) -> Result<String, String> {
         REC_CLIP_DURATION.store(normalize_clip_duration(d), std::sync::atomic::Ordering::SeqCst);
     }
 
-    // Timeline + thumbnail (grabbed live from the game window, no ffmpeg).
+    // Timeline (LCD events) is captured live; the VOD thumbnail is extracted
+    // from the finalized mp4 at minute 2 in stop_recording (more reliable than
+    // live window grabs).
     start_event_capture(paths.events);
-    start_thumbnail_worker(paths.thumb);
 
     let result = serde_json::json!({
         "path": paths.output,
@@ -2161,6 +1941,14 @@ async fn stop_recording(app: tauri::AppHandle) -> Result<Option<VodFile>, String
             }
             Some(p)
         });
+        // Always derive the thumbnail from the finalized mp4 at minute 2.
+        // Guard the rec length so short/remake VODs don't read past their end.
+        if let Some(p) = valid_path {
+            let at = if duration >= 130.0 { 120.0 } else { 2.0 };
+            if extract_vod_thumbnail(p, at).is_some() {
+                audio_log("Thumbnail regenerated from VOD");
+            }
+        }
         return Ok(valid_path.map(|path| VodFile {
             path: path.to_string(),
             duration,
@@ -2170,6 +1958,26 @@ async fn stop_recording(app: tauri::AppHandle) -> Result<Option<VodFile>, String
 
     // No engine active: nothing to stop.
     Ok(None)
+}
+
+/// Always-regenerate the VOD thumbnail by extracting the frame at `at_sec`
+/// (minute 2 by default) from the finalized mp4 with Media Foundation. This
+/// replaces the old live window-grab (which failed whenever the game window
+/// wasn't accessible mid-match) and guarantees every VOD gets an in-game
+/// thumbnail. Returns the path on success.
+fn extract_vod_thumbnail(video_path: &str, at_sec: f64) -> Option<String> {
+    let thumb_path = vod_sibling(video_path, "thumbnails", "thumb.jpg");
+    let thumb_str = thumb_path.to_string_lossy().to_string();
+    if let Some(parent) = thumb_path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    match crate::clip::extract_thumbnail(video_path, &thumb_str, at_sec) {
+        Ok(()) if thumb_path.exists() => Some(thumb_str),
+        _ => {
+            let _ = std::fs::remove_file(&thumb_path);
+            None
+        }
+    }
 }
 
 /// Removes a VOD and all its associated files from disk (mp4, events.json,
@@ -2302,6 +2110,21 @@ fn get_vod_thumb(video_path: String) -> Option<String> {
     } else {
         None
     }
+}
+
+/// Ensure a VOD has a thumbnail: reuse an existing one (organized or legacy
+/// layout), otherwise extract a frame from the mp4 at minute 2. Called by the
+/// frontend when a recording shows no thumbnail, so VODs recorded before this
+/// feature get repaired automatically.
+#[tauri::command]
+async fn ensure_vod_thumb(video_path: String) -> Option<String> {
+    if let Some(thumb) = get_vod_thumb(video_path.clone()) {
+        return Some(thumb);
+    }
+    tauri::async_runtime::spawn_blocking(move || extract_vod_thumbnail(&video_path, 120.0))
+        .await
+        .ok()
+        .flatten()
 }
 
 #[tauri::command]
@@ -2503,6 +2326,7 @@ pub fn run() {
             read_vod_events,
             get_last_game_mode,
             get_vod_thumb,
+            ensure_vod_thumb,
             delete_vod,
             verify_vod,
             show_overlay,
