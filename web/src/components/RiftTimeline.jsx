@@ -525,9 +525,10 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
         setShareModal({ kind, id, url: shareUrl, videoUrl, name: shareName, error: false })
         return
       }
-      if (!isTauri() || !videoPath) { setShareModal({ kind, id, url: '', videoUrl: '', name: shareName, error: true }); return }
+      if (!isTauri() || !videoPath) { setShareModal({ kind, id, url: '', videoUrl: '', name: shareName, error: true, errorDetail: '' }); return }
       const res = await shareClip(videoPath, thumbPath, shareName, kind)
-      if (!res || !res.shareUrl) { setShareModal({ kind, id, url: '', videoUrl: '', name: shareName, error: true }); return }
+      if (res && res.error) { setShareModal({ kind, id, url: '', videoUrl: '', name: shareName, error: true, errorDetail: res.error }); return }
+      if (!res || !res.shareUrl) { setShareModal({ kind, id, url: '', videoUrl: '', name: shareName, error: true, errorDetail: '' }); return }
       if (kind === 'highlight') {
         const st = loadHlStore()
         if (st[id]) {
@@ -1228,6 +1229,7 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
               <>
                 <h3 className="rt-modal-title">{t(lang, 'shareFailed')}</h3>
                 <p className="rt-modal-desc">{t(lang, 'shareFailedDesc')}</p>
+                {shareModal.errorDetail && <p className="rt-share-err">{shareModal.errorDetail}</p>}
               </>
             ) : (
               <>

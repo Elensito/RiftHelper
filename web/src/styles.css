@@ -9372,6 +9372,19 @@ body.sidebar-expanded .vod-player-view {
   text-decoration: underline;
 }
 
+.rt-share-err {
+  margin: 0 0 14px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: rgba(255, 61, 94, 0.08);
+  border: 1px solid rgba(255, 61, 94, 0.25);
+  color: var(--red);
+  font-size: 11px;
+  line-height: 1.5;
+  word-break: break-word;
+  text-align: left;
+}
+
 .rt-btn-hl-ghost {
   display: inline-flex;
   align-items: center;

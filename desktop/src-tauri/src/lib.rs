@@ -1199,7 +1199,7 @@ async fn share_clip(
 ) -> Result<Option<serde_json::Value>, String> {
     let video = std::path::PathBuf::from(&video_path);
     if !video.exists() {
-        return Ok(None);
+        return Err("El archivo del vídeo no existe (puede que se haya movido o borrado).".to_string());
     }
     let base = std::env::var("RIFTHELPER_SHARE_URL").unwrap_or_else(|_| SHARE_ENDPOINT.to_string());
     let video_bytes = std::fs::read(&video).map_err(|e| format!("read video: {e}"))?;

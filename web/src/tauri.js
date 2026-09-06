@@ -407,11 +407,15 @@ export async function createManualClip(videoPath, startSec, endSec, name) {
 }
 
 /* Upload a local clip/highlight video (and optional thumbnail) to the public
-   share server. Returns { shareUrl, videoUrl, thumbUrl } or null on failure. */
+   share server. Returns { shareUrl, videoUrl, thumbUrl } on success, or
+   { error: <detail> } when the upload could not be completed. */
 export async function shareClip(videoPath, thumbPath, name, kind) {
-  if (!isTauri() || !videoPath) return null
+  if (!isTauri()) return { error: 'Not in desktop app' }
+  if (!videoPath) return { error: 'Missing video file' }
   const { invoke } = await import('@tauri-apps/api/core')
   try {
     return await invoke('share_clip', { videoPath, thumbPath, name, kind })
-  } catch { return null }
+  } catch (e) {
+    return { error: String((e && (e.message || e.detail)) || e || 'Unknown error') }
+  }
 }
