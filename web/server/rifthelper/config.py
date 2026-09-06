@@ -27,6 +27,11 @@ ASSETS_DIR = ROOT_DIR / "assets"
 WEB_DIST = ROOT_DIR / "web" / "dist"
 
 
+SHARE_DIR = Path(os.getenv("SHARE_DIR", str(BASE_DIR / "share")))
+MAX_SHARE_BYTES = int(os.getenv("MAX_SHARE_BYTES", str(512 * 1024 * 1024)))
+MAX_SHARE_THUMB_BYTES = int(os.getenv("MAX_SHARE_THUMB_BYTES", str(10 * 1024 * 1024)))
+
+
 DDG_VERSION = "16.16.1"
 DDG_VERSION_CACHE = BASE_DIR / "ddragon_version.json"
 

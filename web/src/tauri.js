@@ -405,3 +405,13 @@ export async function createManualClip(videoPath, startSec, endSec, name) {
   const { invoke } = await import('@tauri-apps/api/core')
   try { return await invoke('create_manual_clip', { videoPath, startSec, endSec, name }) } catch { return null }
 }
+
+/* Upload a local clip/highlight video (and optional thumbnail) to the public
+   share server. Returns { shareUrl, videoUrl, thumbUrl } or null on failure. */
+export async function shareClip(videoPath, thumbPath, name, kind) {
+  if (!isTauri() || !videoPath) return null
+  const { invoke } = await import('@tauri-apps/api/core')
+  try {
+    return await invoke('share_clip', { videoPath, thumbPath, name, kind })
+  } catch { return null }
+}

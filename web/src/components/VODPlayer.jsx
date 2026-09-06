@@ -879,6 +879,7 @@ export default function VODPlayer({ vod, lang, onBack, puuid, summoner, showTeam
             name: clipName || '',
             path: result.path,
             thumb: thumbUrl,
+            thumbPath: result.thumb || '',
           }
           existing.unshift(clip)
           localStorage.setItem('rh-clips', JSON.stringify(existing))

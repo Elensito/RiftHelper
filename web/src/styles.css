@@ -9240,30 +9240,136 @@ body.sidebar-expanded .vod-player-view {
   margin-top: 2px;
 }
 
-.rt-btn-hl-watch {
+.rt-btn-hl-share {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
-  background: linear-gradient(135deg, rgba(0, 243, 255, 0.16), rgba(0, 200, 220, 0.1));
-  border: 1px solid rgba(0, 243, 255, 0.4) !important;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0 !important;
+  background: rgba(0, 243, 255, 0.06);
+  border: 1px solid rgba(0, 243, 255, 0.22) !important;
   color: var(--cyan) !important;
-  font-weight: 700 !important;
-  letter-spacing: 0.04em;
   border-radius: 20px !important;
-  padding: 6px 16px !important;
-  box-shadow: 0 4px 14px rgba(0, 243, 255, 0.12);
-  transition: background 0.16s ease, box-shadow 0.16s ease, transform 0.16s ease;
+  transition: background 0.16s ease, color 0.16s ease, border-color 0.16s ease, transform 0.16s ease;
 }
 
-.rt-btn-hl-watch:hover:not(:disabled) {
-  background: linear-gradient(135deg, rgba(0, 243, 255, 0.28), rgba(0, 200, 220, 0.18));
-  box-shadow: 0 6px 20px rgba(0, 243, 255, 0.25);
+.rt-btn-hl-share:hover:not(:disabled) {
+  background: rgba(0, 243, 255, 0.16);
+  border-color: rgba(0, 243, 255, 0.45) !important;
   transform: translateY(-1px);
 }
 
-.rt-btn-hl-watch:disabled {
+.rt-btn-hl-share:disabled {
   cursor: not-allowed;
-  opacity: 0.5;
+  opacity: 0.45;
+}
+
+.rt-btn-spin {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.25);
+  border-top-color: var(--cyan);
+  animation: rt-spin 0.7s linear infinite;
+  flex-shrink: 0;
+}
+
+@keyframes rt-spin {
+  to { transform: rotate(360deg); }
+}
+
+.rt-hl-building {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(8, 10, 16, 0.55);
+  backdrop-filter: blur(2px);
+}
+
+.rt-hl-building .rt-rec-dot {
+  width: 15px;
+  height: 15px;
+}
+
+.rt-card-clip-share {
+  width: 26px;
+  height: 26px;
+  margin-right: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.35);
+  cursor: pointer;
+  transition: all 0.15s;
+  flex-shrink: 0;
+}
+
+.rt-card-clip-share:hover {
+  background: rgba(0, 243, 255, 0.12);
+  color: var(--cyan);
+}
+
+.rt-card-clip-share:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.rt-modal-icon.share {
+  background: rgba(0, 255, 100, 0.1);
+  border-color: rgba(0, 255, 100, 0.25);
+}
+
+.rt-share-name {
+  margin: 0 0 6px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--cyan);
+}
+
+.rt-share-link {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.rt-share-link input {
+  flex: 1;
+  min-width: 0;
+  padding: 9px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+  font-size: 12px;
+  outline: none;
+}
+
+.rt-share-link input:focus {
+  border-color: rgba(0, 243, 255, 0.45);
+}
+
+.rt-share-open {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 16px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--cyan);
+  text-decoration: none;
+}
+
+.rt-share-open:hover {
+  text-decoration: underline;
 }
 
 .rt-btn-hl-ghost {

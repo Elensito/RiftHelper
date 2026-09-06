@@ -2,8 +2,8 @@
 import { t } from '../i18n.js'
 import { isTauri, showInFolder, getAudioMode, vodThumbUrl, getDiskUsage, readVodEvents } from '../tauri.js'
 import { deleteRecordingBlob } from '../video-recorder.js'
-import { deleteVodFiles, exportHighlightCopy } from '../tauri.js'
-import { computeHighlights, highlightId } from '../highlights.js'
+import { deleteVodFiles, exportHighlightCopy, createManualClip, localFileSrc, shareClip } from '../tauri.js'
+import { computeHighlights, highlightId, highlightLabel } from '../highlights.js'
 
 const VOD_STORAGE_KEY = 'rh-vods'
 const VOD_SETTINGS_KEY = 'rh-vod-settings'
@@ -120,6 +120,9 @@ function buildHlCards(store, vods, hlHidden) {
         id,
         hl,
         hasVideo,
+        thumbPath: e.thumb || '',
+        shareUrl: e.shareUrl || '',
+        videoUrl: e.videoUrl || '',
         vod: {
           id: hasClip ? `${e.vodId}::clip` : e.vodId,
           champion: e.champion,
@@ -128,6 +131,7 @@ function buildHlCards(store, vods, hlHidden) {
           queue: e.queue,
           hasVideo,
           videoPath: vodPath,
+          duration: (vod && vod.duration) || 0,
         },
       }
     })
@@ -195,6 +199,10 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
   const [highlights, setHighlights] = useState([])
   const [hlStore, setHlStore] = useState(loadHlStore)
   const [hlLoading, setHlLoading] = useState(false)
+  const [hlBuilding, setHlBuilding] = useState(null)
+  const [sharingId, setSharingId] = useState(null)
+  const [shareModal, setShareModal] = useState(null)
+  const [copiedLink, setCopiedLink] = useState(false)
   const [contextMenu, setContextMenu] = useState(null)
   const [deleteModal, setDeleteModal] = useState(null)
   const [filterQueue, setFilterQueue] = useState('all')
@@ -406,10 +414,153 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
     })
   }, [hlFav])
 
-  const openHighlight = useCallback((vod, hl) => {
-    if (onOpenHighlight) onOpenHighlight(vod, hl)
-    else if (onOpenVod) onOpenVod(vod)
-  }, [onOpenHighlight, onOpenVod])
+  /* Build (once) the trimmed clip for a highlight. The cut starts 10s before
+     the first event and ends 3s after the last one (already baked into the
+     highlight's startVideoSec/endVideoSec); the resulting file + thumbnail are
+     cached in the highlight store so reopening is instant. */
+  const ensureHighlightClip = useCallback(async (h) => {
+    const id = h && h.id
+    if (!id) return null
+    const store0 = loadHlStore()
+    if (store0[id] && store0[id].clipPath) return store0[id]
+    const src = h.vod && h.vod.videoPath
+    const hl = h.hl || {}
+    if (!src || !isTauri()) return null
+    const start = Math.max(0, hl.startVideoSec || 0)
+    const end = Math.min(Math.max(0, hl.endVideoSec || 0), Math.max(0, h.vod.duration || 0) || Math.max(0, hl.endVideoSec || 0))
+    if (end - start < 1) return null
+    setHlBuilding(id)
+    try {
+      const label = highlightLabel(lang, hl, (h.vod && h.vod.champion) || '')
+      const res = await createManualClip(src, start, end, label)
+      if (res && res.path) {
+        const st = loadHlStore()
+        if (st[id]) {
+          st[id].clipPath = res.path
+          if (res.thumb) st[id].thumb = res.thumb
+          saveHlStore(st)
+          setHlStore(st)
+          setHighlights(buildHlCards(st, vods, hlHidden))
+          return st[id]
+        }
+      }
+    } catch {} finally {
+      setHlBuilding(null)
+    }
+    return null
+  }, [vods, hlHidden, lang])
+
+  const openHighlight = useCallback((h) => {
+    const doOpen = (vod, hl) => {
+      if (onOpenHighlight) onOpenHighlight(vod, hl)
+      else if (onOpenVod) onOpenVod(vod)
+    }
+    const hlWithLabel = (vod, hl) => ({
+      ...hl,
+      startVideoSec: 0,
+      label: highlightLabel(lang, hl, (vod.champion) || ''),
+    })
+    const go = (store, h2) => {
+      if (store && store.clipPath) {
+        const vod = { ...h2.vod, videoPath: store.clipPath, hasVideo: true }
+        doOpen(vod, hlWithLabel(vod, h2.hl))
+        return
+      }
+      doOpen(h2.vod, h2.hl)
+    }
+    const cached = loadHlStore()[h.id]
+    if (cached && cached.clipPath) { go(cached, h); return }
+    const vod = h.vod
+    if (vod && vod.videoPath) {
+      ensureHighlightClip(h).then((made) => {
+        if (made && made.clipPath) {
+          const mv = { ...h.vod, videoPath: made.clipPath, hasVideo: true }
+          doOpen(mv, hlWithLabel(mv, h.hl))
+        } else {
+          doOpen(h.vod, h.hl)
+        }
+      })
+    } else {
+      doOpen(h.vod, h.hl)
+    }
+  }, [onOpenHighlight, onOpenVod, ensureHighlightClip, lang])
+
+  /* Share a clip or highlight: generate the highlight's clip if needed, upload
+     the mp4 (+ thumbnail) to the public server and surface the link. Already
+     shared items reuse their stored link without re-uploading. */
+  const doShare = useCallback(async ({ id, kind }) => {
+    if (sharingId) return
+    setSharingId(id)
+    try {
+      let videoPath = ''
+      let thumbPath = ''
+      let shareUrl = ''
+      let videoUrl = ''
+      let shareName = ''
+      if (kind === 'highlight') {
+        const store = loadHlStore()
+        let entry = store[id]
+        if (!entry || !entry.clipPath) {
+          const h = highlights.find((x) => x.id === id)
+          if (!h) return
+          entry = await ensureHighlightClip(h)
+        }
+        if (!entry || !entry.clipPath) return
+        videoPath = entry.clipPath
+        thumbPath = entry.thumb || ''
+        shareUrl = entry.shareUrl || ''
+        videoUrl = entry.videoUrl || ''
+        shareName = highlightLabel(lang, entry.hl, entry.champion || '')
+      } else {
+        const list = JSON.parse(localStorage.getItem(CLIPS_STORAGE_KEY) || '[]')
+        const clip = list.find((c) => c.id === id)
+        if (!clip || !clip.path) return
+        videoPath = clip.path
+        thumbPath = clip.thumbPath || ''
+        shareUrl = clip.shareUrl || ''
+        videoUrl = clip.videoUrl || ''
+        shareName = clip.name || 'clip'
+      }
+      if (shareUrl) {
+        setShareModal({ kind, id, url: shareUrl, videoUrl, name: shareName, error: false })
+        return
+      }
+      if (!isTauri() || !videoPath) { setShareModal({ kind, id, url: '', videoUrl: '', name: shareName, error: true }); return }
+      const res = await shareClip(videoPath, thumbPath, shareName, kind)
+      if (!res || !res.shareUrl) { setShareModal({ kind, id, url: '', videoUrl: '', name: shareName, error: true }); return }
+      if (kind === 'highlight') {
+        const st = loadHlStore()
+        if (st[id]) {
+          st[id].shareUrl = res.shareUrl
+          st[id].videoUrl = res.videoUrl || ''
+          saveHlStore(st)
+          setHlStore(st)
+          setHighlights(buildHlCards(st, vods, hlHidden))
+        }
+      } else {
+        const list = JSON.parse(localStorage.getItem(CLIPS_STORAGE_KEY) || '[]')
+        const c = list.find((x) => x.id === id)
+        if (c) {
+          c.shareUrl = res.shareUrl
+          c.videoUrl = res.videoUrl || ''
+          localStorage.setItem(CLIPS_STORAGE_KEY, JSON.stringify(list))
+          setClips(list)
+        }
+      }
+      setShareModal({ kind, id, url: res.shareUrl, videoUrl: res.videoUrl || '', name: shareName, error: false })
+    } catch {} finally {
+      setSharingId(null)
+    }
+  }, [sharingId, highlights, ensureHighlightClip, vods, hlHidden, lang])
+
+  const copyShareLink = () => {
+    if (!shareModal || !shareModal.url) return
+    try {
+      navigator.clipboard.writeText(shareModal.url)
+      setCopiedLink(true)
+      setTimeout(() => setCopiedLink(false), 2000)
+    } catch {}
+  }
 
   const handleContextMenu = useCallback((e, vod) => {
     e.preventDefault()
@@ -795,6 +946,27 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
                       <span className="rt-card-clip-range">{formatDuration(clip.start)} — {formatDuration(clip.end)}</span>
                     </div>
                     <button
+                      className="rt-card-clip-share"
+                      disabled={!clip.path || !isTauri() || sharingId === clip.id}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        doShare({ id: clip.id, kind: 'clip' })
+                      }}
+                      title={t(lang, 'shareClip')}
+                    >
+                      {sharingId === clip.id ? (
+                        <span className="rt-btn-spin" />
+                      ) : (
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <circle cx="18" cy="5" r="3" />
+                          <circle cx="6" cy="12" r="3" />
+                          <circle cx="18" cy="19" r="3" />
+                          <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" />
+                          <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
+                        </svg>
+                      )}
+                    </button>
+                    <button
                       className="rt-card-clip-delete"
                       onClick={(e) => {
                         e.stopPropagation()
@@ -867,8 +1039,13 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
                     <div
                       key={h.id}
                       className={`rt-card rt-card-hl ${fav ? 'rt-card-hl-fav' : ''} ${hasVideo ? '' : 'rt-card-hl-novideo'}`}
-                      onClick={() => { if (hasVideo) openHighlight(vod, h.hl) }}
+                      onClick={() => { if (hasVideo) openHighlight(h) }}
                     >
+                      {hlBuilding === h.id && (
+                        <div className="rt-hl-building">
+                          <span className="rt-rec-dot active" />
+                        </div>
+                      )}
                       <div className="rt-hl-top">
                         {vod.championIcon && <img className="rt-card-champ-icon" src={vod.championIcon} alt="" />}
                         <span className="rt-hl-kind">
@@ -910,14 +1087,22 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
                       </div>
                       <div className="rt-hl-actions">
                         <button
-                          className="rt-btn rt-btn-sm rt-btn-hl-watch"
-                          disabled={!hasVideo}
-                          onClick={(e) => { e.stopPropagation(); if (hasVideo) openHighlight(vod, h.hl) }}
+                          className="rt-btn rt-btn-sm rt-btn-hl-share"
+                          disabled={!hasVideo || !isTauri() || sharingId === h.id}
+                          onClick={(e) => { e.stopPropagation(); doShare({ id: h.id, kind: 'highlight' }) }}
+                          title={t(lang, 'shareHighlight')}
                         >
-                          <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" stroke="none">
-                            <polygon points="5 3 19 12 5 21 5 3" />
-                          </svg>
-                          {hasVideo ? t(lang, 'openHighlight') : t(lang, 'noVideo')}
+                          {sharingId === h.id ? (
+                            <span className="rt-btn-spin" />
+                          ) : (
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <circle cx="18" cy="5" r="3" />
+                              <circle cx="6" cy="12" r="3" />
+                              <circle cx="18" cy="19" r="3" />
+                              <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" />
+                              <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
+                            </svg>
+                          )}
                         </button>
                         <button
                           className={`rt-btn rt-btn-sm rt-btn-hl-ghost ${fav ? 'locked' : ''}`}
@@ -1021,6 +1206,50 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
                 setDeleteModal(null)
               }}>
                 {t(lang, 'deleteVod')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {shareModal && (
+        <div className="rt-modal-backdrop" onClick={() => setShareModal(null)}>
+          <div className="rt-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="rt-modal-icon share">
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--green)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="18" cy="5" r="3" />
+                <circle cx="6" cy="12" r="3" />
+                <circle cx="18" cy="19" r="3" />
+                <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" />
+                <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
+              </svg>
+            </div>
+            {shareModal.error ? (
+              <>
+                <h3 className="rt-modal-title">{t(lang, 'shareFailed')}</h3>
+                <p className="rt-modal-desc">{t(lang, 'shareFailedDesc')}</p>
+              </>
+            ) : (
+              <>
+                <h3 className="rt-modal-title">{t(lang, 'shareLinkTitle')}</h3>
+                {shareModal.name && <p className="rt-share-name">{shareModal.name}</p>}
+                <p className="rt-modal-desc">{t(lang, 'shareDesc')}</p>
+                <div className="rt-share-link">
+                  <input readOnly value={shareModal.url} onFocus={(e) => e.target.select()} onKeyDown={(e) => e.preventDefault()} />
+                  <button className="rt-btn rt-btn-sm" onClick={copyShareLink}>
+                    {copiedLink ? t(lang, 'shareCopied') : t(lang, 'copyLink')}
+                  </button>
+                </div>
+                {shareModal.videoUrl && (
+                  <a className="rt-share-open" href={shareModal.videoUrl} target="_blank" rel="noreferrer">
+                    {t(lang, 'openShareLink')}
+                  </a>
+                )}
+              </>
+            )}
+            <div className="rt-modal-actions">
+              <button className="rt-btn rt-btn-ghost" onClick={() => setShareModal(null)}>
+                {t(lang, 'close')}
               </button>
             </div>
           </div>

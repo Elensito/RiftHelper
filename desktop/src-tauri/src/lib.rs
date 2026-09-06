@@ -1159,6 +1159,88 @@ async fn create_manual_clip(
     }
 }
 
+/// Public share server the desktop app uploads clips/highlights to.
+const SHARE_ENDPOINT: &str = "https://rift-helper.com/api/share";
+
+async fn post_bytes_limited(base: &str, suffix: &str, bytes: Vec<u8>, mime: &str) -> Result<serde_json::Value, String> {
+    let url = format!("{base}{suffix}");
+    let mime = mime.to_string();
+    tauri::async_runtime::spawn_blocking(move || -> Result<serde_json::Value, String> {
+        let client = reqwest::blocking::Client::builder()
+            .timeout(std::time::Duration::from_secs(300))
+            .build()
+            .map_err(|e| format!("http client: {e}"))?;
+        let resp = client
+            .post(&url)
+            .header(reqwest::header::CONTENT_TYPE, &mime)
+            .body(bytes)
+            .send()
+            .map_err(|e| format!("upload request: {e}"))?;
+        let status = resp.status();
+        let data: serde_json::Value = resp.json().map_err(|e| format!("upload response: {e}"))?;
+        if !status.is_success() {
+            return Err(format!("upload failed ({status}): {data}"));
+        }
+        Ok(data)
+    })
+    .await
+    .map_err(|e| format!("upload task: {e}"))?
+}
+
+/// Upload a local clip/highlight video (and optional thumbnail) to the public
+/// share server so anyone with the link can stream it without the app (Discord,
+/// browser...). Returns { shareUrl, videoUrl, thumbUrl } or NULL on failure.
+#[tauri::command]
+async fn share_clip(
+    video_path: String,
+    thumb_path: String,
+    name: String,
+    kind: String,
+) -> Result<Option<serde_json::Value>, String> {
+    let video = std::path::PathBuf::from(&video_path);
+    if !video.exists() {
+        return Ok(None);
+    }
+    let base = std::env::var("RIFTHELPER_SHARE_URL").unwrap_or_else(|_| SHARE_ENDPOINT.to_string());
+    let video_bytes = std::fs::read(&video).map_err(|e| format!("read video: {e}"))?;
+
+    let mut result = post_bytes_limited(
+        &base,
+        &format!("?kind={}&name={}", percent_of(&kind), percent_of(&name)),
+        video_bytes,
+        "video/mp4",
+    )
+    .await?;
+
+    let token = result
+        .get("token")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    let thumb = std::path::PathBuf::from(&thumb_path);
+    if !token.is_empty() && thumb.exists() {
+        if let Ok(thumb_bytes) = std::fs::read(&thumb) {
+            if let Ok(tv) = post_bytes_limited(&base, &format!("/{token}/thumb"), thumb_bytes, "image/jpeg").await {
+                if let Some(tu) = tv.get("thumb_url").and_then(|v| v.as_str()) {
+                    result["thumb_url"] = serde_json::json!(tu);
+                }
+            }
+        }
+    }
+    Ok(Some(result))
+}
+
+fn percent_of(s: &str) -> String {
+    let mut out = String::new();
+    for b in s.bytes() {
+        match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => out.push(b as char),
+            _ => out.push_str(&format!("%{b:02X}")),
+        }
+    }
+    out
+}
+
 #[tauri::command]
 async fn set_recordings_folder(app: tauri::AppHandle, folder: String) -> Result<(), String> {
     let mut cfg = read_config(&app);    cfg["recordingsFolder"] = serde_json::json!(folder);
@@ -2302,6 +2384,7 @@ pub fn run() {
             select_recordings_folder,
             export_highlight_copy,
             create_manual_clip,
+            share_clip,
             get_auto_record,
             set_auto_record,
             get_audio_mode,

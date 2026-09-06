@@ -9,10 +9,10 @@
    "engagement": events closer than this are considered part of the same play. */
 const ENGAGEMENT_GAP_SEC = 22
 
-/* Two-second lead-in before the first event of a play, and a tail after the
-   last one, once converted to video seconds. */
-const LEAD_SEC = 3
-const TAIL_SEC = 2
+/* Ten-second lead-in before the first event of a play, and a three-second
+   tail after the last one, once converted to video seconds. */
+const LEAD_SEC = 10
+const TAIL_SEC = 3
 
 function parseEventSec(ev) {
   const tm = typeof ev.time === 'string' ? ev.time.match(/(\d+)\s*:\s*(\d{1,2})/) : null

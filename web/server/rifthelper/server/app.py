@@ -8,15 +8,17 @@
 
 import asyncio
 from contextlib import asynccontextmanager
+import html
+import secrets
 import sys
 from pathlib import Path
 import time
 
 import aiohttp
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -266,6 +268,133 @@ async def ai_coach(req: AICoachRequest):
 
     content = data.get("choices", [{}])[0].get("message", {}).get("content", "No response from AI.")
     return {"content": content}
+
+
+def _valid_token(token: str) -> bool:
+    return bool(token) and len(token) <= 64 and all(c.isalnum() or c in "-_" for c in token)
+
+
+async def _read_body_limited(request: Request, limit: int) -> bytes:
+    chunks = []
+    total = 0
+    async for chunk in request.stream():
+        total += len(chunk)
+        if total > limit:
+            raise HTTPException(status_code=413, detail="El archivo es demasiado grande.")
+        chunks.append(chunk)
+    return b"".join(chunks)
+
+
+@app.post("/api/share")
+async def create_share(request: Request):
+    """Receive a clip/highlight mp4 uploaded by the desktop app and make it
+    publicly reachable via a short share link (Discord-embeddable)."""
+    kind = (request.query_params.get("kind") or "clip")[:40]
+    name = (request.query_params.get("name") or "clip")[:120]
+    content_type = request.headers.get("content-type", "").lower()
+    if content_type and "video/" not in content_type and "octet-stream" not in content_type:
+        raise HTTPException(status_code=415, detail="Solo se aceptan vídeos.")
+    body = await _read_body_limited(request, config.MAX_SHARE_BYTES)
+    if len(body) < 4096:
+        raise HTTPException(status_code=400, detail="El vídeo está vacío o demasiado pequeño.")
+    token = secrets.token_urlsafe(10)
+    config.SHARE_DIR.mkdir(parents=True, exist_ok=True)
+    (config.SHARE_DIR / f"{token}.mp4").write_bytes(body)
+    return {
+        "token": token,
+        "kind": kind,
+        "name": name,
+        "share_url": f"{config.SITE_URL}/share/{token}",
+        "video_url": f"{config.SITE_URL}/share/{token}.mp4",
+        "thumb_url": "",
+    }
+
+
+@app.post("/api/share/{token}/thumb")
+async def upload_share_thumb(token: str, request: Request):
+    video = config.SHARE_DIR / f"{token}.mp4"
+    if not _valid_token(token) or not video.exists():
+        raise HTTPException(status_code=404, detail="Share no encontrado.")
+    body = await _read_body_limited(request, config.MAX_SHARE_THUMB_BYTES)
+    (config.SHARE_DIR / f"{token}.jpg").write_bytes(body)
+    return {"thumb_url": f"{config.SITE_URL}/share/{token}.jpg"}
+
+
+@app.get("/share/{token}.mp4")
+async def share_video(token: str):
+    path = config.SHARE_DIR / f"{token}.mp4"
+    if not _valid_token(token) or not path.exists():
+        raise HTTPException(status_code=404, detail="No encontrado.")
+    return FileResponse(
+        path,
+        media_type="video/mp4",
+        headers={"Accept-Ranges": "bytes", "Cache-Control": "public, max-age=86400"},
+    )
+
+
+@app.get("/share/{token}.jpg")
+async def share_thumb(token: str):
+    path = config.SHARE_DIR / f"{token}.jpg"
+    if not _valid_token(token) or not path.exists():
+        raise HTTPException(status_code=404, detail="No encontrado.")
+    return FileResponse(
+        path,
+        media_type="image/jpeg",
+        headers={"Cache-Control": "public, max-age=86400"},
+    )
+
+
+@app.get("/share/{token}")
+async def share_page(token: str):
+    video = config.SHARE_DIR / f"{token}.mp4"
+    if not _valid_token(token) or not video.exists():
+        raise HTTPException(status_code=404, detail="No encontrado.")
+    thumb = config.SHARE_DIR / f"{token}.jpg"
+    video_url = f"{config.SITE_URL}/share/{token}.mp4"
+    thumb_url = f"{config.SITE_URL}/share/{token}.jpg" if thumb.exists() else ""
+    meta = f'<meta property="og:video" content="{html.escape(video_url, quote=True)}"/>'
+    if thumb_url:
+        meta += f'\n<meta property="og:image" content="{html.escape(thumb_url, quote=True)}"/>'
+    page = SHARE_PAGE_TEMPLATE.format(title=html.escape("Clip de RiftHelper"), meta=meta, video=html.escape(video_url, quote=True), thumb=html.escape(thumb_url, quote=True))
+    return HTMLResponse(content=page)
+
+
+SHARE_PAGE_TEMPLATE = """<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<meta property="og:title" content="{title}"/>
+<meta property="og:description" content="Clip compartido con RiftHelper"/>
+<meta property="og:video:type" content="video/mp4"/>
+<meta property="og:video:width" content="1280"/>
+<meta property="og:video:height" content="720"/>
+{meta}
+<meta name="twitter:card" content="player"/>
+<meta name="twitter:title" content="{title}"/>
+<title>{title}</title>
+<style>
+  * {{ box-sizing: border-box; margin: 0; padding: 0; }}
+  body {{ background: #0b0e14; color: #e6ebf5; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; min-height: 100vh; display: flex; flex-direction: column; align-items: center; padding: 28px 16px 40px; }}
+  .brand {{ display: flex; align-items: center; gap: 8px; font-weight: 800; letter-spacing: .04em; color: #0ff; text-transform: uppercase; font-size: 13px; margin-bottom: 20px; }}
+  .player {{ width: 100%; max-width: 900px; background: #000; border-radius: 14px; overflow: hidden; box-shadow: 0 20px 60px rgba(0,0,0,.6); border: 1px solid rgba(255,255,255,.08); }}
+  video {{ display: block; width: 100%; max-height: 72vh; background: #000; }}
+  .actions {{ display: flex; gap: 12px; margin-top: 18px; }}
+  a.dl {{ color: #0ff; text-decoration: none; font-weight: 700; font-size: 13px; border: 1px solid rgba(0,243,255,.4); padding: 9px 16px; border-radius: 20px; background: rgba(0,243,255,.08); }}
+  a.dl:hover {{ background: rgba(0,243,255,.18); }}
+  .foot {{ margin-top: 22px; font-size: 12px; color: #7a8394; }}
+</style>
+</head>
+<body>
+  <div class="brand">RiftHelper</div>
+  <div class="player">
+    <video controls playsinline preload="metadata" src="{video}" poster="{thumb}"></video>
+  </div>
+  <div class="actions"><a class="dl" href="{video}" download>Descargar</a></div>
+  <div class="foot">Compartido con RiftHelper · rift-helper.com</div>
+</body>
+</html>
+"""
 
 
 if WEB_DIST.is_dir() and (WEB_DIST / "index.html").is_file():
