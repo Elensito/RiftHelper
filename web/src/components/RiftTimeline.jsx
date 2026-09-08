@@ -4,6 +4,7 @@ import { isTauri, showInFolder, getAudioMode, vodThumbUrl, getDiskUsage, readVod
 import { deleteRecordingBlob } from '../video-recorder.js'
 import { deleteVodFiles, exportHighlightCopy, createManualClip, localFileSrc, shareClip } from '../tauri.js'
 import { computeHighlights, highlightId, highlightLabel } from '../highlights.js'
+import { warmShareServer } from '../api.js'
 
 const VOD_STORAGE_KEY = 'rh-vods'
 const VOD_SETTINGS_KEY = 'rh-vod-settings'
@@ -505,6 +506,9 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
     setSharingId(id)
     // Open the modal right away with a placeholder so the UI feels instant.
     setShareModal({ kind, id, name: '', uploading: true, error: false })
+    // Wake the backend in parallel with any cut, so the upload that follows
+    // is fast (free-tier Render sleeps after ~15 min of inactivity).
+    warmShareServer()
     const apply = (modal) => setShareModal((m) => {
       const open = m && m.kind === kind && m.id === id
       return open ? modal : m

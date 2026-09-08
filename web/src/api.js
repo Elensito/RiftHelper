@@ -120,6 +120,13 @@ export async function submitFeedback({ topic, message, contact = '' }) {
     body: JSON.stringify({ topic, message, contact }),
   })
   const data = await res.json().catch(() => ({}))
-  if (!res.ok) throw new Error(data.detail || 'Error al enviar')
+  if (!res.ok) throw new Error(data.detail || `HTTP ${res.status}`)
   return data
+}
+
+/* Fire-and-forget: wake the free-tier backend so a share upload that follows
+   right after doesn't have to wait for a cold start. Non-blocking on purpose
+   — it runs in parallel with e.g. the highlight cut. */
+export function warmShareServer() {
+  try { fetch(`${API_BASE}/health`, { method: 'GET' }).catch(() => {}) } catch {}
 }

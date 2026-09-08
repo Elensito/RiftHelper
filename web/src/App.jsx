@@ -592,8 +592,8 @@ export default function App() {
         <>
           <header className="topbar topbar-icon-rail">
             <div className="topbar-right">
-              {isTauri() && <RiotClientWidget lang={lang} onOpen={openPlayer} />}
               {isTauri() && <FeedbackButton lang={lang} />}
+              {isTauri() && <RiotClientWidget lang={lang} onOpen={openPlayer} />}
               {!isTauri() && profile && (
                 <span className="topbar-summoner-pill">
                   <img
@@ -657,8 +657,8 @@ export default function App() {
                   {t(lang, 'update')}
                 </button>
               )}
-              {isTauri() && <RiotClientWidget lang={lang} onOpen={openPlayer} />}
               {isTauri() && <FeedbackButton lang={lang} />}
+              {isTauri() && <RiotClientWidget lang={lang} onOpen={openPlayer} />}
               {!isTauri() && profile && (
                 <div className="topbar-summoner-card" onClick={() => setTab('matches')}>
                   <img
