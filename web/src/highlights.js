@@ -157,7 +157,7 @@ const HL_WORDS = {
 
 const noun = (lang, n, few, one) => (n === 1 ? one : few)
 
-export function highlightLabel(hl, lang, champion) {
+export function highlightLabel(lang, hl, champion) {
   const w = HL_WORDS[lang] || HL_WORDS.en
   const champ = champion || ''
   const c = champ ? ` ${w.with} ${champ}` : ''

@@ -9366,6 +9366,31 @@ body.sidebar-expanded .vod-player-view {
   padding: 24px 0;
 }
 
+.rt-hl-spin {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 2px solid rgba(0, 243, 255, 0.12);
+  border-top-color: var(--cyan);
+  border-right-color: var(--violet);
+  animation: rt-spin 0.9s linear infinite;
+  box-shadow: 0 0 14px rgba(0, 243, 255, 0.12);
+}
+
+.rt-hl-building .rt-hl-spin {
+  width: 30px;
+  height: 30px;
+}
+
+@keyframes rt-spin {
+  to { transform: rotate(360deg); }
+}
+
+.rt-hl-loading .rt-hl-spin {
+  width: 30px;
+  height: 30px;
+}
+
 .rt-card-hl {
   cursor: pointer;
   position: relative;
@@ -9549,11 +9574,6 @@ body.sidebar-expanded .vod-player-view {
   justify-content: center;
   background: rgba(8, 10, 16, 0.55);
   backdrop-filter: blur(2px);
-}
-
-.rt-hl-building .rt-rec-dot {
-  width: 15px;
-  height: 15px;
 }
 
 .rt-card-nodrop {

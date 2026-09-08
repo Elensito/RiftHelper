@@ -23,6 +23,7 @@ import { fetchSummoner, fetchLatestMatch, fetchLiveGame, fetchMastery, fetchCham
 import { retryPendingMatches, loadVodsRaw, saveVodsRaw, backfillVodRoles } from './match-resolver.js'
 import { isTauri, getRiotClientSession, notifyGameEnded, startRecordingTauri, stopRecordingTauri, getAutoRecord, isLolWindowOpen, getLastGameMode, deleteVodFiles, getFocusAfterGame, focusWindow, localFileSrc } from './tauri.js'
 import { matchGroup, t } from './i18n.js'
+import { hlAutoEnabled, preCutVodHighlights } from './highlightStore.js'
 
 const PAGE_SIZE = 20
 
@@ -317,6 +318,15 @@ export default function App() {
         gameTimeOffset: gameTimeOffsetRef.current || 0, // gameTime at recording start for timeline alignment
       })
       saveVodsRaw(vods)
+
+      /* Pre-cut this VOD's highlights right after the game ends so they are
+         already prepared when the user opens the Highlights tab (no slow cut
+         on click). Runs in the background and is a no-op when Auto highlights
+         are off or the VOD has no events. */
+      const newVod = vods[0]
+      if (newVod && hlAutoEnabled()) {
+        preCutVodHighlights(newVod, lang || 'es').catch(() => {})
+      }
 
       /* Hotkey-triggered clips cut by the backend during this session: append
          them to the clips library so they show up in the Clips tab. */

@@ -42,6 +42,12 @@ static REC_CLIP_DURATION: std::sync::atomic::AtomicI64 = std::sync::atomic::Atom
 /// lived hotkey worker; changed by `set_clip_hotkey`.
 static CLIP_HOTKEY_NAME: Mutex<Option<String>> = Mutex::new(None);
 
+/// Serializes Media Foundation frame extraction (VOD + clip thumbnails).
+/// Each extraction decodes video from frame 0 up to the target second, which
+/// is CPU/GPU heavy; without the lock, opening a list of thumbs storms the
+/// machine and makes the whole PC feel slow.
+static THUMB_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 /// A clip of the live recording requested by the hotkey, expressed as absolute
 /// video seconds [start_abs, end_abs]. It cannot be cut while the MP4 is still
 /// being written (the moov atom lands at finalize), so it's queued and realized
@@ -1147,7 +1153,9 @@ async fn create_manual_clip(
             return Err(format!("No se pudo generar el clip del highlight: {e}"));
         }
         // Thumbnail at the very first second of the clip (second 1).
+        let _thumb_g = THUMB_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         clip::extract_thumbnail(&clip_str, &thumb_str, 1.0).ok();
+        drop(_thumb_g);
         let thumb = if thumb_path.exists() { thumb_str.clone() } else { String::new() };
         return Ok(Some(serde_json::json!({ "path": clip_str, "thumb": thumb })));
     }
@@ -2157,11 +2165,13 @@ async fn stop_recording(app: tauri::AppHandle) -> Result<Option<VodFile>, String
         });
         // Always derive the thumbnail from the finalized mp4 at minute 2.
         // Guard the rec length so short/remake VODs don't read past their end.
+        // Extraction decodes the file from frame 0 to the target second, so it
+        // runs on a detached, serialized background thread: stop_recording must
+        // NOT block on it (that made the "game ended" flow lag for many seconds)
+        // and concurrent extractions would make the whole PC feel slow.
         if let Some(p) = valid_path {
             let at = if duration >= 130.0 { 120.0 } else { 2.0 };
-            if extract_vod_thumbnail(p, at).is_some() {
-                audio_log("Thumbnail regenerated from VOD");
-            }
+            queue_vod_thumb(p.to_string(), at);
         }
         return Ok(valid_path.map(|path| VodFile {
             path: path.to_string(),
@@ -2192,6 +2202,28 @@ fn extract_vod_thumbnail(video_path: &str, at_sec: f64) -> Option<String> {
             None
         }
     }
+}
+
+/// Extract a VOD thumbnail on a detached, serialized background thread so a
+/// list refresh / game end never blocks the UI and concurrent extractions
+/// can't saturate the CPU. Skips if a thumbnail already exists.
+fn queue_vod_thumb(video_path: String, at_sec: f64) {
+    let _ = std::thread::Builder::new()
+        .name("vod-thumb".into())
+        .spawn(move || {
+            if vod_sibling(&video_path, "thumbnails", "thumb.jpg").is_file() {
+                return;
+            }
+            // Give the MP4 a moment to fully flush from the recorder.
+            std::thread::sleep(std::time::Duration::from_millis(800));
+            if vod_sibling(&video_path, "thumbnails", "thumb.jpg").is_file() {
+                return;
+            }
+            let _g = THUMB_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+            if extract_vod_thumbnail(&video_path, at_sec).is_some() {
+                audio_log("Thumbnail regenerated from VOD");
+            }
+        });
 }
 
 /// Removes a VOD and all its associated files from disk (mp4, events.json,
@@ -2335,10 +2367,19 @@ async fn ensure_vod_thumb(video_path: String) -> Option<String> {
     if let Some(thumb) = get_vod_thumb(video_path.clone()) {
         return Some(thumb);
     }
-    tauri::async_runtime::spawn_blocking(move || extract_vod_thumbnail(&video_path, 120.0))
-        .await
-        .ok()
-        .flatten()
+    tauri::async_runtime::spawn_blocking(move || {
+        // Serialize extractions: multiple concurrent calls each decode the
+        // video from frame 0, which pegs the CPU. Re-check existence in case
+        // another caller finished while we waited for the lock.
+        let _g = THUMB_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        if get_vod_thumb(video_path.clone()).is_some() {
+            return None;
+        }
+        extract_vod_thumbnail(&video_path, 120.0)
+    })
+    .await
+    .ok()
+    .flatten()
 }
 
 #[tauri::command]

@@ -6,7 +6,8 @@
 use windows::core::PCWSTR;
 use windows::Win32::Foundation::{FALSE, RPC_E_CHANGED_MODE, TRUE};
 use windows::Win32::Media::MediaFoundation::{
-    MF_READWRITE_ENABLE_HARDWARE_TRANSFORMS, MF_MT_AAC_PAYLOAD_TYPE, MF_MT_AUDIO_BITS_PER_SAMPLE,
+    MF_READWRITE_ENABLE_HARDWARE_TRANSFORMS, MF_SOURCE_READER_ENABLE_VIDEO_PROCESSING,
+    MF_MT_AAC_PAYLOAD_TYPE, MF_MT_AUDIO_BITS_PER_SAMPLE,
     MF_MT_AUDIO_BLOCK_ALIGNMENT, MF_MT_AUDIO_NUM_CHANNELS, MF_MT_AUDIO_SAMPLES_PER_SECOND,
     MF_MT_AVG_BITRATE, MF_MT_FRAME_RATE, MF_MT_FRAME_SIZE,
     MF_MT_INTERLACE_MODE, MF_MT_MAJOR_TYPE, MF_MT_SUBTYPE, MF_SOURCE_READERF_ENDOFSTREAM,
@@ -319,9 +320,12 @@ unsafe fn extract_thumbnail_inner(in_path: &str, out_path: &str, at_sec: f64) ->
     let in_url = to_wide_url(in_path)?;
 
     let mut attrs: Option<IMFAttributes> = None;
-    MFCreateAttributes(&mut attrs, 1).map_err(|e| format!("attrs: {e:?}"))?;
+    MFCreateAttributes(&mut attrs, 2).map_err(|e| format!("attrs: {e:?}"))?;
     if let Some(a) = &attrs {
         a.SetUINT32(&MF_READWRITE_ENABLE_HARDWARE_TRANSFORMS, 1).ok();
+        // Allow the source reader to insert the video processor so NV12 -> RGB32
+        // conversion works even when the H.264 decoder can't emit RGB32 itself.
+        a.SetUINT32(&MF_SOURCE_READER_ENABLE_VIDEO_PROCESSING, 1).ok();
     }
 
     let reader = MFCreateSourceReaderFromURL(PCWSTR(in_url.as_ptr()), attrs.as_ref())
@@ -342,12 +346,26 @@ unsafe fn extract_thumbnail_inner(in_path: &str, out_path: &str, at_sec: f64) ->
     }
     let video_idx = video_idx.ok_or("no video stream")?;
 
-    // Request decoded RGB32 so we can dump pixels.
+    let native = reader
+        .GetCurrentMediaType(video_idx)
+        .map_err(|e| format!("GetCurrentMediaType: {e:?}"))?;
+
+    // Request decoded RGB32 so we can dump pixels. The type MUST be complete
+    // (frame size + frame rate + interlace), otherwise MF rejects it with
+    // MF_E_INVALIDMEDIATYPE (0xC00D36B4) and every thumbnail silently fails.
+    let frame_size = native.GetUINT64(&MF_MT_FRAME_SIZE).unwrap_or(pack_ratio(1920, 1080));
+    let frame_rate = native.GetUINT64(&MF_MT_FRAME_RATE).unwrap_or(pack_ratio(30, 1));
     let rgb = MFCreateMediaType().map_err(|e| format!("mt: {e:?}"))?;
     rgb.SetGUID(&MF_MT_MAJOR_TYPE, &MFMediaType_Video)
         .map_err(|e| format!("major: {e:?}"))?;
     rgb.SetGUID(&MF_MT_SUBTYPE, &MFVideoFormat_RGB32)
         .map_err(|e| format!("subtype: {e:?}"))?;
+    rgb.SetUINT64(&MF_MT_FRAME_SIZE, frame_size)
+        .map_err(|e| format!("frame: {e:?}"))?;
+    rgb.SetUINT64(&MF_MT_FRAME_RATE, frame_rate)
+        .map_err(|e| format!("fps: {e:?}"))?;
+    rgb.SetUINT32(&MF_MT_INTERLACE_MODE, MFVideoInterlace_Progressive.0 as u32)
+        .map_err(|e| format!("interlace: {e:?}"))?;
     reader
         .SetCurrentMediaType(video_idx, None, &rgb)
         .map_err(|e| format!("SetCurrentMediaType: {e:?}"))?;
@@ -356,11 +374,11 @@ unsafe fn extract_thumbnail_inner(in_path: &str, out_path: &str, at_sec: f64) ->
     let cur = reader
         .GetCurrentMediaType(video_idx)
         .map_err(|e| format!("GetCurrentMediaType: {e:?}"))?;
-    let frame_size = cur
+    let cur_size = cur
         .GetUINT64(&MF_MT_FRAME_SIZE)
         .unwrap_or(pack_ratio(1920, 1080));
-    let w = (frame_size >> 32) as usize;
-    let h = (frame_size & 0xFFFF_FFFF) as usize;
+    let w = (cur_size >> 32) as usize;
+    let h = (cur_size & 0xFFFF_FFFF) as usize;
 
     let target_hns = (at_sec * 10_000_000.0) as i64;
     let mut saved = false;

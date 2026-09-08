@@ -201,6 +201,7 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
   const [hlStore, setHlStore] = useState(loadHlStore)
   const [hlLoading, setHlLoading] = useState(false)
   const [hlBuilding, setHlBuilding] = useState(null)
+  const [hlBump, setHlBump] = useState(0)
   const [sharingId, setSharingId] = useState(null)
   const [shareModal, setShareModal] = useState(null)
   const [copiedLink, setCopiedLink] = useState(false)
@@ -272,14 +273,17 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
     const onClipsCustom = () => {
       try { setClips(JSON.parse(localStorage.getItem(CLIPS_STORAGE_KEY) || '[]')) } catch { setClips([]) }
     }
+    const onHlCustom = () => setHlBump(b => b + 1)
     window.addEventListener('rh-vods-changed', onCustom)
     window.addEventListener('rh-settings-changed', onSettingsCustom)
     window.addEventListener('rh-clips-changed', onClipsCustom)
+    window.addEventListener('rh-highlights-changed', onHlCustom)
     return () => {
       window.removeEventListener('storage', onStorage)
       window.removeEventListener('rh-vods-changed', onCustom)
       window.removeEventListener('rh-settings-changed', onSettingsCustom)
       window.removeEventListener('rh-clips-changed', onClipsCustom)
+      window.removeEventListener('rh-highlights-changed', onHlCustom)
     }
   }, [])
 
@@ -383,18 +387,25 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
       setHlLoading(false)
     })
     return () => { dead = true }
-  }, [subTab, vods, hlHidden, lang, settings.autoHighlights])
+  }, [subTab, vods, hlHidden, lang, settings.autoHighlights, hlBump])
 
   /* Auto-cut each detected highlight into its own mp4 clip so highlights behave
      like manual clips: they have a standalone file and keep being playable even
      after the source VOD is deleted. Runs once per highlight (guarded by
-     hlStore.clipPath), in the background to avoid blocking the UI. */
+     hlStore.clipPath), in the background to avoid blocking the UI. Only the
+     most recent few are cut per visit (source VODs are huge; cutting every
+     detected highlight of 60 VODs at once is what made the app/PC feel slow),
+     and cuts are spaced out + serialized so Media Foundation never pegs the CPU
+     with several concurrent decodes. */
   useEffect(() => {
     if (subTab !== 'highlights') return
     if (!settings.autoHighlights) return
     if (!isTauri()) return
     if (autoCutRunning.current) return
-    const entries = Object.values(loadHlStore()).filter(e => e && e.id && !e.clipPath)
+    const entries = Object.values(loadHlStore())
+      .filter(e => e && e.id && !e.clipPath && e.hl && e.vodId)
+      .sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')))
+      .slice(0, 12)
     if (!entries.length) return
     autoCutRunning.current = true
     let dead = false
@@ -424,6 +435,8 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
               setHighlights(buildHlCards(st, vods, hlHidden))
             }
           }
+          setHlBuilding(null)
+          await new Promise(r => setTimeout(r, 400))
         }
       } finally {
         if (!dead) setHlBuilding(null)
@@ -431,7 +444,7 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
       }
     })()
     return () => { dead = true }
-  }, [subTab, vods, hlHidden, lang, settings.autoHighlights, hlStore])
+  }, [subTab, vods, hlHidden, lang, settings.autoHighlights, hlStore, hlBump])
 
   const toggleHlFavorite = useCallback((id, e, hlItem) => {
     if (e) e.stopPropagation()
@@ -489,7 +502,6 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
     const start = Math.max(0, hl.startVideoSec || 0)
     const end = Math.min(Math.max(0, hl.endVideoSec || 0), Math.max(0, h.vod.duration || 0) || Math.max(0, hl.endVideoSec || 0))
     if (end - start < 1) return null
-    setHlBuilding(id)
     try {
       const label = highlightLabel(lang, hl, (h.vod && h.vod.champion) || '')
       const res = await createManualClip(src, start, end, label)
@@ -504,9 +516,7 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
           return st[id]
         }
       }
-    } catch {} finally {
-      setHlBuilding(null)
-    }
+    } catch {}
     return null
   }, [vods, hlHidden, lang])
 
@@ -520,26 +530,22 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
       startVideoSec: 0,
       label: highlightLabel(lang, hl, (vod.champion) || ''),
     })
-    const go = (store, h2) => {
-      if (store && store.clipPath) {
-        const vod = { ...h2.vod, videoPath: store.clipPath, hasVideo: true }
-        doOpen(vod, hlWithLabel(vod, h2.hl))
-        return
-      }
-      doOpen(h2.vod, h2.hl)
-    }
-    const cached = loadHlStore()[h.id]
-    if (cached && cached.clipPath) { go(cached, h); return }
     const vod = h.vod
+    /* If the standalone clip already exists, play it directly. */
+    const cached = loadHlStore()[h.id]
+    if (cached && cached.clipPath) {
+      const mv = { ...h.vod, videoPath: cached.clipPath, hasVideo: true }
+      doOpen(mv, hlWithLabel(mv, h.hl))
+      return
+    }
+    /* No clip yet: open the full VOD right away at the highlight's time so
+       playback is instant (VODPlayer seeks to startVideoSec), and pre-cut the
+       clip in the background so the next open is instant. Never block playback
+       on a Media Foundation transcode — that was the "slow to open" and the
+       reason the app/PC felt sluggish. */
     if (vod && vod.videoPath) {
-      ensureHighlightClip(h).then((made) => {
-        if (made && made.clipPath) {
-          const mv = { ...h.vod, videoPath: made.clipPath, hasVideo: true }
-          doOpen(mv, hlWithLabel(mv, h.hl))
-        } else {
-          doOpen(h.vod, h.hl)
-        }
-      })
+      doOpen(h.vod, h.hl)
+      ensureHighlightClip(h).catch(() => {})
     } else {
       doOpen(h.vod, h.hl)
     }
@@ -573,10 +579,10 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
         let entry = store[id]
         if (!entry || !entry.clipPath) {
           const h = highlights.find((x) => x.id === id)
-          if (!h) return
+          if (!h) { apply({ kind, id, url: '', videoUrl: '', name: '', error: true, errorDetail: t(lang, 'shareNoClip') }); return }
           entry = await ensureHighlightClip(h)
         }
-        if (!entry || !entry.clipPath) return
+        if (!entry || !entry.clipPath) { apply({ kind, id, url: '', videoUrl: '', name: '', error: true, errorDetail: t(lang, 'shareNoClip') }); return }
         videoPath = entry.clipPath
         thumbPath = entry.thumb || ''
         shareUrl = entry.shareUrl || ''
@@ -585,7 +591,7 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
       } else {
         const list = JSON.parse(localStorage.getItem(CLIPS_STORAGE_KEY) || '[]')
         const clip = list.find((c) => c.id === id)
-        if (!clip || !clip.path) return
+        if (!clip || !clip.path) { apply({ kind, id, url: '', videoUrl: '', name: '', error: true, errorDetail: t(lang, 'shareNoClip') }); return }
         videoPath = clip.path
         thumbPath = clip.thumbPath || ''
         shareUrl = clip.shareUrl || ''
@@ -1058,7 +1064,7 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
 
           {hlLoading ? (
             <div className="rt-empty">
-              <div className="rt-hl-loading"><span className="rt-rec-dot active" /></div>
+              <div className="rt-hl-loading"><span className="rt-hl-spin" /></div>
               <p className="rt-empty-sub">{t(lang, 'highlight')}</p>
             </div>
           ) : !settings.autoHighlights ? (
@@ -1104,7 +1110,7 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
                     >
                       {hlBuilding === h.id && (
                         <div className="rt-hl-building">
-                          <span className="rt-rec-dot active" />
+                          <span className="rt-hl-spin" />
                         </div>
                       )}
                       <div className="rt-hl-top">
