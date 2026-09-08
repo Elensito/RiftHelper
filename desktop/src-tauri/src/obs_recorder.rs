@@ -21,7 +21,10 @@ use std::sync::Mutex;
 use std::time::Duration;
 
 use libobs_simple::output::simple::ObsContextSimpleExt;
-use libobs_simple::sources::{ObsSourceBuilder, windows::GameCaptureSourceBuilder};
+use libobs_simple::sources::{
+    ObsSourceBuilder,
+    windows::{GameCaptureSourceBuilder, ObsHookRate},
+};
 use libobs_wrapper::{
     context::ObsContext,
     data::{ImmutableObsData, ObsData, ObsDataSetters},
@@ -49,6 +52,10 @@ pub struct ObsRecordingConfig {
     pub output_path: String,
     /// Requested frames-per-second (e.g. "30" or "60").
     pub fps: u32,
+    /// Cap the capture hook to the output fps (true) or capture every game
+    /// frame (false). Capping removes the per-frame texture copies the game
+    /// incurs at high refresh rates without changing the recorded output.
+    pub limit_capture: bool,
     /// Target output height (480/720/1080), or 0 for native.
     pub height: u32,
     /// Video bitrate in kbps (NVENC/AMF/QSV).
@@ -331,7 +338,19 @@ pub fn prepare(config: ObsRecordingConfig) -> Result<(), String> {
     let game_builder = context
         .source_builder::<GameCaptureSourceBuilder, _>("Game")
         .map_err(|e| format!("OBS game capture source: {e}"))?
-        .set_window_raw(window_id);
+        .set_window_raw(window_id)
+        // "Limit capture framerate": the graphics hook only copies the shared
+        // texture at the output fps instead of on every game present. Identical
+        // recorded output, but drastically less in-game overhead at high refresh
+        // rates (e.g. a 240Hz loop recorded at 30fps).
+        .set_limit_framerate(config.limit_capture)
+        // LoL draws its own in-game cursor; the OS cursor is hidden, so the
+        // hook-side cursor composite is pure per-frame waste.
+        .set_capture_cursor(false)
+        // Hook polling cadence: Fastest wakes on every present even when the
+        // frames are dropped by limit_framerate. Normal is enough to never miss
+        // a capped frame while halving the game-side hook pressure.
+        .set_hook_rate(ObsHookRate::Normal);
     let game_builder = if capture_game_audio {
         game_builder
             .set_capture_audio(true)

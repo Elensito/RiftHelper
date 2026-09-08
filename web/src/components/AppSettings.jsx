@@ -385,6 +385,7 @@ export default function AppSettings({ theme, onThemeChange, lang, onLangChange, 
                     <option value="30">30 FPS</option>
                     <option value="60">60 FPS</option>
                     <option value="120">120 FPS</option>
+                    <option value="unlimited">Unlimited</option>
                   </select>
                 </Row>
 

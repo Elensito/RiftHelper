@@ -1528,6 +1528,7 @@ async fn set_recording_fps(app: tauri::AppHandle, fps: String) -> Result<(), Str
     let normalized = match fps.as_str() {
         "60" => "60",
         "120" => "120",
+        "unlimited" => "unlimited",
         _ => "30",
     };
     let mut cfg = read_config(&app);
@@ -1983,13 +1984,16 @@ fn build_obs_config(
         .to_string_lossy()
         .to_string();
 
-    // Recording quality and FPS from user settings.
-    let rec_fps: u32 = cfg
+    // Recording quality and FPS from user settings. "unlimited" captures at the
+    // game's own frame rate (no hook-side cap); the output stays at 60fps.
+    let rec_fps_raw = cfg
         .get("recordingFps")
         .and_then(|v| v.as_str())
-        .unwrap_or("30")
-        .parse()
-        .unwrap_or(30);
+        .unwrap_or("30");
+    let (rec_fps, limit_capture) = match rec_fps_raw {
+        "unlimited" => (60u32, false),
+        s => (s.parse().unwrap_or(30).clamp(1, 240), true),
+    };
     let rec_quality = cfg
         .get("recordingQuality")
         .and_then(|v| v.as_str())
@@ -2015,6 +2019,7 @@ fn build_obs_config(
     let config = obs_recorder::ObsRecordingConfig {
         output_path: output_str.clone(),
         fps: rec_fps,
+        limit_capture,
         height: rec_height,
         video_bitrate: match rec_height {
             1080 => 12000,
