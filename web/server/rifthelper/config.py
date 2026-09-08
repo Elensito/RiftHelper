@@ -37,6 +37,11 @@ FEEDBACK_FILE = FEEDBACK_DIR / "feedback.json"
 MAX_FEEDBACK_BYTES = int(os.getenv("MAX_FEEDBACK_BYTES", str(8 * 1024 * 1024)))
 # Dev-only view token to keep user-submitted feedback private on the public site.
 FEEDBACK_VIEW_TOKEN = os.getenv("FEEDBACK_VIEW_TOKEN", "").strip()
+# GitHub token (scope: gist) + secret gist id used to persist feedback so it
+# survives Render free-tier redeploys (ephemeral disk). If empty, feedback is
+# only stored on the local disk.
+GITHUB_TOKEN = os.getenv("GITHUB_TOKEN", "").strip()
+FEEDBACK_GIST_ID = os.getenv("FEEDBACK_GIST_ID", "").strip()
 
 
 DDG_VERSION = "16.16.1"

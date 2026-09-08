@@ -307,6 +307,74 @@ def _save_feedback(items: list) -> None:
     )
 
 
+_GIST_API = "https://api.github.com/gists"
+
+
+def _gist_headers() -> dict | None:
+    if not config.GITHUB_TOKEN:
+        return None
+    return {
+        "Authorization": f"Bearer {config.GITHUB_TOKEN}",
+        "Accept": "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+        "User-Agent": "RiftHelper",
+    }
+
+
+async def _gist_load_feedback() -> list | None:
+    """Fetch feedback from the private gist (survives redeploys). Returns None
+    when the gist is not configured or unreachable."""
+    gist_id = config.FEEDBACK_GIST_ID
+    headers = _gist_headers()
+    if not gist_id or not headers:
+        return None
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(f"{_GIST_API}/{gist_id}", headers=headers, timeout=10) as resp:
+                if resp.status != 200:
+                    return None
+                data = await resp.json()
+        content = (data.get("files") or {}).get("feedback.json", {}).get("content", "[]")
+        items = json.loads(content)
+        return items if isinstance(items, list) else None
+    except Exception:
+        return None
+
+
+async def _gist_save_feedback(items: list) -> None:
+    """Overwrite feedback.json in the private gist so feedback survives Render
+    free-tier redeploys (ephemeral disk)."""
+    gist_id = config.FEEDBACK_GIST_ID
+    headers = _gist_headers()
+    if not gist_id or not headers:
+        return
+    try:
+        payload = {
+            "files": {
+                "feedback.json": {
+                    "content": json.dumps(items, ensure_ascii=False, indent=2)
+                }
+            }
+        }
+        async with aiohttp.ClientSession() as session:
+            async with session.patch(
+                f"{_GIST_API}/{gist_id}",
+                headers=headers,
+                json=payload,
+                timeout=10,
+            ) as resp:
+                if resp.status >= 300:
+                    raise RuntimeError(f"gist patch {resp.status}")
+    except Exception:
+        pass
+
+
+async def _persist_feedback(items: list) -> None:
+    """Write feedback to the local disk AND the remote gist (best effort)."""
+    _save_feedback(items)
+    await _gist_save_feedback(items)
+
+
 @app.post("/api/feedback")
 async def create_feedback(request: Request):
     """Store user feedback (topic + message) sent by the desktop app. The dev
@@ -331,10 +399,19 @@ async def create_feedback(request: Request):
         "message": message,
         "contact": str(data.get("contact") or "")[:120],
     }
-    items = _load_feedback()
+    items = await _load_feedback_persistent()
     items.append(entry)
-    _save_feedback(items)
+    await _persist_feedback(items)
     return {"ok": True, "id": entry["id"]}
+
+
+async def _load_feedback_persistent() -> list:
+    """Load feedback from the gist first (survives redeploys); fall back to the
+    ephemeral local disk when the gist is not configured or unreachable."""
+    items = await _gist_load_feedback()
+    if items is not None:
+        return items
+    return _load_feedback()
 
 
 @app.get("/api/feedback")
@@ -343,7 +420,7 @@ async def list_feedback(token: str = Query(default="")):
     server environment (FEEDBACK_VIEW_TOKEN)."""
     if not config.FEEDBACK_VIEW_TOKEN or not secrets.compare_digest(token, config.FEEDBACK_VIEW_TOKEN):
         raise HTTPException(status_code=403, detail="Acceso denegado.")
-    return {"items": list(reversed(_load_feedback()))}
+    return {"items": list(reversed(await _load_feedback_persistent()))}
 
 
 @app.get("/feedback")
@@ -380,7 +457,7 @@ async def feedback_view(
         html += "</body></html>"
         return HTMLResponse(html)
 
-    items = _load_feedback()
+    items = await _load_feedback_persistent()
     if not config.FEEDBACK_VIEW_TOKEN:
         cookie = ""
     parts = ["<div class='card'><h2>Feedback <small>(" + str(len(items)) + ")</small></h2>"]
