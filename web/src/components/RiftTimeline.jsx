@@ -497,10 +497,18 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
 
   /* Share a clip or highlight: generate the highlight's clip if needed, upload
      the mp4 (+ thumbnail) to the public server and surface the link. Already
-     shared items reuse their stored link without re-uploading. */
+     shared items reuse their stored link without re-uploading. The popup opens
+     instantly with an "uploading" state so the user sees feedback instead of
+     an unresponsive UI while the cut/upload runs. */
   const doShare = useCallback(async ({ id, kind }) => {
     if (sharingId) return
     setSharingId(id)
+    // Open the modal right away with a placeholder so the UI feels instant.
+    setShareModal({ kind, id, name: '', uploading: true, error: false })
+    const apply = (modal) => setShareModal((m) => {
+      const open = m && m.kind === kind && m.id === id
+      return open ? modal : m
+    })
     try {
       let videoPath = ''
       let thumbPath = ''
@@ -532,13 +540,13 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
         shareName = clip.name || 'clip'
       }
       if (shareUrl) {
-        setShareModal({ kind, id, url: shareUrl, videoUrl, name: shareName, error: false })
+        apply({ kind, id, url: shareUrl, videoUrl, name: shareName, error: false })
         return
       }
-      if (!isTauri() || !videoPath) { setShareModal({ kind, id, url: '', videoUrl: '', name: shareName, error: true, errorDetail: '' }); return }
+      if (!isTauri() || !videoPath) { apply({ kind, id, url: '', videoUrl: '', name: shareName, error: true, errorDetail: '' }); return }
       const res = await shareClip(videoPath, thumbPath, shareName, kind)
-      if (res && res.error) { setShareModal({ kind, id, url: '', videoUrl: '', name: shareName, error: true, errorDetail: res.error }); return }
-      if (!res || !res.shareUrl) { setShareModal({ kind, id, url: '', videoUrl: '', name: shareName, error: true, errorDetail: '' }); return }
+      if (res && res.error) { apply({ kind, id, url: '', videoUrl: '', name: shareName, error: true, errorDetail: res.error }); return }
+      if (!res || !res.shareUrl) { apply({ kind, id, url: '', videoUrl: '', name: shareName, error: true, errorDetail: '' }); return }
       if (kind === 'highlight') {
         const st = loadHlStore()
         if (st[id]) {
@@ -558,7 +566,7 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
           setClips(list)
         }
       }
-      setShareModal({ kind, id, url: res.shareUrl, videoUrl: res.videoUrl || '', name: shareName, error: false })
+      apply({ kind, id, url: res.shareUrl, videoUrl: res.videoUrl || '', name: shareName, error: false })
     } catch {} finally {
       setSharingId(null)
     }
@@ -1298,7 +1306,15 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
                 <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
               </svg>
             </div>
-            {shareModal.error ? (
+            {shareModal.uploading ? (
+              <>
+                <div className="rt-share-spinner-out">
+                  <span className="rt-share-spinner" aria-hidden="true" />
+                </div>
+                <h3 className="rt-modal-title">{t(lang, 'sharingTitle')}</h3>
+                <p className="rt-modal-desc">{t(lang, 'sharingDesc')}</p>
+              </>
+            ) : shareModal.error ? (
               <>
                 <h3 className="rt-modal-title">{t(lang, 'shareFailed')}</h3>
                 <p className="rt-modal-desc">{t(lang, 'shareFailedDesc')}</p>

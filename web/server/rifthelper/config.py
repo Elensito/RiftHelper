@@ -32,6 +32,13 @@ MAX_SHARE_BYTES = int(os.getenv("MAX_SHARE_BYTES", str(512 * 1024 * 1024)))
 MAX_SHARE_THUMB_BYTES = int(os.getenv("MAX_SHARE_THUMB_BYTES", str(10 * 1024 * 1024)))
 
 
+FEEDBACK_DIR = Path(os.getenv("FEEDBACK_DIR", str(BASE_DIR / "feedback")))
+FEEDBACK_FILE = FEEDBACK_DIR / "feedback.json"
+MAX_FEEDBACK_BYTES = int(os.getenv("MAX_FEEDBACK_BYTES", str(8 * 1024 * 1024)))
+# Dev-only view token to keep user-submitted feedback private on the public site.
+FEEDBACK_VIEW_TOKEN = os.getenv("FEEDBACK_VIEW_TOKEN", "").strip()
+
+
 DDG_VERSION = "16.16.1"
 DDG_VERSION_CACHE = BASE_DIR / "ddragon_version.json"
 

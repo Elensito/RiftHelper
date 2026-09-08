@@ -8,6 +8,7 @@ import LiveGame from './components/LiveGame.jsx'
 import QueueFilter from './components/QueueFilter.jsx'
 import DownloadButton from './components/DownloadButton.jsx'
 import RiotClientWidget from './components/RiotClientWidget.jsx'
+import FeedbackButton from './components/FeedbackButton.jsx'
 import Favorites from './components/Favorites.jsx'
 import ChampionPage from './components/ChampionPage.jsx'
 import Mastery from './components/Mastery.jsx'
@@ -592,6 +593,7 @@ export default function App() {
           <header className="topbar topbar-icon-rail">
             <div className="topbar-right">
               {isTauri() && <RiotClientWidget lang={lang} onOpen={openPlayer} />}
+              {isTauri() && <FeedbackButton lang={lang} />}
               {!isTauri() && profile && (
                 <span className="topbar-summoner-pill">
                   <img
@@ -656,6 +658,7 @@ export default function App() {
                 </button>
               )}
               {isTauri() && <RiotClientWidget lang={lang} onOpen={openPlayer} />}
+              {isTauri() && <FeedbackButton lang={lang} />}
               {!isTauri() && profile && (
                 <div className="topbar-summoner-card" onClick={() => setTab('matches')}>
                   <img

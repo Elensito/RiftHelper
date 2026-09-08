@@ -9,6 +9,7 @@
 import asyncio
 from contextlib import asynccontextmanager
 import html
+import json
 import secrets
 import sys
 from pathlib import Path
@@ -283,6 +284,66 @@ async def _read_body_limited(request: Request, limit: int) -> bytes:
             raise HTTPException(status_code=413, detail="El archivo es demasiado grande.")
         chunks.append(chunk)
     return b"".join(chunks)
+
+
+FEEDBACK_TOPICS = {"bug", "request", "other", "feedback"}
+
+
+def _feedback_path() -> Path:
+    config.FEEDBACK_DIR.mkdir(parents=True, exist_ok=True)
+    return config.FEEDBACK_FILE
+
+
+def _load_feedback() -> list:
+    try:
+        return json.loads(_feedback_path().read_text(encoding="utf-8"))
+    except Exception:
+        return []
+
+
+def _save_feedback(items: list) -> None:
+    _feedback_path().write_text(
+        json.dumps(items, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+
+
+@app.post("/api/feedback")
+async def create_feedback(request: Request):
+    """Store user feedback (topic + message) sent by the desktop app. The dev
+    reads it later via GET /api/feedback?token=... , never exposed publicly."""
+    body = await _read_body_limited(request, config.MAX_FEEDBACK_BYTES)
+    try:
+        data = json.loads(body.decode("utf-8"))
+    except Exception:
+        raise HTTPException(status_code=400, detail="JSON inválido.")
+    if not isinstance(data, dict):
+        raise HTTPException(status_code=400, detail="Cuerpo inválido.")
+    topic = str(data.get("topic") or "feedback")[:40].lower()
+    if topic not in FEEDBACK_TOPICS:
+        topic = "feedback"
+    message = str(data.get("message") or "")[:4000].strip()
+    if not message:
+        raise HTTPException(status_code=400, detail="El mensaje está vacío.")
+    entry = {
+        "id": secrets.token_urlsafe(8),
+        "ts": int(time.time()),
+        "topic": topic,
+        "message": message,
+        "contact": str(data.get("contact") or "")[:120],
+    }
+    items = _load_feedback()
+    items.append(entry)
+    _save_feedback(items)
+    return {"ok": True, "id": entry["id"]}
+
+
+@app.get("/api/feedback")
+async def list_feedback(token: str = Query(default="")):
+    """Dev-only: list all stored feedback. Protected by a token set in the
+    server environment (FEEDBACK_VIEW_TOKEN)."""
+    if not config.FEEDBACK_VIEW_TOKEN or not secrets.compare_digest(token, config.FEEDBACK_VIEW_TOKEN):
+        raise HTTPException(status_code=403, detail="Acceso denegado.")
+    return {"items": list(reversed(_load_feedback()))}
 
 
 @app.post("/api/share")

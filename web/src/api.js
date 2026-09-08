@@ -112,3 +112,14 @@ export async function fetchAICoach(messages, { model, maxTokens, temperature } =
   if (!res.ok) throw new Error(data.detail || 'AI Coach error')
   return data.content
 }
+
+export async function submitFeedback({ topic, message, contact = '' }) {
+  const res = await fetch(`${API_BASE}/api/feedback`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ topic, message, contact }),
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(data.detail || 'Error al enviar')
+  return data
+}
