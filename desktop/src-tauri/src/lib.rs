@@ -1200,6 +1200,38 @@ async fn wake_share_server(endpoint: &str) {
 /// Render free tier answers 503 (with an empty/HTML body) while it boots, so
 /// only those are retried. Cloudflare 429/403 challenges and other 4xx must
 /// NOT be hammered — repeating them only makes the block worse.
+/// Keep the public share server warm while RiftHelper runs. Render's free tier
+/// sleeps after ~15 min of no traffic, and a share then has to wait for a
+/// ~30-90s cold start. Pinging every 8 min (well under the 15 min idle limit)
+/// means the server is already up when the user hits "share" (~0.2s instead of
+/// minutes). Cheap GET /health, bounded timeout, run in the background.
+fn spawn_share_keepalive() {
+    let base = std::env::var("RIFTHELPER_SHARE_URL").unwrap_or_else(|_| SHARE_ENDPOINT.to_string());
+    let health = if base.ends_with("/api/share") {
+        base[..base.len() - "/api/share".len()].to_string() + "/health"
+    } else {
+        base.clone()
+    };
+    let spawned = std::thread::Builder::new()
+        .name("share-keepalive".into())
+        .spawn(move || {
+            let client = match reqwest::blocking::Client::builder()
+                .timeout(std::time::Duration::from_secs(10))
+                .build()
+            {
+                Ok(c) => c,
+                Err(_) => return,
+            };
+            loop {
+                let _ = client.get(&health).send();
+                std::thread::sleep(std::time::Duration::from_secs(8 * 60));
+            }
+        });
+    if let Ok(h) = spawned {
+        std::mem::forget(h);
+    }
+}
+
 fn share_retryable(status: reqwest::StatusCode) -> bool {
     matches!(
         status,
@@ -2554,6 +2586,7 @@ pub fn run() {
                 }
             }
             spawn_hotkey_worker();
+            spawn_share_keepalive();
 
             let show_item = MenuItemBuilder::with_id("show", "Show RiftHelper").build(app)?;
             let quit_item = MenuItemBuilder::with_id("quit", "Quit").build(app)?;

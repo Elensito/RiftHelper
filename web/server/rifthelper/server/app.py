@@ -346,6 +346,88 @@ async def list_feedback(token: str = Query(default="")):
     return {"items": list(reversed(_load_feedback()))}
 
 
+@app.get("/feedback")
+async def feedback_view(
+    request: Request,
+    token: str = Query(default=""),
+    set_token: str = Query(default=""),
+):
+    """Dev-only HTML viewer for stored feedback, gated by the
+    FEEDBACK_VIEW_TOKEN. Visit /feedback?set_token=<TOKEN> first so the browser
+    stores it for the session, then /feedback shows all messages. Falls back to
+    a small password form when no valid token is in the query or cookie."""
+    valid = bool(config.FEEDBACK_VIEW_TOKEN) and secrets.compare_digest(
+        token, config.FEEDBACK_VIEW_TOKEN
+    )
+    cookie = request.cookies.get("rh_feedback", "")
+    if not valid and set_token and config.FEEDBACK_VIEW_TOKEN and secrets.compare_digest(
+        set_token, config.FEEDBACK_VIEW_TOKEN
+    ):
+        valid = True
+        cookie = set_token
+    if not valid:
+        cookie = ""
+    if not valid or not config.FEEDBACK_VIEW_TOKEN:
+        html = _FEEDBACK_VIEW_CSS
+        html += "<div class='card'><h2>Feedback privado</h2>"
+        html += "<p>Introduce el token de acceso (FEEDBACK_VIEW_TOKEN).</p>"
+        html += (
+            "<form method='get' action='/feedback'>"
+            "<input type='password' name='set_token' placeholder='Token' "
+            "autocomplete='off' autofocus/>"
+            "<button type='submit'>Entrar</button></form></div>"
+        )
+        html += "</body></html>"
+        return HTMLResponse(html)
+
+    items = _load_feedback()
+    if not config.FEEDBACK_VIEW_TOKEN:
+        cookie = ""
+    parts = ["<div class='card'><h2>Feedback <small>(" + str(len(items)) + ")</small></h2>"]
+    if not items:
+        parts.append("<p class='empty'>Sin mensajes todavía.</p>")
+    for it in items:
+        ts = time.strftime("%Y-%m-%d %H:%M", time.localtime(int(it.get("ts") or 0)))
+        topic = (it.get("topic") or "feedback")[:40]
+        msg = (it.get("message") or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+        contact = (it.get("contact") or "").strip()
+        parts.append(
+            "<div class='msg'><div class='meta'>" + ts
+            + " · <span class='topic'>" + topic.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+            + "</span>" + (" · " + contact.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;") if contact else "")
+            + "</div><div class='text'>" + msg + "</div></div>"
+        )
+    parts.append("</div></body></html>")
+    page = _FEEDBACK_VIEW_CSS + "".join(parts)
+    resp = HTMLResponse(page)
+    if cookie:
+        resp.set_cookie("rh_feedback", cookie, httponly=True, samesite="lax", max_age=1800)
+    return resp
+
+
+_FEEDBACK_VIEW_CSS = """<!DOCTYPE html>
+<html lang="es"><head><meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>RiftHelper · Feedback</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background:#0b0e14; color:#e6ebf5; font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif; min-height:100vh; padding:28px 16px 40px; display:flex; align-items:flex-start; justify-content:center; }
+  .card { width:100%; max-width:760px; }
+  h2 { font-size:18px; margin-bottom:16px; color:#0ff; text-transform:uppercase; letter-spacing:.05em; }
+  h2 small { color:#7a8394; font-size:13px; }
+  .empty { color:#7a8394; }
+  .msg { background:#131a24; border:1px solid rgba(255,255,255,.08); border-radius:12px; padding:14px 16px; margin-bottom:12px; }
+  .meta { font-size:12px; color:#7a8394; margin-bottom:6px; }
+  .topic { color:#9be; font-weight:700; background:rgba(0,243,255,.12); border-radius:8px; padding:1px 8px; }
+  .text { white-space:pre-wrap; font-size:14px; line-height:1.5; }
+  form { display:flex; gap:10px; margin-top:14px; }
+  input[type=password] { flex:1; background:#11151d; border:1px solid rgba(255,255,255,.15); color:#e6ebf5; padding:11px 14px; border-radius:10px; font-size:14px; }
+  button { background:rgba(0,243,255,.12); color:#0ff; border:1px solid rgba(0,243,255,.4); padding:11px 18px; border-radius:10px; font-weight:700; cursor:pointer; }
+  button:hover { background:rgba(0,243,255,.22); }
+  p { color:#9aa5b5; font-size:14px; }
+</style></head><body>
+"""
+
 @app.post("/api/share")
 async def create_share(request: Request):
     """Receive a clip/highlight mp4 uploaded by the desktop app and make it
