@@ -225,6 +225,7 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
       ...s,
     }
   })
+  const autoCutRunning = useRef(false)
 
   useEffect(() => { saveSettings(settings) }, [settings])
 
@@ -383,6 +384,54 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
     })
     return () => { dead = true }
   }, [subTab, vods, hlHidden, lang, settings.autoHighlights])
+
+  /* Auto-cut each detected highlight into its own mp4 clip so highlights behave
+     like manual clips: they have a standalone file and keep being playable even
+     after the source VOD is deleted. Runs once per highlight (guarded by
+     hlStore.clipPath), in the background to avoid blocking the UI. */
+  useEffect(() => {
+    if (subTab !== 'highlights') return
+    if (!settings.autoHighlights) return
+    if (!isTauri()) return
+    if (autoCutRunning.current) return
+    const entries = Object.values(loadHlStore()).filter(e => e && e.id && !e.clipPath)
+    if (!entries.length) return
+    autoCutRunning.current = true
+    let dead = false
+    ;(async () => {
+      try {
+        for (const entry of entries) {
+          if (dead) return
+          const id = entry.id
+          const vod = vods.find(v => v.id === entry.vodId)
+          if (!vod || !vod.videoPath || !vod.hasVideo) continue
+          const hl = entry.hl || {}
+          const dur = Math.max(0, vod.duration || 0)
+          const start = Math.max(0, hl.startVideoSec || 0)
+          const end = Math.min(Math.max(0, hl.endVideoSec || 0), dur || Math.max(0, hl.endVideoSec || 0))
+          if (end - start < 1) continue
+          setHlBuilding(id)
+          const label = highlightLabel(lang, hl, vod.champion || '')
+          const res = await createManualClip(vod.videoPath, start, end, label)
+          if (dead) return
+          if (res && res.path) {
+            const st = loadHlStore()
+            if (st[id] && !st[id].clipPath) {
+              st[id].clipPath = res.path
+              if (res.thumb) st[id].thumb = res.thumb
+              saveHlStore(st)
+              setHlStore(st)
+              setHighlights(buildHlCards(st, vods, hlHidden))
+            }
+          }
+        }
+      } finally {
+        if (!dead) setHlBuilding(null)
+        autoCutRunning.current = false
+      }
+    })()
+    return () => { dead = true }
+  }, [subTab, vods, hlHidden, lang, settings.autoHighlights, hlStore])
 
   const toggleHlFavorite = useCallback((id, e, hlItem) => {
     if (e) e.stopPropagation()
