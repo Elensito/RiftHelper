@@ -18,6 +18,7 @@ import NavSidebar from './components/NavSidebar.jsx'
 import RiftTimeline from './components/RiftTimeline.jsx'
 import VODPlayer from './components/VODPlayer.jsx'
 import AppSettings from './components/AppSettings.jsx'
+import HeroTypewriter from './components/HeroTypewriter.jsx'
 import { fetchSummoner, fetchLatestMatch, fetchLiveGame, fetchMastery, fetchChampions, fetchChampion } from './api.js'
 import { retryPendingMatches, loadVodsRaw, saveVodsRaw, backfillVodRoles } from './match-resolver.js'
 import { isTauri, getRiotClientSession, notifyGameEnded, startRecordingTauri, stopRecordingTauri, getAutoRecord, isLolWindowOpen, getLastGameMode, deleteVodFiles, getFocusAfterGame, focusWindow, localFileSrc } from './tauri.js'
@@ -695,6 +696,7 @@ export default function App() {
 
             {!champion && !champLoading && !profile && !loading && !error && (
               <div className="hero">
+                <HeroTypewriter lang={lang} />
                 <Favorites onOpen={openPlayer} lang={lang} />
               </div>
             )}
