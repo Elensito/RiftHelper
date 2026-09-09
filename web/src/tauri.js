@@ -401,9 +401,13 @@ export async function localFileSrc(path) {
 }
 
 export async function createManualClip(videoPath, startSec, endSec, name) {
-  if (!isTauri() || !videoPath) return null
+  if (!isTauri() || !videoPath) return { error: 'Not in desktop app' }
   const { invoke } = await import('@tauri-apps/api/core')
-  try { return await invoke('create_manual_clip', { videoPath, startSec, endSec, name }) } catch { return null }
+  try {
+    return await invoke('create_manual_clip', { videoPath, startSec, endSec, name })
+  } catch (e) {
+    return { error: String((e && (e.message || e.detail)) || e || 'Unknown error') }
+  }
 }
 
 /* Rename a free-standing clip/highlight file (video + optional thumbnail) on

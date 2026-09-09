@@ -521,7 +521,11 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
                 setHlStore(st)
                 setHighlights(buildHlCards(st, vods, hlHidden, lang))
               }
+            } else if (res && res.error) {
+              console.warn('[autocut] cut failed', id, res.error)
             }
+          } catch (e) {
+            console.warn('[autocut] cut failed', id, String(e && (e.message || e.detail) || e || ''))
           } finally {
             inflightCuts.current.delete(id)
           }
@@ -665,7 +669,24 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
       const open = m && m.kind === kind && m.id === id
       return open ? modal : m
     })
-    const fail = (detail) => apply({ kind, id, url: '', videoUrl: '', name: '', uploading: false, error: true, errorDetail: detail || '' })
+    const t0 = Date.now()
+    const stageLog = (stage, extra) => console.warn(`[share:${kind}:${id}] ${stage} +${Date.now() - t0}ms`, extra || '')
+    const fail = (detail, errType) => {
+      stageLog('fail', { detail, errType })
+      apply({ kind, id, url: '', videoUrl: '', name: '', uploading: false, error: true, errorDetail: detail || '', errType: errType || 'unknown' })
+    }
+    /* Race each long-running step against a hard timeout so the popup can never
+       spin forever: on timeout we fail fast with a real message and the late
+       result is discarded. */
+    const withTimeout = (promise, ms, label) => new Promise((resolve) => {
+      let settled = false
+      const done = (v) => { if (!settled) { settled = true; resolve(v) } }
+      const timer = setTimeout(() => { stageLog('timeout', label); clearTimeout(timer); done({ timedOut: true }) }, ms)
+      promise.then(
+        (v) => { clearTimeout(timer); done(v || {}) },
+        (e) => { clearTimeout(timer); done({ error: String((e && (e.message || e.detail)) || e || '') }) }
+      )
+    })
     try {
       let videoPath = ''
       let thumbPath = ''
@@ -675,7 +696,7 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
       if (kind === 'highlight') {
         const store = loadHlStore()
         const entry = store[id]
-        if (!entry) { fail(t(lang, 'shareNoClip')); return }
+        if (!entry) { fail(t(lang, 'shareNoClip'), 'missing'); return }
         videoPath = entry.clipPath || ''
         thumbPath = entry.thumb || ''
         shareUrl = entry.shareUrl || ''
@@ -691,26 +712,36 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
           const dur = Math.max(0, vod && vod.duration || 0)
           const start = Math.max(0, hl.startVideoSec || 0)
           const end = Math.min(Math.max(0, hl.endVideoSec || 0), dur || Math.max(0, hl.endVideoSec || 0))
-          if (!vod || !vod.videoPath || !vod.hasVideo || !isTauri() || end - start < 1) { fail(t(lang, 'shareNoClip')); return }
+          if (!vod || !vod.videoPath || !vod.hasVideo || !isTauri() || end - start < 1) {
+            stageLog('no-source', { vodId: entry.vodId, hasVideo: vod && vod.hasVideo, videoPath: vod && vod.videoPath })
+            fail(t(lang, 'shareNoClip'), 'missing')
+            return
+          }
+          /* Give the background worker a few seconds if it's already cutting
+             this highlight, then cut it ourselves — never spin forever. */
+          for (let i = 0; i < 20 && inflightCuts.current.has(id); i++) {
+            await new Promise(r => setTimeout(r, 500))
+          }
+          const byWorker = loadHlStore()[id]
           let cut = null
-          if (!inflightCuts.current.has(id)) {
+          if (byWorker && byWorker.clipPath) {
+            stageLog('worker-cut-done', byWorker.clipPath)
+            cut = { path: byWorker.clipPath, thumb: byWorker.thumb || '' }
+          } else {
+            stageLog('cut-start', { start, end, vod: vod.videoPath })
             inflightCuts.current.add(id)
+            let r
             try {
-              cut = await createManualClip(vod.videoPath, start, end, shareName)
+              r = await withTimeout(createManualClip(vod.videoPath, start, end, shareName), 60000, 'cut')
             } finally {
               inflightCuts.current.delete(id)
             }
-          } else {
-            /* The background worker is already cutting this highlight: wait for
-               it (seconds) and read its output instead of starting a second
-               Media Foundation transcode or failing the share. */
-            for (let i = 0; i < 120 && inflightCuts.current.has(id); i++) {
-              await new Promise(r => setTimeout(r, 500))
-            }
-            const after = loadHlStore()[id]
-            if (after && after.clipPath) cut = { path: after.clipPath, thumb: after.thumb || '' }
+            if (r && r.timedOut) { fail(t(lang, 'shareTimeoutDesc'), 'timeout'); return }
+            if (r && r.error) { fail(t(lang, 'shareCutFailedDesc') + ' ' + r.error, 'cut'); return }
+            cut = r || null
           }
-          if (!cut || !cut.path) { fail(t(lang, 'shareNoClip')); return }
+          if (!cut || !cut.path) { fail(t(lang, 'shareNoClip'), 'missing'); return }
+          stageLog('cut-done', cut.path)
           videoPath = cut.path
           if (cut.thumb) thumbPath = cut.thumb
           const st = loadHlStore()
@@ -725,7 +756,7 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
       } else {
         const list = JSON.parse(localStorage.getItem(CLIPS_STORAGE_KEY) || '[]')
         const clip = list.find((c) => c.id === id)
-        if (!clip || !clip.path) { fail(t(lang, 'shareNoClip')); return }
+        if (!clip || !clip.path) { fail(t(lang, 'shareNoClip'), 'missing'); return }
         videoPath = clip.path
         thumbPath = clip.thumbPath || ''
         shareUrl = clip.shareUrl || ''
@@ -736,10 +767,15 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
         apply({ kind, id, url: shareUrl, videoUrl, name: shareName, uploading: false, error: false })
         return
       }
-      if (!isTauri() || !videoPath) { fail(t(lang, 'shareNoClip')); return }
-      const res = await shareClip(videoPath, thumbPath, shareName, kind)
-      if (res && res.error) { fail(res.error); return }
-      if (!res || !res.shareUrl) { fail(t(lang, 'shareFailedDesc')); return }
+      if (!isTauri() || !videoPath) { fail(t(lang, 'shareNoClip'), 'missing'); return }
+      stageLog('upload-start', videoPath)
+      const r = await withTimeout(shareClip(videoPath, thumbPath, shareName, kind), 150000, 'upload')
+      if (r && r.timedOut) { fail(t(lang, 'shareTimeoutDesc'), 'timeout'); return }
+      if (r && r.error) { fail(r.error, 'upload'); return }
+      const res = r || {}
+      if (res.error) { fail(res.error, 'upload'); return }
+      if (!res.shareUrl) { fail(t(lang, 'shareFailedDesc'), 'upload'); return }
+      stageLog('upload-done', res.shareUrl)
       if (kind === 'highlight') {
         const st = loadHlStore()
         if (st[id]) {
@@ -761,7 +797,7 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
       }
       apply({ kind, id, url: res.shareUrl, videoUrl: res.videoUrl || '', name: shareName, uploading: false, error: false })
     } catch (e) {
-      fail(String((e && (e.message || e.detail)) || e || ''))
+      fail(String((e && (e.message || e.detail)) || e || ''), 'unknown')
     } finally {
       setSharingId(null)
     }
@@ -1516,7 +1552,9 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
             ) : shareModal.error ? (
               <>
                 <h3 className="rt-modal-title">{t(lang, 'shareFailed')}</h3>
-                <p className="rt-modal-desc">{t(lang, 'shareFailedDesc')}</p>
+                <p className="rt-modal-desc">
+                  {shareModal.errType === 'cut' ? t(lang, 'shareCutFailedDesc') : t(lang, 'shareFailedDesc')}
+                </p>
                 {shareModal.errorDetail && <p className="rt-share-err">{shareModal.errorDetail}</p>}
               </>
             ) : (

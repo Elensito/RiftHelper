@@ -1125,6 +1125,7 @@ async fn create_manual_clip(
 
     let src = std::path::Path::new(&video_path);
     if !src.exists() {
+        eprintln!("[create_manual_clip] source video missing on disk: {video_path}");
         return Ok(None);
     }
     let safe_name: String = name
@@ -1148,10 +1149,52 @@ async fn create_manual_clip(
         // Cut the window to a small clip. If the cut fails we do NOT copy the
         // whole source VOD (that produced multi-GB "clips" impossible to share)
         // — we clean up and report failure so the UI can show a real reason.
-        if let Err(e) = clip::cut_highlight(&video_path, &clip_str, start_sec, end_sec) {
-            let _ = std::fs::remove_file(&clip_path);
-            return Err(format!("No se pudo generar el clip del highlight: {e}"));
+        // The cut runs on its own thread with a hard timeout: Media Foundation
+        // can hang forever on a corrupt/locked source, and that used to leave
+        // the share popup stuck on "Preparando enlace…" with no way out.
+        eprintln!(
+            "[create_manual_clip] cut {:?} [{start_sec}..{end_sec}] label={name} -> {:?}",
+            src, clip_str
+        );
+        let cut_src = video_path.clone();
+        let cut_dst = clip_str.clone();
+        let (tx_cut, rx_cut) = std::sync::mpsc::channel::<Result<String, String>>();
+        std::thread::spawn(move || {
+            let r = clip::cut_highlight(&cut_src, &cut_dst, start_sec, end_sec)
+                .map(|_| cut_dst.clone());
+            eprintln!("[create_manual_clip] cutter finished, ok={}", r.is_ok());
+            let _ = tx_cut.send(r);
+        });
+        let cut_path = match rx_cut.recv_timeout(std::time::Duration::from_secs(180)) {
+            Ok(Ok(path)) => path,
+            Ok(Err(e)) => {
+                let _ = std::fs::remove_file(&clip_path);
+                return Err(format!("No se pudo generar el clip del highlight: {e}"));
+            }
+            Err(_) => {
+                // The cutter thread may still be running; its output is
+                // discarded. 180s is far beyond what a healthy cut needs.
+                eprintln!("[create_manual_clip] CUT TIMEOUT (180s): {clip_str}");
+                let _ = std::fs::remove_file(&clip_path);
+                return Err(
+                    "No se pudo generar el clip del highlight: el recorte tardó demasiado tiempo."
+                        .to_string(),
+                );
+            }
+        };
+        if cut_path != clip_str {
+            return Err("cut path mismatch".to_string());
         }
+        let cut_meta = std::fs::metadata(&clip_path)
+            .map(|m| m.len())
+            .unwrap_or(0);
+        if cut_meta == 0 {
+            let _ = std::fs::remove_file(&clip_path);
+            return Err(
+                "No se pudo generar el clip del highlight: el recorte quedó vacío.".to_string(),
+            );
+        }
+        eprintln!("[create_manual_clip] clip ready: {clip_str} ({cut_meta} bytes)");
         // Thumbnail at the very first second of the clip (second 1).
         let _thumb_g = THUMB_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         clip::extract_thumbnail(&clip_str, &thumb_str, 1.0).ok();
@@ -1260,14 +1303,15 @@ fn share_backoff(attempt: usize) -> u64 {
 }
 
 /// How many upload attempts before giving up (covers Render cold starts).
-const SHARE_MAX_ATTEMPTS: usize = 6;
+const SHARE_MAX_ATTEMPTS: usize = 3;
 
 async fn post_bytes_limited(base: &str, suffix: &str, bytes: Vec<u8>, mime: &str) -> Result<serde_json::Value, String> {
     let url = format!("{base}{suffix}");
     let mime = mime.to_string();
     tauri::async_runtime::spawn_blocking(move || -> Result<serde_json::Value, String> {
         let client = reqwest::blocking::Client::builder()
-            .timeout(std::time::Duration::from_secs(300))
+            .timeout(std::time::Duration::from_secs(60))
+            .connect_timeout(std::time::Duration::from_secs(15))
             .build()
             .map_err(|e| format!("http client: {e}"))?;
         let mut last_err: Option<String> = None;
@@ -1337,11 +1381,17 @@ async fn share_clip(
 ) -> Result<Option<serde_json::Value>, String> {
     let video = std::path::PathBuf::from(&video_path);
     if !video.exists() {
+        eprintln!("[share_clip] video missing: {video_path}");
         return Err("El archivo del vídeo no existe (puede que se haya movido o borrado).".to_string());
     }
     let base = std::env::var("RIFTHELPER_SHARE_URL").unwrap_or_else(|_| SHARE_ENDPOINT.to_string());
     wake_share_server(&base).await;
     let video_bytes = std::fs::read(&video).map_err(|e| format!("read video: {e}"))?;
+    eprintln!(
+        "[share_clip] uploading {video_path} ({} bytes, kind={kind}, name={name})",
+        video_bytes.len()
+    );
+    let upload_start = std::time::Instant::now();
 
     let mut result = post_bytes_limited(
         &base,
@@ -1350,6 +1400,11 @@ async fn share_clip(
         "video/mp4",
     )
     .await?;
+    eprintln!(
+        "[share_clip] upload done in {:?}: {:?}",
+        upload_start.elapsed(),
+        result
+    );
 
     let token = result
         .get("token")
@@ -1366,6 +1421,7 @@ async fn share_clip(
             }
         }
     }
+    eprintln!("[share_clip] returning {:?}", result);
     Ok(Some(result))
 }
 
@@ -1376,7 +1432,8 @@ async fn post_bytes_once(base: &str, suffix: &str, bytes: Vec<u8>, mime: &str) -
     let mime = mime.to_string();
     tauri::async_runtime::spawn_blocking(move || -> Result<serde_json::Value, String> {
         let client = reqwest::blocking::Client::builder()
-            .timeout(std::time::Duration::from_secs(300))
+            .timeout(std::time::Duration::from_secs(45))
+            .connect_timeout(std::time::Duration::from_secs(15))
             .build()
             .map_err(|e| format!("http client: {e}"))?;
         let resp = client
