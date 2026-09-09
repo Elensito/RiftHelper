@@ -228,6 +228,10 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
     }
   })
   const autoCutRunning = useRef(false)
+  /* Highlights currently being cut (worker + the on-open fallback). Prevents
+     two concurrent Media Foundation transcodes of the SAME highlight, which
+     double the decode work and made cards sit on "cargando" for minutes. */
+  const inflightCuts = useRef(new Set())
   const [renameModal, setRenameModal] = useState(null)
   const [renameVal, setRenameVal] = useState('')
   const [renaming, setRenaming] = useState(false)
@@ -481,6 +485,7 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
         for (const entry of entries) {
           if (dead) return
           const id = entry.id
+          if (inflightCuts.current.has(id)) continue
           const vod = vods.find(v => v.id === entry.vodId)
           if (!vod || !vod.videoPath || !vod.hasVideo) continue
           const hl = entry.hl || {}
@@ -488,19 +493,24 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
           const start = Math.max(0, hl.startVideoSec || 0)
           const end = Math.min(Math.max(0, hl.endVideoSec || 0), dur || Math.max(0, hl.endVideoSec || 0))
           if (end - start < 1) continue
+          inflightCuts.current.add(id)
           setHlBuilding(id)
-          const label = (entry.name && entry.name.trim()) || highlightLabel(lang, hl, vod.champion || '')
-          const res = await createManualClip(vod.videoPath, start, end, label)
-          if (dead) return
-          if (res && res.path) {
-            const st = loadHlStore()
-            if (st[id] && !st[id].clipPath) {
-              st[id].clipPath = res.path
-              if (res.thumb) st[id].thumb = res.thumb
-              saveHlStore(st)
-              setHlStore(st)
-              setHighlights(buildHlCards(st, vods, hlHidden, lang))
+          try {
+            const label = (entry.name && entry.name.trim()) || highlightLabel(lang, hl, vod.champion || '')
+            const res = await createManualClip(vod.videoPath, start, end, label)
+            if (dead) return
+            if (res && res.path) {
+              const st = loadHlStore()
+              if (st[id] && !st[id].clipPath) {
+                st[id].clipPath = res.path
+                if (res.thumb) st[id].thumb = res.thumb
+                saveHlStore(st)
+                setHlStore(st)
+                setHighlights(buildHlCards(st, vods, hlHidden, lang))
+              }
             }
+          } finally {
+            inflightCuts.current.delete(id)
           }
           setHlBuilding(null)
           await new Promise(r => setTimeout(r, 400))
@@ -563,14 +573,18 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
     if (!id) return null
     const store0 = loadHlStore()
     if (store0[id] && store0[id].clipPath) return store0[id]
+    if (inflightCuts.current.has(id)) return null
     const src = h.vod && h.vod.videoPath
     const hl = h.hl || {}
     if (!src || !isTauri()) return null
     const start = Math.max(0, hl.startVideoSec || 0)
     const end = Math.min(Math.max(0, hl.endVideoSec || 0), Math.max(0, h.vod.duration || 0) || Math.max(0, hl.endVideoSec || 0))
     if (end - start < 1) return null
+    inflightCuts.current.add(id)
     try {
-      const label = highlightLabel(lang, hl, (h.vod && h.vod.champion) || '')
+      const storeEntry = loadHlStore()[id]
+      const customName = (storeEntry && storeEntry.name && storeEntry.name.trim()) || ''
+      const label = customName || highlightLabel(lang, hl, (h.vod && h.vod.champion) || '')
       const res = await createManualClip(src, start, end, label)
       if (res && res.path) {
         const st = loadHlStore()
@@ -583,7 +597,9 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
           return st[id]
         }
       }
-    } catch {}
+    } catch {} finally {
+      inflightCuts.current.delete(id)
+    }
     return null
   }, [vods, hlHidden, lang])
 

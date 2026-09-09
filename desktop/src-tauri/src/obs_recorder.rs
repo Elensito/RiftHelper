@@ -344,9 +344,10 @@ pub fn prepare(config: ObsRecordingConfig) -> Result<(), String> {
         // recorded output, but drastically less in-game overhead at high refresh
         // rates (e.g. a 240Hz loop recorded at 30fps).
         .set_limit_framerate(config.limit_capture)
-        // LoL draws its own in-game cursor; the OS cursor is hidden, so the
-        // hook-side cursor composite is pure per-frame waste.
-        .set_capture_cursor(false)
+        // Capture the OS cursor so recordings show the user's mouse pointer.
+        // (One perf pass disabled this because LoL paints its own in-game
+        // cursor, but users explicitly want the real pointer visible.)
+        .set_capture_cursor(true)
         // Hook polling cadence: Fastest wakes on every present even when the
         // frames are dropped by limit_framerate. Normal is enough to never miss
         // a capped frame while halving the game-side hook pressure.

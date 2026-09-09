@@ -15,7 +15,7 @@ use windows::Win32::Media::MediaFoundation::{
     MFCreateAttributes, MFCreateMediaType, MFCreateSinkWriterFromURL, MFCreateSourceReaderFromURL,
     MFMediaType_Audio, MFMediaType_Video, MFShutdown, MFStartup, MFVideoFormat_H264,
     MFVideoFormat_NV12, MFVideoFormat_RGB32, MFVideoInterlace_Progressive, MF_VERSION, MFSTARTUP_FULL,
-    IMFAttributes, IMFMediaType, IMFSample,
+    IMFAttributes, IMFMediaType, IMFSample, IMFSourceReader,
 };
 use windows::Win32::System::Com::{CoInitializeEx, CoUninitialize, COINIT_APARTMENTTHREADED};
 
@@ -153,9 +153,13 @@ unsafe fn cut_highlight_inner(in_path: &str, out_path: &str, start_sec: f64, end
     // source cannot seek we just fall back to the decode-from-start behavior.
     {
         let seek_at = (start_hns - 20_000_000).max(0); // 2s lead-in for the keyframe
-        let mf_time_format = windows::core::GUID::from_u128(0x0F7A0A6E_F007_41D9_8AE4_6D90B4AEE6F4);
-        let pos = windows::core::PROPVARIANT::from(seek_at);
-        let _ = reader.SetCurrentPosition(&mf_time_format, &pos);
+        if !try_seek(&reader, seek_at) && seek_at > 0 {
+            // Some MP4 demuxers index the file lazily and stay at position 0
+            // the first time; a second seek straight to the window start then
+            // lands. This is what used to silently decode the ENTIRE VOD (a
+            // highlight "cargando" for minutes) when the first seek was missed.
+            let _ = try_seek(&reader, start_hns);
+        }
     }
 
     // Read samples within the window and write them to the matching stream.
@@ -211,6 +215,18 @@ unsafe fn cut_highlight_inner(in_path: &str, out_path: &str, start_sec: f64, end
 
     writer.Finalize().map_err(|e| format!("Finalize: {e:?}"))?;
     Ok(())
+}
+
+/// Seek the source reader to `target_hns`. Returns false when the seek fails,
+/// letting the caller retry once (some MP4 demuxers index the file lazily and
+/// only land on the second attempt).
+unsafe fn try_seek(reader: &IMFSourceReader, target_hns: i64) -> bool {
+    if target_hns <= 0 {
+        return true;
+    }
+    let mf_time_format = windows::core::GUID::from_u128(0x0F7A0A6E_F007_41D9_8AE4_6D90B4AEE6F4);
+    let pos = windows::core::PROPVARIANT::from(target_hns);
+    reader.SetCurrentPosition(&mf_time_format, &pos).is_ok()
 }
 
 unsafe fn mt_is(mt: &IMFMediaType, expected: windows::core::GUID) -> Result<bool, String> {
@@ -393,6 +409,14 @@ unsafe fn extract_thumbnail_inner(in_path: &str, out_path: &str, at_sec: f64) ->
     let h = (cur_size & 0xFFFF_FFFF) as usize;
 
     let target_hns = (at_sec * 10_000_000.0) as i64;
+    // Jump straight to the frame's neighborhood instead of decoding the whole
+    // file up to it (a thumbnail at minute 20 used to decode all 20 minutes).
+    {
+        let seek_at = (target_hns - 20_000_000).max(0);
+        if !try_seek(&reader, seek_at) && seek_at > 0 {
+            let _ = try_seek(&reader, target_hns);
+        }
+    }
     let mut saved = false;
     let mut saw_end = false;
     while !saw_end {
