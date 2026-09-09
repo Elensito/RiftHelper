@@ -1250,13 +1250,17 @@ fn share_retryable(status: reqwest::StatusCode) -> bool {
 }
 
 /// Backoff (in seconds) between share-upload retries. Render free tier cold
-/// starts take ~30-60s, so we go 3s, 6s, 9s ... up to 20s.
+/// starts take ~30-60s and answer 503 while booting, so we go 2s, 4s, 6s ...
+/// up to 12s. The wake_share_server probe already warmed the server, so a
+/// healthy upload should succeed on the first attempt; retries exist only to
+/// ride out a Render cold start, and are bounded so the UI never spins for
+/// minutes (the "sharing takes forever" complaint).
 fn share_backoff(attempt: usize) -> u64 {
-    (attempt as u64 * 3).min(20)
+    (attempt as u64 * 2).min(12)
 }
 
 /// How many upload attempts before giving up (covers Render cold starts).
-const SHARE_MAX_ATTEMPTS: usize = 8;
+const SHARE_MAX_ATTEMPTS: usize = 6;
 
 async fn post_bytes_limited(base: &str, suffix: &str, bytes: Vec<u8>, mime: &str) -> Result<serde_json::Value, String> {
     let url = format!("{base}{suffix}");
@@ -1355,7 +1359,7 @@ async fn share_clip(
     let thumb = std::path::PathBuf::from(&thumb_path);
     if !token.is_empty() && thumb.exists() {
         if let Ok(thumb_bytes) = std::fs::read(&thumb) {
-            if let Ok(tv) = post_bytes_limited(&base, &format!("/{token}/thumb"), thumb_bytes, "image/jpeg").await {
+            if let Ok(tv) = post_bytes_once(&base, &format!("/{token}/thumb"), thumb_bytes, "image/jpeg").await {
                 if let Some(tu) = tv.get("thumb_url").and_then(|v| v.as_str()) {
                     result["thumb_url"] = serde_json::json!(tu);
                 }
@@ -1363,6 +1367,35 @@ async fn share_clip(
         }
     }
     Ok(Some(result))
+}
+
+/// Single-attempt upload for the optional thumbnail: it must never delay the
+/// video's share link (a link without a preview is fine), so no retry loop.
+async fn post_bytes_once(base: &str, suffix: &str, bytes: Vec<u8>, mime: &str) -> Result<serde_json::Value, String> {
+    let url = format!("{base}{suffix}");
+    let mime = mime.to_string();
+    tauri::async_runtime::spawn_blocking(move || -> Result<serde_json::Value, String> {
+        let client = reqwest::blocking::Client::builder()
+            .timeout(std::time::Duration::from_secs(300))
+            .build()
+            .map_err(|e| format!("http client: {e}"))?;
+        let resp = client
+            .post(&url)
+            .header(reqwest::header::CONTENT_TYPE, &mime)
+            .body(bytes)
+            .send()
+            .map_err(|e| format!("thumb upload request: {e}"))?;
+        let status = resp.status();
+        let body = resp.text().map_err(|e| format!("thumb upload response: {e}"))?;
+        let data: serde_json::Value = serde_json::from_str(&body)
+            .map_err(|_| format!("thumb upload not JSON ({status}): {}", body.chars().take(300).collect::<String>()))?;
+        if !status.is_success() {
+            return Err(format!("thumb upload failed ({status}): {data}"));
+        }
+        Ok(data)
+    })
+    .await
+    .map_err(|e| format!("thumb upload task: {e}"))?
 }
 
 fn percent_of(s: &str) -> String {

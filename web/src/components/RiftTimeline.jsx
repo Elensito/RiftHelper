@@ -204,6 +204,7 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
   const [hlBump, setHlBump] = useState(0)
   const [sharingId, setSharingId] = useState(null)
   const [shareModal, setShareModal] = useState(null)
+  const [shareStage, setShareStage] = useState(null)
   const [copiedLink, setCopiedLink] = useState(false)
   const [contextMenu, setContextMenu] = useState(null)
   const [deleteModal, setDeleteModal] = useState(null)
@@ -561,13 +562,18 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
     setSharingId(id)
     // Open the modal right away with a placeholder so the UI feels instant.
     setShareModal({ kind, id, name: '', uploading: true, error: false })
+    setShareStage(null)
     // Wake the backend in parallel with any cut, so the upload that follows
     // is fast (free-tier Render sleeps after ~15 min of inactivity).
     warmShareServer()
+    // Every failure lands the modal on a real error (the "stuck forever on
+    // uploading" bug was silent `return`s / empty catches leaving the popup
+    // spinning). apply() is the ONLY exit that touches the modal.
     const apply = (modal) => setShareModal((m) => {
       const open = m && m.kind === kind && m.id === id
       return open ? modal : m
     })
+    const fail = (detail) => apply({ kind, id, url: '', videoUrl: '', name: '', uploading: false, error: true, errorDetail: detail || '' })
     try {
       let videoPath = ''
       let thumbPath = ''
@@ -578,11 +584,13 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
         const store = loadHlStore()
         let entry = store[id]
         if (!entry || !entry.clipPath) {
+          /* No pre-cut clip yet: make it now (stage "clip" so the user sees
+             real progress instead of an endless spinner). */
+          setShareStage('clip')
           const h = highlights.find((x) => x.id === id)
-          if (!h) { apply({ kind, id, url: '', videoUrl: '', name: '', error: true, errorDetail: t(lang, 'shareNoClip') }); return }
-          entry = await ensureHighlightClip(h)
+          if (h) entry = await ensureHighlightClip(h)
         }
-        if (!entry || !entry.clipPath) { apply({ kind, id, url: '', videoUrl: '', name: '', error: true, errorDetail: t(lang, 'shareNoClip') }); return }
+        if (!entry || !entry.clipPath) { fail(t(lang, 'shareNoClip')); return }
         videoPath = entry.clipPath
         thumbPath = entry.thumb || ''
         shareUrl = entry.shareUrl || ''
@@ -591,7 +599,7 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
       } else {
         const list = JSON.parse(localStorage.getItem(CLIPS_STORAGE_KEY) || '[]')
         const clip = list.find((c) => c.id === id)
-        if (!clip || !clip.path) { apply({ kind, id, url: '', videoUrl: '', name: '', error: true, errorDetail: t(lang, 'shareNoClip') }); return }
+        if (!clip || !clip.path) { fail(t(lang, 'shareNoClip')); return }
         videoPath = clip.path
         thumbPath = clip.thumbPath || ''
         shareUrl = clip.shareUrl || ''
@@ -599,13 +607,14 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
         shareName = clip.name || 'clip'
       }
       if (shareUrl) {
-        apply({ kind, id, url: shareUrl, videoUrl, name: shareName, error: false })
+        apply({ kind, id, url: shareUrl, videoUrl, name: shareName, uploading: false, error: false })
         return
       }
-      if (!isTauri() || !videoPath) { apply({ kind, id, url: '', videoUrl: '', name: shareName, error: true, errorDetail: '' }); return }
+      if (!isTauri() || !videoPath) { fail(t(lang, 'shareNoClip')); return }
+      setShareStage('upload')
       const res = await shareClip(videoPath, thumbPath, shareName, kind)
-      if (res && res.error) { apply({ kind, id, url: '', videoUrl: '', name: shareName, error: true, errorDetail: res.error }); return }
-      if (!res || !res.shareUrl) { apply({ kind, id, url: '', videoUrl: '', name: shareName, error: true, errorDetail: '' }); return }
+      if (res && res.error) { fail(res.error); return }
+      if (!res || !res.shareUrl) { fail(t(lang, 'shareFailedDesc')); return }
       if (kind === 'highlight') {
         const st = loadHlStore()
         if (st[id]) {
@@ -625,8 +634,11 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
           setClips(list)
         }
       }
-      apply({ kind, id, url: res.shareUrl, videoUrl: res.videoUrl || '', name: shareName, error: false })
-    } catch {} finally {
+      apply({ kind, id, url: res.shareUrl, videoUrl: res.videoUrl || '', name: shareName, uploading: false, error: false })
+    } catch (e) {
+      fail(String((e && (e.message || e.detail)) || e || ''))
+    } finally {
+      setShareStage(null)
       setSharingId(null)
     }
   }, [sharingId, highlights, ensureHighlightClip, vods, hlHidden, lang])
@@ -1152,26 +1164,6 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
                           <span className="rt-hl-rel">{relTime(lang, vod.date)}</span>
                         </div>
                       </div>
-                      <div className="rt-hl-actions">
-                        <button
-                          className={`rt-btn rt-btn-sm rt-btn-hl-ghost ${fav ? 'locked' : ''}`}
-                          onClick={(e) => hideHighlight(h.id, e)}
-                          disabled={fav}
-                          title={fav ? t(lang, 'hlLocked') : t(lang, 'deleteVod')}
-                        >
-                          {fav ? (
-                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                              <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-                              <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-                            </svg>
-                          ) : (
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                              <polyline points="3 6 5 6 21 6" />
-                              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                            </svg>
-                          )}
-                        </button>
-                      </div>
                     </div>
                   )
                 })}
@@ -1370,8 +1362,17 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
                 <div className="rt-share-spinner-out">
                   <span className="rt-share-spinner" aria-hidden="true" />
                 </div>
-                <h3 className="rt-modal-title">{t(lang, 'sharingTitle')}</h3>
-                <p className="rt-modal-desc">{t(lang, 'sharingDesc')}</p>
+                <h3 className="rt-modal-title">
+                  {shareStage === 'clip' ? t(lang, 'sharingCutTitle') : t(lang, 'sharingTitle')}
+                </h3>
+                <p className="rt-modal-desc">
+                  {shareStage === 'clip' ? t(lang, 'sharingCutDesc') : t(lang, 'sharingDesc')}
+                </p>
+                <div className="rt-share-steps">
+                  <span className={`rt-share-step ${shareStage === 'clip' ? 'on' : 'done'}`}>{t(lang, 'shareStepCut')}</span>
+                  <span className="rt-share-step-arrow" />
+                  <span className={`rt-share-step ${shareStage === 'upload' ? 'on' : ''}`}>{t(lang, 'shareStepUpload')}</span>
+                </div>
               </>
             ) : shareModal.error ? (
               <>
