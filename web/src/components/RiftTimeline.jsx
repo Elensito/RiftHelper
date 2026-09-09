@@ -200,8 +200,6 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
   const [hlHidden, setHlHidden] = useState(loadHlHidden)
   const [highlights, setHighlights] = useState([])
   const [hlStore, setHlStore] = useState(loadHlStore)
-  const [hlLoading, setHlLoading] = useState(false)
-  const [hlBuilding, setHlBuilding] = useState(null)
   const [hlBump, setHlBump] = useState(0)
   const [sharingId, setSharingId] = useState(null)
   const [shareModal, setShareModal] = useState(null)
@@ -305,7 +303,24 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
     saveVods(filtered)
     window.dispatchEvent(new Event('rh-vods-changed'))
     deleteRecordingBlob(id).catch(() => {})
-  }, [vods])
+    /* Highlights that already have their own clip file (or a shared link) keep
+       working after the VOD is gone. Entries that were never cut have no source
+       anymore, so drop them instead of leaving dead cards behind. */
+    const st = loadHlStore()
+    let pruned = false
+    for (const key of Object.keys(st)) {
+      const e = st[key]
+      if (e && e.vodId === id && !e.clipPath && !e.shareUrl) {
+        delete st[key]
+        pruned = true
+      }
+    }
+    if (pruned) {
+      saveHlStore(st)
+      setHlStore(st)
+      setHighlights(buildHlCards(st, vods, hlHidden, lang))
+    }
+  }, [vods, hlHidden, lang])
 
   const toggleFavorite = useCallback((id, e) => {
     e.stopPropagation()
@@ -398,13 +413,13 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
   useEffect(() => {
     if (subTab !== 'highlights') return
     if (!settings.autoHighlights) {
-      setHlLoading(false)
       setHighlights([])
       return
     }
     let dead = false
-    setHlLoading(true)
-    setHighlights([])
+    /* Render instantly from whatever is already in the store so the list never
+       sits on an empty/spinner state while the scan refreshes it. */
+    try { setHighlights(buildHlCards(loadHlStore(), vods, hlHidden, lang)) } catch {}
     const candidates = [...vods]
       .filter(v => v.hasVideo && v.videoPath && isTauri())
       .sort((a, b) => (b.date || 0) - (a.date || 0))
@@ -455,7 +470,6 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
       setHlStore(store)
       if (dead) return
       setHighlights(buildHlCards(store, vods, hlHidden, lang))
-      setHlLoading(false)
     })
     return () => { dead = true }
   }, [subTab, vods, hlHidden, lang, settings, hlBump])
@@ -494,7 +508,6 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
           const end = Math.min(Math.max(0, hl.endVideoSec || 0), dur || Math.max(0, hl.endVideoSec || 0))
           if (end - start < 1) continue
           inflightCuts.current.add(id)
-          setHlBuilding(id)
           try {
             const label = (entry.name && entry.name.trim()) || highlightLabel(lang, hl, vod.champion || '')
             const res = await createManualClip(vod.videoPath, start, end, label)
@@ -512,11 +525,9 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
           } finally {
             inflightCuts.current.delete(id)
           }
-          setHlBuilding(null)
           await new Promise(r => setTimeout(r, 400))
         }
       } finally {
-        if (!dead) setHlBuilding(null)
         autoCutRunning.current = false
       }
     })()
@@ -662,17 +673,55 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
       let videoUrl = ''
       let shareName = ''
       if (kind === 'highlight') {
-        /* Highlights must already be pre-cut (they are generated as clips from
-           their VOD when detected). Sharing NEVER triggers a cut � the app only
-           uploads clips that are ready, so the link appears fast. */
         const store = loadHlStore()
         const entry = store[id]
-        if (!entry || !entry.clipPath) { fail(t(lang, 'shareNoClip')); return }
-        videoPath = entry.clipPath
+        if (!entry) { fail(t(lang, 'shareNoClip')); return }
+        videoPath = entry.clipPath || ''
         thumbPath = entry.thumb || ''
         shareUrl = entry.shareUrl || ''
         videoUrl = entry.videoUrl || ''
         shareName = (entry.name && entry.name.trim()) || highlightLabel(lang, entry.hl, entry.champion || '')
+        /* Sharing never blocks on a background job: if the standalone clip isn't
+           cut yet, cut it RIGHT NOW from the VOD (fast, verified seek). The link
+           only appears once the file is ready, so it always works even if the
+           worker hasn't gotten to this highlight yet. */
+        if (!videoPath) {
+          const hl = entry.hl || {}
+          const vod = vods.find(v => v.id === entry.vodId)
+          const dur = Math.max(0, vod && vod.duration || 0)
+          const start = Math.max(0, hl.startVideoSec || 0)
+          const end = Math.min(Math.max(0, hl.endVideoSec || 0), dur || Math.max(0, hl.endVideoSec || 0))
+          if (!vod || !vod.videoPath || !vod.hasVideo || !isTauri() || end - start < 1) { fail(t(lang, 'shareNoClip')); return }
+          let cut = null
+          if (!inflightCuts.current.has(id)) {
+            inflightCuts.current.add(id)
+            try {
+              cut = await createManualClip(vod.videoPath, start, end, shareName)
+            } finally {
+              inflightCuts.current.delete(id)
+            }
+          } else {
+            /* The background worker is already cutting this highlight: wait for
+               it (seconds) and read its output instead of starting a second
+               Media Foundation transcode or failing the share. */
+            for (let i = 0; i < 120 && inflightCuts.current.has(id); i++) {
+              await new Promise(r => setTimeout(r, 500))
+            }
+            const after = loadHlStore()[id]
+            if (after && after.clipPath) cut = { path: after.clipPath, thumb: after.thumb || '' }
+          }
+          if (!cut || !cut.path) { fail(t(lang, 'shareNoClip')); return }
+          videoPath = cut.path
+          if (cut.thumb) thumbPath = cut.thumb
+          const st = loadHlStore()
+          if (st[id]) {
+            st[id].clipPath = cut.path
+            if (cut.thumb) st[id].thumb = cut.thumb
+            saveHlStore(st)
+            setHlStore(st)
+            setHighlights(buildHlCards(st, vods, hlHidden, lang))
+          }
+        }
       } else {
         const list = JSON.parse(localStorage.getItem(CLIPS_STORAGE_KEY) || '[]')
         const clip = list.find((c) => c.id === id)
@@ -1150,12 +1199,7 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
             <span className="rt-hl-count">{highlights.filter(h => !hlHidden.has(h.id)).length}</span>
           </div>
 
-          {hlLoading ? (
-            <div className="rt-empty">
-              <div className="rt-hl-loading"><span className="rt-hl-spin" /></div>
-              <p className="rt-empty-sub">{t(lang, 'highlight')}</p>
-            </div>
-          ) : !settings.autoHighlights ? (
+          {!settings.autoHighlights ? (
             <div className="rt-empty">
               <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" opacity="0.3">
                 <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
@@ -1196,11 +1240,6 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
                       onClick={() => { if (hasVideo) openHighlight(h) }}
                       onContextMenu={(e) => handleHlContextMenu(e, h)}
                     >
-                      {hlBuilding === h.id && (
-                        <div className="rt-hl-building">
-                          <span className="rt-hl-spin" />
-                        </div>
-                      )}
                       <div className="rt-hl-top">
                         {vod.championIcon && <img className="rt-card-champ-icon" src={vod.championIcon} alt="" />}
                         <span className="rt-hl-kind">
