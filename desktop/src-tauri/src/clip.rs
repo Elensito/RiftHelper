@@ -146,6 +146,18 @@ unsafe fn cut_highlight_inner(in_path: &str, out_path: &str, start_sec: f64, end
 
     writer.BeginWriting().map_err(|e| format!("BeginWriting: {e:?}"))?;
 
+    // Fast-forward the source reader to just before the window instead of
+    // decoding the whole VOD from frame 0. Without this every cut on a ~20 min
+    // recording had to decode the full file up to the highlight first — that
+    // was the "clip takes forever / share never shows a link" slowness. If the
+    // source cannot seek we just fall back to the decode-from-start behavior.
+    {
+        let seek_at = (start_hns - 20_000_000).max(0); // 2s lead-in for the keyframe
+        let mf_time_format = windows::core::GUID::from_u128(0x0F7A0A6E_F007_41D9_8AE4_6D90B4AEE6F4);
+        let pos = windows::core::PROPVARIANT::from(seek_at);
+        let _ = reader.SetCurrentPosition(&mf_time_format, &pos);
+    }
+
     // Read samples within the window and write them to the matching stream.
     let mut started = false;
     let mut saw_end = false;

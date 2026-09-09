@@ -9655,50 +9655,6 @@ body.sidebar-expanded .vod-player-view {
   box-shadow: 0 0 18px rgba(0, 229, 255, 0.35);
 }
 
-.rt-share-steps {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 14px;
-}
-
-.rt-share-step {
-  font-size: 11px;
-  letter-spacing: 0.4px;
-  text-transform: uppercase;
-  color: var(--muted);
-  opacity: 0.6;
-  transition: color 0.2s ease, opacity 0.2s ease;
-}
-
-.rt-share-step.on {
-  color: var(--cyan);
-  opacity: 1;
-}
-
-.rt-share-step.done {
-  color: var(--green);
-  opacity: 1;
-}
-
-.rt-share-step-arrow {
-  width: 18px;
-  height: 1px;
-  background: var(--muted);
-  opacity: 0.4;
-  position: relative;
-}
-
-.rt-share-step-arrow::after {
-  content: '';
-  position: absolute;
-  right: 0;
-  top: -2px;
-  border-left: 4px solid var(--muted);
-  border-top: 2.5px solid transparent;
-  border-bottom: 2.5px solid transparent;
-}
-
 @keyframes rt-spin {
   to { transform: rotate(360deg); }
 }

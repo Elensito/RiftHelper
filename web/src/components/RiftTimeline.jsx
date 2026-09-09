@@ -204,7 +204,6 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
   const [hlBump, setHlBump] = useState(0)
   const [sharingId, setSharingId] = useState(null)
   const [shareModal, setShareModal] = useState(null)
-  const [shareStage, setShareStage] = useState(null)
   const [copiedLink, setCopiedLink] = useState(false)
   const [contextMenu, setContextMenu] = useState(null)
   const [deleteModal, setDeleteModal] = useState(null)
@@ -562,9 +561,8 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
     setSharingId(id)
     // Open the modal right away with a placeholder so the UI feels instant.
     setShareModal({ kind, id, name: '', uploading: true, error: false })
-    setShareStage(null)
-    // Wake the backend in parallel with any cut, so the upload that follows
-    // is fast (free-tier Render sleeps after ~15 min of inactivity).
+    // Wake the backend in parallel, so the upload that follows is fast
+    // (free-tier Render sleeps after ~15 min of inactivity).
     warmShareServer()
     // Every failure lands the modal on a real error (the "stuck forever on
     // uploading" bug was silent `return`s / empty catches leaving the popup
@@ -581,15 +579,11 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
       let videoUrl = ''
       let shareName = ''
       if (kind === 'highlight') {
+        /* Highlights must already be pre-cut (they are generated as clips from
+           their VOD when detected). Sharing NEVER triggers a cut — the app only
+           uploads clips that are ready, so the link appears fast. */
         const store = loadHlStore()
-        let entry = store[id]
-        if (!entry || !entry.clipPath) {
-          /* No pre-cut clip yet: make it now (stage "clip" so the user sees
-             real progress instead of an endless spinner). */
-          setShareStage('clip')
-          const h = highlights.find((x) => x.id === id)
-          if (h) entry = await ensureHighlightClip(h)
-        }
+        const entry = store[id]
         if (!entry || !entry.clipPath) { fail(t(lang, 'shareNoClip')); return }
         videoPath = entry.clipPath
         thumbPath = entry.thumb || ''
@@ -611,7 +605,6 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
         return
       }
       if (!isTauri() || !videoPath) { fail(t(lang, 'shareNoClip')); return }
-      setShareStage('upload')
       const res = await shareClip(videoPath, thumbPath, shareName, kind)
       if (res && res.error) { fail(res.error); return }
       if (!res || !res.shareUrl) { fail(t(lang, 'shareFailedDesc')); return }
@@ -638,10 +631,9 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
     } catch (e) {
       fail(String((e && (e.message || e.detail)) || e || ''))
     } finally {
-      setShareStage(null)
       setSharingId(null)
     }
-  }, [sharingId, highlights, ensureHighlightClip, vods, hlHidden, lang])
+  }, [sharingId, highlights, vods, hlHidden, lang])
 
   const copyShareLink = () => {
     if (!shareModal || !shareModal.url) return
@@ -1362,17 +1354,8 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
                 <div className="rt-share-spinner-out">
                   <span className="rt-share-spinner" aria-hidden="true" />
                 </div>
-                <h3 className="rt-modal-title">
-                  {shareStage === 'clip' ? t(lang, 'sharingCutTitle') : t(lang, 'sharingTitle')}
-                </h3>
-                <p className="rt-modal-desc">
-                  {shareStage === 'clip' ? t(lang, 'sharingCutDesc') : t(lang, 'sharingDesc')}
-                </p>
-                <div className="rt-share-steps">
-                  <span className={`rt-share-step ${shareStage === 'clip' ? 'on' : 'done'}`}>{t(lang, 'shareStepCut')}</span>
-                  <span className="rt-share-step-arrow" />
-                  <span className={`rt-share-step ${shareStage === 'upload' ? 'on' : ''}`}>{t(lang, 'shareStepUpload')}</span>
-                </div>
+                <h3 className="rt-modal-title">{t(lang, 'sharingTitle')}</h3>
+                <p className="rt-modal-desc">{t(lang, 'sharingDesc')}</p>
               </>
             ) : shareModal.error ? (
               <>
