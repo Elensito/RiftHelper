@@ -163,8 +163,17 @@ unsafe fn cut_highlight_inner(in_path: &str, out_path: &str, start_sec: f64, end
     }
 
     // Read samples within the window and write them to the matching stream.
+    // Some demuxers accept SetCurrentPosition but still deliver from frame 0,
+    // which silently decodes the ENTIRE VOD (the "highlight cargando for
+    // minutes" hang). Watch where the first samples actually land: if we stay
+    // far before the window, re-seek once (the demuxer has indexed the file by
+    // now) and, if that still doesn't land, fail fast with a real reason.
+    let seek_target = (start_hns - 20_000_000).max(0); // 2s lead-in for keyframe
+    let trust_margin = 8_000_000; // 8s: the first GOP can sit a few seconds before the target
     let mut started = false;
     let mut saw_end = false;
+    let mut re_seeked = false;
+    let mut early_reads_video = 0u32;
     while !saw_end {
         let mut actual_stream: u32 = 0;
         let mut flags: u32 = 0;
@@ -190,6 +199,31 @@ unsafe fn cut_highlight_inner(in_path: &str, out_path: &str, start_sec: f64, end
         }
 
         if let Some(s) = &sample {
+            let is_video_sample = stream_ids.iter().any(|(i, is_v)| *i == actual_stream && *is_v);
+            if !started && is_video_sample && ts < seek_target - trust_margin {
+                // Decoding far before the window and haven't started writing
+                // yet: either the seek landed on a long lead-in (fine) or it
+                // was ignored and we are draining the whole file.
+                if early_reads_video < 2 {
+                    early_reads_video += 1;
+                } else if !re_seeked {
+                    re_seeked = true;
+                    early_reads_video = 0;
+                    if try_seek(&reader, seek_target) {
+                        continue;
+                    }
+                    // Re-seek failed too: fall through to the abort below.
+                } else {
+                    eprintln!(
+                        "[clip] seek not honored (ts={ts} target={start_hns}) after re-seek; aborting fast"
+                    );
+                    return Err(
+                        "no se pudo localizar el punto exacto en el vídeo (el archivo no admite búsqueda rápida); intenta un recorte más corto"
+                            .to_string(),
+                    );
+                }
+                continue;
+            }
             if ts >= start_hns {
                 started = true;
             }

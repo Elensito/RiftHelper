@@ -1104,6 +1104,50 @@ async fn export_highlight_copy(
     }
 }
 
+/// Diagnostics for the share/cut pipeline: a small log appended next to the
+/// recordings folder. Surfaced in the share popup on failure so the exact
+/// failing step is visible without opening devtools.
+fn share_log_line(app: &tauri::AppHandle, msg: &str) {
+    use std::io::Write;
+    let recordings = read_config(app)
+        .get("recordingsFolder")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string())
+        .unwrap_or_else(default_recordings_folder);
+    let d = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|x| x.as_secs())
+        .unwrap_or(0);
+    let line = format!(
+        "{:02}:{:02}:{:02}  {msg}",
+        (d / 3600) % 24,
+        (d / 60) % 60,
+        d % 60,
+    );
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(std::path::Path::new(&recordings).join(".share.log"))
+    {
+        let _ = writeln!(f, "{line}");
+    }
+}
+
+#[tauri::command]
+async fn read_share_log(app: tauri::AppHandle) -> Result<String, String> {
+    let recordings = read_config(&app)
+        .get("recordingsFolder")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string())
+        .unwrap_or_else(default_recordings_folder);
+    let path = std::path::Path::new(&recordings).join(".share.log");
+    if !path.exists() {
+        return Ok(String::new());
+    }
+    let content = std::fs::read_to_string(&path).map_err(|e| format!("read log: {e}"))?;
+    Ok(content.lines().rev().take(30).collect::<Vec<_>>().join("\n"))
+}
+
 #[tauri::command]
 async fn create_manual_clip(
     app: tauri::AppHandle,
@@ -1125,9 +1169,11 @@ async fn create_manual_clip(
 
     let src = std::path::Path::new(&video_path);
     if !src.exists() {
+        share_log_line(&app, &format!("[cut] source video missing on disk: {video_path}"));
         eprintln!("[create_manual_clip] source video missing on disk: {video_path}");
         return Ok(None);
     }
+    share_log_line(&app, &format!("[cut] start {video_path} [{start_sec}..{end_sec}] label={name}"));
     let safe_name: String = name
         .chars()
         .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' || c == ' ' { c } else { '_' })
@@ -1152,6 +1198,7 @@ async fn create_manual_clip(
         // The cut runs on its own thread with a hard timeout: Media Foundation
         // can hang forever on a corrupt/locked source, and that used to leave
         // the share popup stuck on "Preparando enlace…" with no way out.
+        let cut_t0 = std::time::Instant::now();
         eprintln!(
             "[create_manual_clip] cut {:?} [{start_sec}..{end_sec}] label={name} -> {:?}",
             src, clip_str
@@ -1168,12 +1215,15 @@ async fn create_manual_clip(
         let cut_path = match rx_cut.recv_timeout(std::time::Duration::from_secs(180)) {
             Ok(Ok(path)) => path,
             Ok(Err(e)) => {
+                let cut_secs = cut_t0.elapsed().as_secs();
+                share_log_line(&app, &format!("[cut] FAILED ({cut_secs}s): {e}"));
                 let _ = std::fs::remove_file(&clip_path);
                 return Err(format!("No se pudo generar el clip del highlight: {e}"));
             }
             Err(_) => {
                 // The cutter thread may still be running; its output is
                 // discarded. 180s is far beyond what a healthy cut needs.
+                share_log_line(&app, &"[cut] TIMEOUT (180s)".to_string());
                 eprintln!("[create_manual_clip] CUT TIMEOUT (180s): {clip_str}");
                 let _ = std::fs::remove_file(&clip_path);
                 return Err(
@@ -1189,11 +1239,13 @@ async fn create_manual_clip(
             .map(|m| m.len())
             .unwrap_or(0);
         if cut_meta == 0 {
+            share_log_line(&app, &"[cut] empty output, removed".to_string());
             let _ = std::fs::remove_file(&clip_path);
             return Err(
                 "No se pudo generar el clip del highlight: el recorte quedó vacío.".to_string(),
             );
         }
+        share_log_line(&app, &format!("[cut] ok in {}s, {} bytes", cut_t0.elapsed().as_secs(), cut_meta));
         eprintln!("[create_manual_clip] clip ready: {clip_str} ({cut_meta} bytes)");
         // Thumbnail at the very first second of the clip (second 1).
         let _thumb_g = THUMB_LOCK.lock().unwrap_or_else(|e| e.into_inner());
@@ -1374,6 +1426,7 @@ async fn post_bytes_limited(base: &str, suffix: &str, bytes: Vec<u8>, mime: &str
 /// browser...). Returns { shareUrl, videoUrl, thumbUrl } or NULL on failure.
 #[tauri::command]
 async fn share_clip(
+    app: tauri::AppHandle,
     video_path: String,
     thumb_path: String,
     name: String,
@@ -1381,12 +1434,14 @@ async fn share_clip(
 ) -> Result<Option<serde_json::Value>, String> {
     let video = std::path::PathBuf::from(&video_path);
     if !video.exists() {
+        share_log_line(&app, &format!("[share] video missing: {video_path}"));
         eprintln!("[share_clip] video missing: {video_path}");
         return Err("El archivo del vídeo no existe (puede que se haya movido o borrado).".to_string());
     }
     let base = std::env::var("RIFTHELPER_SHARE_URL").unwrap_or_else(|_| SHARE_ENDPOINT.to_string());
     wake_share_server(&base).await;
     let video_bytes = std::fs::read(&video).map_err(|e| format!("read video: {e}"))?;
+    share_log_line(&app, &format!("[share] upload start {video_path} ({} bytes, kind={kind})", video_bytes.len()));
     eprintln!(
         "[share_clip] uploading {video_path} ({} bytes, kind={kind}, name={name})",
         video_bytes.len()
@@ -1399,7 +1454,12 @@ async fn share_clip(
         video_bytes,
         "video/mp4",
     )
-    .await?;
+    .await
+    .map_err(|e| {
+        share_log_line(&app, &format!("[share] upload FAILED ({}s): {e}", upload_start.elapsed().as_secs()));
+        e
+    })?;
+    share_log_line(&app, &format!("[share] upload ok ({}s): {:?}", upload_start.elapsed().as_secs(), result));
     eprintln!(
         "[share_clip] upload done in {:?}: {:?}",
         upload_start.elapsed(),
@@ -1421,6 +1481,7 @@ async fn share_clip(
             }
         }
     }
+    share_log_line(&app, &format!("[share] returning {:?}", result));
     eprintln!("[share_clip] returning {:?}", result);
     Ok(Some(result))
 }
@@ -2697,6 +2758,7 @@ pub fn run() {
             select_recordings_folder,
             export_highlight_copy,
             create_manual_clip,
+            read_share_log,
             rename_clip_file,
             share_clip,
             get_auto_record,

@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { t } from '../i18n.js'
 import { isTauri, showInFolder, getAudioMode, vodThumbUrl, getDiskUsage, readVodEvents } from '../tauri.js'
 import { deleteRecordingBlob } from '../video-recorder.js'
-import { deleteVodFiles, exportHighlightCopy, createManualClip, localFileSrc, shareClip, renameClipFile } from '../tauri.js'
+import { deleteVodFiles, exportHighlightCopy, createManualClip, localFileSrc, shareClip, renameClipFile, readShareLog } from '../tauri.js'
 import { computeHighlights, highlightId, highlightLabel } from '../highlights.js'
 import { warmShareServer } from '../api.js'
 
@@ -490,7 +490,7 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
     const entries = Object.values(loadHlStore())
       .filter(e => e && e.id && !e.clipPath && e.hl && e.vodId)
       .sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')))
-      .slice(0, 12)
+      .slice(0, 30)
     if (!entries.length) return
     autoCutRunning.current = true
     let dead = false
@@ -669,11 +669,23 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
       const open = m && m.kind === kind && m.id === id
       return open ? modal : m
     })
+    const patch = (fn) => setShareModal((m) => {
+      const open = m && m.kind === kind && m.id === id
+      return open ? fn(m) : m
+    })
     const t0 = Date.now()
     const stageLog = (stage, extra) => console.warn(`[share:${kind}:${id}] ${stage} +${Date.now() - t0}ms`, extra || '')
     const fail = (detail, errType) => {
       stageLog('fail', { detail, errType })
-      apply({ kind, id, url: '', videoUrl: '', name: '', uploading: false, error: true, errorDetail: detail || '', errType: errType || 'unknown' })
+      apply({ kind, id, url: '', videoUrl: '', name: '', uploading: false, error: true, errorDetail: detail || '', errType: errType || 'unknown', logTail: '' })
+      /* Surface the backend diagnostic tail right in the popup so the real
+         failing step is visible without opening devtools. */
+      readShareLog().then((tail) => {
+        if (tail && tail.trim()) {
+          console.warn(`[share:${kind}:${id}] log tail:\n${tail}`)
+          patch((m) => (m.error ? { ...m, logTail: tail } : m))
+        }
+      }).catch(() => {})
     }
     /* Race each long-running step against a hard timeout so the popup can never
        spin forever: on timeout we fail fast with a real message and the late
@@ -732,7 +744,7 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
             inflightCuts.current.add(id)
             let r
             try {
-              r = await withTimeout(createManualClip(vod.videoPath, start, end, shareName), 60000, 'cut')
+              r = await withTimeout(createManualClip(vod.videoPath, start, end, shareName), 120000, 'cut')
             } finally {
               inflightCuts.current.delete(id)
             }
@@ -1556,6 +1568,9 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
                   {shareModal.errType === 'cut' ? t(lang, 'shareCutFailedDesc') : t(lang, 'shareFailedDesc')}
                 </p>
                 {shareModal.errorDetail && <p className="rt-share-err">{shareModal.errorDetail}</p>}
+                {shareModal.logTail && shareModal.logTail.trim() && (
+                  <pre className="rt-share-log">{t(lang, 'shareLogTitle') + ':\n' + shareModal.logTail}</pre>
+                )}
               </>
             ) : (
               <>

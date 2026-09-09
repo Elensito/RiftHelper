@@ -436,3 +436,13 @@ export async function shareClip(videoPath, thumbPath, name, kind) {
     return { error: String((e && (e.message || e.detail)) || e || 'Unknown error') }
   }
 }
+
+/* Return the tail of the share/cut diagnostic log (newest lines first) written
+   by the desktop backend, so failures can be diagnosed right from the popup. */
+export async function readShareLog() {
+  if (!isTauri()) return ''
+  const { invoke } = await import('@tauri-apps/api/core')
+  try {
+    return String(await invoke('read_share_log') || '')
+  } catch { return '' }
+}
