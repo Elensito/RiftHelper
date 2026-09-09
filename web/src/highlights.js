@@ -2,15 +2,15 @@
    (the same `.events.json` used for the Rift timeline). Pure, frame-agnostic
    detection: we scan kill events where the local player was involved, group
    them into temporal "engagements", and classify the meaningful ones into a
-   small set of highlight archetypes. Rules are deliberately strict and the
-   per-VOD cap is low (3) so only real plays surface. */
+   small set of highlight archetypes. Detection is tunable via "highlight
+   sensitivity" settings (max per VOD, minimum kills involved, whether plays
+   where the player died count, and the cut lead/tail window). */
 
 /* Seconds of slack when grouping kill/assist/death events into one
    "engagement": events closer than this are considered part of the same play. */
 const ENGAGEMENT_GAP_SEC = 22
 
-/* Ten-second lead-in before the first event of a play, and a three-second
-   tail after the last one, once converted to video seconds. */
+/* Default cut window around a play (seconds), used when settings don't exist. */
 const LEAD_SEC = 10
 const TAIL_SEC = 3
 
@@ -80,7 +80,7 @@ function score(hl) {
 }
 
 /* Translate an engagement into a highlight object, or null if it does not
-   meet the (strict) play rules. */
+   meet the play rules. */
 function classifyGroup(events) {
   let kills = 0
   let assists = 0
@@ -102,6 +102,8 @@ function classifyGroup(events) {
   else if (!died && assists >= 3 && kills >= 1) kind = 'assist-carry' // assist-heavy, no death
   else if (died && kills >= 2) kind = 'multi-die'           // multikill then died
   else if (died && kills >= 1 && assists >= 2) kind = 'trade-die' // involvement, then died
+  else if (!died && kills >= 1 && assists >= 1) kind = 'assist' // assisted kill, survives
+  else if (!died && kills >= 1) kind = 'solo'               // single solo kill, survives
   if (!kind) return null
 
   return {
@@ -120,13 +122,31 @@ function classifyGroup(events) {
 /* Compute the up-to-`max` best highlights from a VOD's local events.
    `me` is the local player's summoner name (case-insensitive).
    `gameTimeOffset` and `vodDurationSec` are used to map in-game seconds to
-   video timestamps (the video starts at gameTimeOffset). */
-export function computeHighlights(events, { me, gameTimeOffset = 0, vodDurationSec = 0, max = 3 } = {}) {
+   video timestamps (the video starts at gameTimeOffset).
+   Sensitivity options (from Settings, defaults preserve the original tuned
+   behavior):
+   - max:        maximum number of highlights per VOD (default 3)
+   - minKills:   minimum player kills involved for a play to count (default 1)
+   - includeDied: include plays where the player died (default true)
+   - leadSec:    seconds of video cut in before the play starts (default 10)
+   - tailSec:    seconds of video cut out after the play ends (default 3) */
+export function computeHighlights(events, {
+  me,
+  gameTimeOffset = 0,
+  vodDurationSec = 0,
+  max = 3,
+  minKills = 1,
+  includeDied = true,
+  leadSec = LEAD_SEC,
+  tailSec = TAIL_SEC,
+} = {}) {
   const combat = collectCombat(events, me)
   const highlights = []
   for (const group of groupEngagements(combat)) {
     const hl = classifyGroup(group)
     if (!hl) continue
+    if (hl.kills < minKills) continue
+    if (!includeDied && hl.died) continue
     hl.score = score(hl)
     highlights.push(hl)
   }
@@ -140,8 +160,8 @@ export function computeHighlights(events, { me, gameTimeOffset = 0, vodDurationS
     startSec: hl.firstSec,
     endSec: hl.lastSec,
     /* Video player timestamps (video starts at gameTimeOffset) */
-    startVideoSec: Math.max(0, hl.firstSec - LEAD_SEC - offs),
-    endVideoSec: Math.max(0, hl.lastSec + TAIL_SEC - offs),
+    startVideoSec: Math.max(0, hl.firstSec - leadSec - offs),
+    endVideoSec: Math.max(0, hl.lastSec + tailSec - offs),
   }))
 }
 

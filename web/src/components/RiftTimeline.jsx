@@ -1,8 +1,8 @@
-﻿import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { t } from '../i18n.js'
 import { isTauri, showInFolder, getAudioMode, vodThumbUrl, getDiskUsage, readVodEvents } from '../tauri.js'
 import { deleteRecordingBlob } from '../video-recorder.js'
-import { deleteVodFiles, exportHighlightCopy, createManualClip, localFileSrc, shareClip } from '../tauri.js'
+import { deleteVodFiles, exportHighlightCopy, createManualClip, localFileSrc, shareClip, renameClipFile } from '../tauri.js'
 import { computeHighlights, highlightId, highlightLabel } from '../highlights.js'
 import { warmShareServer } from '../api.js'
 
@@ -105,7 +105,7 @@ function saveHlStore(store) {
 
 /* Convert the persisted highlight store into renderable cards. A card survives
    VOD deletion; if the source VOD no longer exists we render it without video. */
-function buildHlCards(store, vods, hlHidden) {
+function buildHlCards(store, vods, hlHidden, lang) {
   const vodMap = new Map(vods.map(v => [v.id, v]))
   return Object.keys(store)
     .filter(id => !hlHidden.has(id))
@@ -120,6 +120,7 @@ function buildHlCards(store, vods, hlHidden) {
         key: hasClip ? `${id}::clip` : id,
         id,
         hl,
+        label: (e.name && e.name.trim()) || highlightLabel(lang, e.hl, e.champion || ''),
         hasVideo,
         thumbPath: e.thumb || '',
         shareUrl: e.shareUrl || '',
@@ -227,6 +228,9 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
     }
   })
   const autoCutRunning = useRef(false)
+  const [renameModal, setRenameModal] = useState(null)
+  const [renameVal, setRenameVal] = useState('')
+  const [renaming, setRenaming] = useState(false)
 
   useEffect(() => { saveSettings(settings) }, [settings])
 
@@ -326,6 +330,65 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
     }
   }, [vods, onOpenVod, onSeekTo])
 
+  const openRename = useCallback((target, kind) => {
+    if (!target || !target.id) return
+    const isClip = kind === 'clip' || target.kind === 'clip'
+    let currentName = ''
+    let path = ''
+    let thumbPath = ''
+    if (isClip) {
+      const clip = clips.find(c => c.id === target.id)
+      if (clip) { currentName = clip.name || ''; path = clip.path || ''; thumbPath = clip.thumbPath || '' }
+    } else {
+      const entry = loadHlStore()[target.id]
+      if (entry) { currentName = entry.name || ''; path = entry.clipPath || ''; thumbPath = entry.thumb || '' }
+    }
+    setRenameModal({ kind: isClip ? 'clip' : 'highlight', id: target.id, path, thumbPath, currentName })
+    setRenameVal((currentName && currentName.trim()) ? currentName.trim() : '')
+  }, [clips])
+
+  const doRename = useCallback(async (name) => {
+    if (!renameModal) return
+    const trimmed = (name || '').trim().slice(0, 30)
+    if (!trimmed) return
+    setRenaming(true)
+    try {
+      if (renameModal.kind === 'clip') {
+        let newPath = renameModal.path
+        if (renameModal.path) {
+          const r = await renameClipFile(renameModal.path, renameModal.thumbPath, trimmed)
+          if (r && r.error) return
+          if (r && typeof r === 'string') newPath = r
+        }
+        setClips(prev => {
+          const next = prev.map(c => c.id === renameModal.id ? { ...c, name: trimmed, path: newPath } : c)
+          try { localStorage.setItem(CLIPS_STORAGE_KEY, JSON.stringify(next)) } catch {}
+          window.dispatchEvent(new Event('rh-clips-changed'))
+          return next
+        })
+      } else {
+        const st = loadHlStore()
+        const entry = st[renameModal.id]
+        if (!entry) return
+        let newPath = entry.clipPath
+        if (entry.clipPath) {
+          const r = await renameClipFile(entry.clipPath, entry.thumb, trimmed)
+          if (r && r.error) return
+          if (r && typeof r === 'string') newPath = r
+        }
+        entry.name = trimmed
+        if (newPath) entry.clipPath = newPath
+        saveHlStore(st)
+        setHlStore(st)
+        setHighlights(buildHlCards(st, vods, hlHidden, lang))
+        window.dispatchEvent(new Event('rh-highlights-changed'))
+      }
+      setRenameModal(null)
+    } finally {
+      setRenaming(false)
+    }
+  }, [renameModal, vods, hlHidden, lang])
+
   /* Automatic highlights: load each recorded match's local LCD events, detect
      plays, and build cards (chronologically + favorites first). */
   useEffect(() => {
@@ -352,7 +415,11 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
           me: parsed.me || '',
           gameTimeOffset: vod.gameTimeOffset || 0,
           vodDurationSec: vod.duration || 0,
-          max: 3,
+          max: Math.max(1, Math.min(12, Number(settings.hlMaxPerVod) || 3)),
+          minKills: Math.max(0, Number(settings.hlMinKills) || 0),
+          includeDied: settings.hlIncludeDied === undefined ? true : settings.hlIncludeDied !== false,
+          leadSec: Math.max(0, Math.min(30, Number(settings.hlLeadSec) || 10)),
+          tailSec: Math.max(0, Math.min(30, Number(settings.hlTailSec) || 3)),
         })
         if (!items.length) return null
         return {
@@ -383,11 +450,11 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
       saveHlStore(store)
       setHlStore(store)
       if (dead) return
-      setHighlights(buildHlCards(store, vods, hlHidden))
+      setHighlights(buildHlCards(store, vods, hlHidden, lang))
       setHlLoading(false)
     })
     return () => { dead = true }
-  }, [subTab, vods, hlHidden, lang, settings.autoHighlights, hlBump])
+  }, [subTab, vods, hlHidden, lang, settings, hlBump])
 
   /* Auto-cut each detected highlight into its own mp4 clip so highlights behave
      like manual clips: they have a standalone file and keep being playable even
@@ -422,7 +489,7 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
           const end = Math.min(Math.max(0, hl.endVideoSec || 0), dur || Math.max(0, hl.endVideoSec || 0))
           if (end - start < 1) continue
           setHlBuilding(id)
-          const label = highlightLabel(lang, hl, vod.champion || '')
+          const label = (entry.name && entry.name.trim()) || highlightLabel(lang, hl, vod.champion || '')
           const res = await createManualClip(vod.videoPath, start, end, label)
           if (dead) return
           if (res && res.path) {
@@ -432,7 +499,7 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
               if (res.thumb) st[id].thumb = res.thumb
               saveHlStore(st)
               setHlStore(st)
-              setHighlights(buildHlCards(st, vods, hlHidden))
+              setHighlights(buildHlCards(st, vods, hlHidden, lang))
             }
           }
           setHlBuilding(null)
@@ -512,7 +579,7 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
           if (res.thumb) st[id].thumb = res.thumb
           saveHlStore(st)
           setHlStore(st)
-          setHighlights(buildHlCards(st, vods, hlHidden))
+          setHighlights(buildHlCards(st, vods, hlHidden, lang))
           return st[id]
         }
       }
@@ -541,7 +608,7 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
     /* No clip yet: open the full VOD right away at the highlight's time so
        playback is instant (VODPlayer seeks to startVideoSec), and pre-cut the
        clip in the background so the next open is instant. Never block playback
-       on a Media Foundation transcode — that was the "slow to open" and the
+       on a Media Foundation transcode � that was the "slow to open" and the
        reason the app/PC felt sluggish. */
     if (vod && vod.videoPath) {
       doOpen(h.vod, h.hl)
@@ -580,7 +647,7 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
       let shareName = ''
       if (kind === 'highlight') {
         /* Highlights must already be pre-cut (they are generated as clips from
-           their VOD when detected). Sharing NEVER triggers a cut — the app only
+           their VOD when detected). Sharing NEVER triggers a cut � the app only
            uploads clips that are ready, so the link appears fast. */
         const store = loadHlStore()
         const entry = store[id]
@@ -589,7 +656,7 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
         thumbPath = entry.thumb || ''
         shareUrl = entry.shareUrl || ''
         videoUrl = entry.videoUrl || ''
-        shareName = highlightLabel(lang, entry.hl, entry.champion || '')
+        shareName = (entry.name && entry.name.trim()) || highlightLabel(lang, entry.hl, entry.champion || '')
       } else {
         const list = JSON.parse(localStorage.getItem(CLIPS_STORAGE_KEY) || '[]')
         const clip = list.find((c) => c.id === id)
@@ -615,7 +682,7 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
           st[id].videoUrl = res.videoUrl || ''
           saveHlStore(st)
           setHlStore(st)
-          setHighlights(buildHlCards(st, vods, hlHidden))
+          setHighlights(buildHlCards(st, vods, hlHidden, lang))
         }
       } else {
         const list = JSON.parse(localStorage.getItem(CLIPS_STORAGE_KEY) || '[]')
@@ -791,7 +858,7 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
             </svg>
             {t(lang, 'riftTimeline')}
           </h2>
-          <span className="rt-subtitle">{totalGames} {t(lang, 'vodsRecorded')} Â· {formatDuration(totalDuration)}</span>
+          <span className="rt-subtitle">{totalGames} {t(lang, 'vodsRecorded')} · {formatDuration(totalDuration)}</span>
         </div>
         <div className="rt-header-actions">
           <button className="rt-btn rt-btn-ghost" onClick={openFolder} title={t(lang, 'openVodFolder')}>
@@ -979,7 +1046,7 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
                   <div className="rt-card-info">
                   <div className="rt-card-champ">
                     {vod.championIcon && <img className="rt-card-champ-icon" src={vod.championIcon} alt="" />}
-                    <span className="rt-card-champ-name">{vod.champion || '—'}</span>
+                    <span className="rt-card-champ-name">{vod.champion || '�'}</span>
                   </div>
                   <div className="rt-card-meta">
                     <span className="rt-card-kda">{relTime(lang, vod.date)}</span>
@@ -1031,9 +1098,10 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
                       <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 3 20 12 6 21 6 3" /></svg>
                     </span>
                   </div>
-                  <div className="rt-card-clip-bottom">
+<div className="rt-card-clip-bottom">
                     <div className="rt-card-clip-info">
                       {vod?.championIcon && <img className="rt-card-clip-champ" src={vod.championIcon} alt="" />}
+                      <span className="rt-card-clip-name">{clip.name || t(lang, 'clip')}</span>
                       <span className="rt-card-clip-range">{formatDuration(clip.start)} — {formatDuration(clip.end)}</span>
                     </div>
                     <button
@@ -1148,11 +1216,12 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
                           <span className="rt-hl-stat strong">{h.hl.kills}</span>
                           <span className="rt-hl-div"> / </span>
                           <span className="rt-hl-stat">{h.hl.assists}</span>
-                          {h.hl.died && <span className="rt-hl-die">†</span>}
-                        </div>
+                          {h.hl.died && <span className="rt-hl-die">�</span>}
+</div>
+                        <div className="rt-hl-name">{h.label}</div>
                         <div className="rt-hl-meta">
                           <span className="rt-hl-champ">{vod.champion || vod.queue || ''}</span>
-                          <span className="rt-hl-sep">•</span>
+                          <span className="rt-hl-sep">·</span>
                           <span className="rt-hl-rel">{relTime(lang, vod.date)}</span>
                         </div>
                       </div>
@@ -1208,6 +1277,12 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
                   </svg>
                   {hlFav.has(contextMenu.hl.id) ? t(lang, 'removeFavorite') : t(lang, 'addFavorite')}
                 </button>
+                <button className="rt-context-item" onClick={() => { openRename(contextMenu.hl, 'highlight'); setContextMenu(null) }}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" />
+                  </svg>
+                  {t(lang, 'rename')}
+                </button>
                 <button
                   className={`rt-context-item rt-context-danger ${hlFav.has(contextMenu.hl.id) ? 'rt-context-disabled' : ''}`}
                   title={hlFav.has(contextMenu.hl.id) ? t(lang, 'hlLocked') : ''}
@@ -1242,6 +1317,12 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
                     <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
                   </svg>
                   {t(lang, 'shareClip')}
+                </button>
+                <button className="rt-context-item" onClick={() => { openRename(contextMenu.clip, 'clip'); setContextMenu(null) }}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" />
+                  </svg>
+                  {t(lang, 'rename')}
                 </button>
                 <button
                   className="rt-context-item rt-context-danger"
@@ -1319,7 +1400,7 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
             {deleteModal.champion && (
               <div className="rt-modal-vod-info">
                 {deleteModal.championIcon && <img src={deleteModal.championIcon} alt="" />}
-                <span>{deleteModal.champion}{deleteModal.queue ? ` · ${deleteModal.queue}` : ''}</span>
+                <span>{deleteModal.champion}{deleteModal.queue ? ` � ${deleteModal.queue}` : ''}</span>
               </div>
             )}
             <div className="rt-modal-actions">
@@ -1389,6 +1470,36 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
               )}
               <button className="rt-btn rt-btn-ghost" onClick={() => setShareModal(null)}>
                 {t(lang, 'close')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {renameModal && (
+        <div className="rt-modal-backdrop" onClick={() => { if (!renaming) setRenameModal(null) }}>
+          <div className="rt-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="rt-modal-title">{t(lang, 'rename')}</div>
+            <input
+              className="rt-rename-input"
+              type="text"
+              maxLength={30}
+              autoFocus
+              value={renameVal}
+              onChange={(e) => setRenameVal(e.target.value.slice(0, 30))}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !renaming) doRename(renameVal)
+                if (e.key === 'Escape' && !renaming) setRenameModal(null)
+              }}
+              placeholder={t(lang, 'renameHint')}
+            />
+            <div className="rt-rename-count">{renameVal.length}/30</div>
+            <div className="rt-modal-actions">
+              <button className="rt-btn rt-btn-primary" disabled={renaming || !renameVal.trim()} onClick={() => doRename(renameVal)}>
+                {t(lang, 'save')}
+              </button>
+              <button className="rt-btn rt-btn-ghost" disabled={renaming} onClick={() => setRenameModal(null)}>
+                {t(lang, 'cancel')}
               </button>
             </div>
           </div>

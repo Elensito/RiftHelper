@@ -10,6 +10,24 @@ export function hlAutoEnabled() {
   } catch { return true }
 }
 
+/* Highlight sensitivity options persisted in Settings (Configuración). Each
+   value stays a string until read; normalize here. Missing defaults preserve
+   the original tuned behavior. */
+export function hlSensitivity() {
+  try {
+    const s = JSON.parse(localStorage.getItem('rh-vod-settings') || '{}')
+    return {
+      max: Math.max(1, Math.min(12, Number(s.hlMaxPerVod) || 3)),
+      minKills: Math.max(0, Number(s.hlMinKills) || 0),
+      includeDied: s.hlIncludeDied === undefined ? true : s.hlIncludeDied !== false,
+      leadSec: Math.max(0, Math.min(30, Number(s.hlLeadSec) || 10)),
+      tailSec: Math.max(0, Math.min(30, Number(s.hlTailSec) || 3)),
+    }
+  } catch {
+    return { max: 3, minKills: 0, includeDied: true, leadSec: 10, tailSec: 3 }
+  }
+}
+
 export function loadHlStore() {
   try { return JSON.parse(localStorage.getItem(HL_STORE_KEY) || '{}') } catch { return {} }
 }
@@ -30,7 +48,9 @@ export async function buildHighlightClip(storeEntry, vod, lang) {
   const start = Math.max(0, hl.startVideoSec || 0)
   const end = Math.min(Math.max(0, hl.endVideoSec || 0), Math.max(0, vod.duration || 0) || Math.max(0, hl.endVideoSec || 0))
   if (end - start < 1) return null
-  const label = highlightLabel(lang, hl, vod.champion || '')
+  const label = storeEntry.name && storeEntry.name.trim()
+    ? storeEntry.name.trim()
+    : highlightLabel(lang, hl, vod.champion || '')
   const res = await createManualClip(vod.videoPath, start, end, label)
   if (res && res.path) {
     const st = loadHlStore()
@@ -56,11 +76,16 @@ export async function preCutVodHighlights(vod, lang) {
   let parsed = null
   try { parsed = JSON.parse(raw) } catch {}
   if (!parsed || !Array.isArray(parsed.events)) return
+  const sens = hlSensitivity()
   const items = computeHighlights(parsed.events || [], {
     me: parsed.me || '',
     gameTimeOffset: vod.gameTimeOffset || 0,
     vodDurationSec: vod.duration || 0,
-    max: 3,
+    max: sens.max,
+    minKills: sens.minKills,
+    includeDied: sens.includeDied,
+    leadSec: sens.leadSec,
+    tailSec: sens.tailSec,
   })
   if (!items.length) return
   const store = loadHlStore()

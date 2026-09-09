@@ -97,6 +97,7 @@ export default function AppSettings({ theme, onThemeChange, lang, onLangChange, 
   const [recordingFps, setRecordingFpsState] = useState('30')
   const [recordingQuality, setRecordingQualityState] = useState('720p')
   const [autoHighlights, setAutoHighlightsState] = useState(true)
+  const [hlSens, setHlSens] = useState({ max: 3, minKills: 0, includeDied: true, leadSec: 10, tailSec: 3 })
   const [confirmPopup, setConfirmPopup] = useState(false)
   const [downloadState, setDownloadState] = useState('confirm')
   const [appVersion, setAppVersion] = useState('')
@@ -128,6 +129,13 @@ export default function AppSettings({ theme, onThemeChange, lang, onLangChange, 
     try {
       const s = JSON.parse(localStorage.getItem('rh-vod-settings') || '{}')
       setAutoHighlightsState(s.autoHighlights ?? true)
+      setHlSens({
+        max: Math.max(1, Math.min(12, Number(s.hlMaxPerVod) || 3)),
+        minKills: Math.max(0, Math.min(10, Number(s.hlMinKills) || 0)),
+        includeDied: s.hlIncludeDied === undefined ? true : s.hlIncludeDied !== false,
+        leadSec: Math.max(0, Math.min(30, Number(s.hlLeadSec) || 10)),
+        tailSec: Math.max(0, Math.min(30, Number(s.hlTailSec) || 3)),
+      })
     } catch {}
   }, [])
 
@@ -260,6 +268,21 @@ export default function AppSettings({ theme, onThemeChange, lang, onLangChange, 
     window.dispatchEvent(new Event('rh-settings-changed'))
   }
 
+  const HL_SENS_KEYS = { max: 'hlMaxPerVod', minKills: 'hlMinKills', includeDied: 'hlIncludeDied', leadSec: 'hlLeadSec', tailSec: 'hlTailSec' }
+
+  const handleHlSensitivity = (key, value) => {
+    setHlSens(prev => {
+      const next = { ...prev, [key]: value }
+      try {
+        const s = JSON.parse(localStorage.getItem('rh-vod-settings') || '{}')
+        s[HL_SENS_KEYS[key]] = value
+        localStorage.setItem('rh-vod-settings', JSON.stringify(s))
+      } catch {}
+      window.dispatchEvent(new Event('rh-settings-changed'))
+      return next
+    })
+  }
+
   const handleConfirmAutoRecord = async () => {
     // Persist auto-record first (backend also switches to OBS capture), so it
     // survives the elevated relaunch that OBS setup may trigger.
@@ -330,6 +353,57 @@ export default function AppSettings({ theme, onThemeChange, lang, onLangChange, 
                     <span className="rt-toggle-knob" />
                   </button>
                 </Row>
+                {autoHighlights && (
+                  <div className="settings-row settings-row-block">
+                    <span className="settings-row-label">{t(lang, 'hlSensitivity')}</span>
+                    <div className="hl-sens-grid">
+                      <label className="settings-row-desc">{t(lang, 'hlMaxPerVod')}</label>
+                      <input
+                        className="hl-sens-num"
+                        type="number"
+                        min={1}
+                        max={12}
+                        value={hlSens.max}
+                        onChange={(e) => handleHlSensitivity('max', Math.max(1, Math.min(12, Number(e.target.value) || 1)))}
+                      />
+                      <label className="settings-row-desc">{t(lang, 'hlMinKills')}</label>
+                      <input
+                        className="hl-sens-num"
+                        type="number"
+                        min={0}
+                        max={10}
+                        value={hlSens.minKills}
+                        onChange={(e) => handleHlSensitivity('minKills', Math.max(0, Math.min(10, Number(e.target.value) || 0)))}
+                      />
+                      <label className="settings-row-desc">{t(lang, 'hlIncludeDied')}</label>
+                      <button
+                        className={`rt-toggle ${hlSens.includeDied ? 'on' : ''}`}
+                        onClick={() => handleHlSensitivity('includeDied', !hlSens.includeDied)}
+                      >
+                        <span className="rt-toggle-knob" />
+                      </button>
+                      <label className="settings-row-desc">{t(lang, 'hlLeadSec')}</label>
+                      <input
+                        className="hl-sens-num"
+                        type="number"
+                        min={0}
+                        max={30}
+                        value={hlSens.leadSec}
+                        onChange={(e) => handleHlSensitivity('leadSec', Math.max(0, Math.min(30, Number(e.target.value) || 0)))}
+                      />
+                      <label className="settings-row-desc">{t(lang, 'hlTailSec')}</label>
+                      <input
+                        className="hl-sens-num"
+                        type="number"
+                        min={0}
+                        max={30}
+                        value={hlSens.tailSec}
+                        onChange={(e) => handleHlSensitivity('tailSec', Math.max(0, Math.min(30, Number(e.target.value) || 0)))}
+                      />
+                    </div>
+                    <span className="settings-row-desc">{t(lang, 'hlSensitivityDesc')}</span>
+                  </div>
+                )}
               </Section>
 
               <Section icon="audio" title={t(lang, 'settingsAudio')}>

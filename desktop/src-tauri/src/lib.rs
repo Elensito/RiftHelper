@@ -1416,6 +1416,56 @@ async fn set_recordings_folder(app: tauri::AppHandle, folder: String) -> Result<
     Ok(())
 }
 
+/* Rename a free-standing clip/highlight file in place: video mp4 plus, when
+   present and located next to it, its thumbnail jpg. Returns the new video
+   path so the UI can keep its card pointing at the live file. */
+#[tauri::command]
+async fn rename_clip_file(
+    video_path: String,
+    thumb_path: Option<String>,
+    new_name: String,
+) -> Result<String, String> {
+    let src = std::path::Path::new(&video_path);
+    if !src.exists() {
+        return Err("video not found".to_string());
+    }
+    let safe_name: String = new_name
+        .chars()
+        .take(30)
+        .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' || c == '.' || c == ' ' { c } else { '_' })
+        .collect::<String>()
+        .trim()
+        .replace(' ', "_");
+    let safe_name = if safe_name.is_empty() { "renamed".to_string() } else { safe_name };
+
+    let parent = src.parent().ok_or("invalid video path")?;
+    let ext = src.extension().and_then(|e| e.to_str()).unwrap_or("mp4").to_string();
+    let dst = parent.join(format!("{safe_name}.{ext}"));
+    if dst == src {
+        return Ok(video_path);
+    }
+    if dst.exists() {
+        return Err("a file with that name already exists".to_string());
+    }
+    std::fs::rename(src, &dst).map_err(|e| format!("rename mp4: {e}"))?;
+
+    // Rename the sibling thumbnail (recordings/clips/thumbnails) if provided.
+    if let Some(tp) = thumb_path {
+        let t = std::path::Path::new(&tp);
+        if t.exists() {
+            if let Some(tparent) = t.parent() {
+                let text = t.extension().and_then(|e| e.to_str()).unwrap_or("jpg").to_string();
+                let tdst = tparent.join(format!("{safe_name}.{text}"));
+                if tdst != t && !tdst.exists() {
+                    std::fs::rename(t, &tdst).map_err(|e| format!("rename thumb: {e}"))?;
+                }
+            }
+        }
+    }
+
+    Ok(dst.to_string_lossy().to_string())
+}
+
 #[tauri::command]
 async fn select_recordings_folder(app: tauri::AppHandle) -> Result<Option<String>, String> {
     use tauri_plugin_dialog::DialogExt;
@@ -2590,6 +2640,7 @@ pub fn run() {
             select_recordings_folder,
             export_highlight_copy,
             create_manual_clip,
+            rename_clip_file,
             share_clip,
             get_auto_record,
             set_auto_record,

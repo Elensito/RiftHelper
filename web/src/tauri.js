@@ -406,6 +406,19 @@ export async function createManualClip(videoPath, startSec, endSec, name) {
   try { return await invoke('create_manual_clip', { videoPath, startSec, endSec, name }) } catch { return null }
 }
 
+/* Rename a free-standing clip/highlight file (video + optional thumbnail) on
+   disk. Returns the new absolute video path, or { error: <detail> } when the
+   rename could not be completed. */
+export async function renameClipFile(videoPath, thumbPath, newName) {
+  if (!isTauri() || !videoPath) return { error: 'Not in desktop app' }
+  const { invoke } = await import('@tauri-apps/api/core')
+  try {
+    return await invoke('rename_clip_file', { videoPath, thumbPath, newName })
+  } catch (e) {
+    return { error: String((e && (e.message || e.detail)) || e || 'Unknown error') }
+  }
+}
+
 /* Upload a local clip/highlight video (and optional thumbnail) to the public
    share server. Returns { shareUrl, videoUrl, thumbUrl } on success, or
    { error: <detail> } when the upload could not be completed. */
