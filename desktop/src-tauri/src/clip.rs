@@ -8,7 +8,8 @@ use windows::Win32::Foundation::{FALSE, RPC_E_CHANGED_MODE, TRUE};
 use windows::Win32::Media::MediaFoundation::{
     MF_READWRITE_ENABLE_HARDWARE_TRANSFORMS, MF_SOURCE_READER_ENABLE_VIDEO_PROCESSING,
     MF_MT_AAC_PAYLOAD_TYPE, MF_MT_AUDIO_BITS_PER_SAMPLE,
-    MF_MT_AUDIO_BLOCK_ALIGNMENT, MF_MT_AUDIO_NUM_CHANNELS, MF_MT_AUDIO_SAMPLES_PER_SECOND,
+    MF_MT_AUDIO_AVG_BYTES_PER_SECOND, MF_MT_AUDIO_BLOCK_ALIGNMENT, MF_MT_AUDIO_NUM_CHANNELS,
+    MF_MT_AUDIO_SAMPLES_PER_SECOND,
     MF_MT_AVG_BITRATE, MF_MT_FRAME_RATE, MF_MT_FRAME_SIZE,
     MF_MT_INTERLACE_MODE, MF_MT_MAJOR_TYPE, MF_MT_SUBTYPE, MF_SOURCE_READERF_ENDOFSTREAM,
     MF_SOURCE_READERF_STREAMTICK, MF_SOURCE_READER_ANY_STREAM, MFAudioFormat_AAC, MFAudioFormat_PCM,
@@ -164,34 +165,12 @@ unsafe fn cut_highlight_inner(in_path: &str, out_path: &str, start_sec: f64, end
 
     writer.BeginWriting().map_err(|e| format!("BeginWriting: {e:?}"))?;
 
-    // Fast-forward the source reader to just before the window instead of
-    // decoding the whole VOD from frame 0. Without this every cut on a ~20 min
-    // recording had to decode the full file up to the highlight first — that
-    // was the "clip takes forever / share never shows a link" slowness. If the
-    // source cannot seek we just fall back to the decode-from-start behavior.
-    {
-        let seek_at = (start_hns - 20_000_000).max(0); // 2s lead-in for the keyframe
-        if !try_seek(&reader, seek_at) && seek_at > 0 {
-            // Some MP4 demuxers index the file lazily and stay at position 0
-            // the first time; a second seek straight to the window start then
-            // lands. This is what used to silently decode the ENTIRE VOD (a
-            // highlight "cargando" for minutes) when the first seek was missed.
-            let _ = try_seek(&reader, start_hns);
-        }
-    }
-
-    // Read samples within the window and write them to the matching stream.
-    // Some demuxers accept SetCurrentPosition but still deliver from frame 0,
-    // which silently decodes the ENTIRE VOD (the "highlight cargando for
-    // minutes" hang). Watch where the first samples actually land: if we stay
-    // far before the window, re-seek once (the demuxer has indexed the file by
-    // now) and, if that still doesn't land, fail fast with a real reason.
-    let seek_target = (start_hns - 20_000_000).max(0); // 2s lead-in for keyframe
-    let trust_margin = 8_000_000; // 8s: the first GOP can sit a few seconds before the target
+    // OBS's fragmented MP4 demuxer reports MF_E_UNSUPPORTED_TIME_FORMAT for
+    // SetCurrentPosition and can block forever on the next ReadSample after a
+    // failed seek. Decode sequentially instead; this is slower for late
+    // highlights, but it is deterministic and works with the same files.
     let mut started = false;
     let mut saw_end = false;
-    let mut re_seeked = false;
-    let mut early_reads_video = 0u32;
     while !saw_end {
         let mut actual_stream: u32 = 0;
         let mut flags: u32 = 0;
@@ -217,31 +196,6 @@ unsafe fn cut_highlight_inner(in_path: &str, out_path: &str, start_sec: f64, end
         }
 
         if let Some(s) = &sample {
-            let is_video_sample = stream_ids.iter().any(|(i, is_v)| *i == actual_stream && *is_v);
-            if !started && is_video_sample && ts < seek_target - trust_margin {
-                // Decoding far before the window and haven't started writing
-                // yet: either the seek landed on a long lead-in (fine) or it
-                // was ignored and we are draining the whole file.
-                if early_reads_video < 2 {
-                    early_reads_video += 1;
-                } else if !re_seeked {
-                    re_seeked = true;
-                    early_reads_video = 0;
-                    if try_seek(&reader, seek_target) {
-                        continue;
-                    }
-                    // Re-seek failed too: fall through to the abort below.
-                } else {
-                    eprintln!(
-                        "[clip] seek not honored (ts={ts} target={start_hns}) after re-seek; aborting fast"
-                    );
-                    return Err(
-                        "no se pudo localizar el punto exacto en el vídeo (el archivo no admite búsqueda rápida); intenta un recorte más corto"
-                            .to_string(),
-                    );
-                }
-                continue;
-            }
             if ts >= start_hns {
                 started = true;
             }
@@ -267,18 +221,6 @@ unsafe fn cut_highlight_inner(in_path: &str, out_path: &str, start_sec: f64, end
 
     writer.Finalize().map_err(|e| format!("Finalize: {e:?}"))?;
     Ok(())
-}
-
-/// Seek the source reader to `target_hns`. Returns false when the seek fails,
-/// letting the caller retry once (some MP4 demuxers index the file lazily and
-/// only land on the second attempt).
-unsafe fn try_seek(reader: &IMFSourceReader, target_hns: i64) -> bool {
-    if target_hns <= 0 {
-        return true;
-    }
-    let mf_time_format = windows::core::GUID::from_u128(0x0F7A0A6E_F007_41D9_8AE4_6D90B4AEE6F4);
-    let pos = windows::core::PROPVARIANT::from(target_hns);
-    reader.SetCurrentPosition(&mf_time_format, &pos).is_ok()
 }
 
 unsafe fn mt_is(mt: &IMFMediaType, expected: windows::core::GUID) -> Result<bool, String> {
@@ -425,7 +367,10 @@ unsafe fn make_decoded_input_type(native: &IMFMediaType, is_video: bool, capped:
         out.SetUINT32(&MF_MT_AUDIO_NUM_CHANNELS, nchans).map_err(|e| format!("in chan: {e:?}"))?;
         out.SetUINT32(&MF_MT_AUDIO_SAMPLES_PER_SECOND, samples).map_err(|e| format!("in srate: {e:?}"))?;
         out.SetUINT32(&MF_MT_AUDIO_BITS_PER_SAMPLE, bits).map_err(|e| format!("in bits: {e:?}"))?;
-        out.SetUINT32(&MF_MT_AUDIO_BLOCK_ALIGNMENT, bits / 8 * nchans).map_err(|e| format!("in align: {e:?}"))?;
+        let block_alignment = bits / 8 * nchans;
+        out.SetUINT32(&MF_MT_AUDIO_BLOCK_ALIGNMENT, block_alignment).map_err(|e| format!("in align: {e:?}"))?;
+        out.SetUINT32(&MF_MT_AUDIO_AVG_BYTES_PER_SECOND, samples * block_alignment)
+            .map_err(|e| format!("in bytes/sec: {e:?}"))?;
     }
     Ok(out)
 }
@@ -529,14 +474,8 @@ unsafe fn extract_thumbnail_inner(in_path: &str, out_path: &str, at_sec: f64) ->
     let h = (cur_size & 0xFFFF_FFFF) as usize;
 
     let target_hns = (at_sec * 10_000_000.0) as i64;
-    // Jump straight to the frame's neighborhood instead of decoding the whole
-    // file up to it (a thumbnail at minute 20 used to decode all 20 minutes).
-    {
-        let seek_at = (target_hns - 20_000_000).max(0);
-        if !try_seek(&reader, seek_at) && seek_at > 0 {
-            let _ = try_seek(&reader, target_hns);
-        }
-    }
+    // OBS fragmented MP4 files can block after SetCurrentPosition, so decode
+    // sequentially and stop at the target timestamp.
     let mut saved = false;
     let mut saw_end = false;
     while !saw_end {
