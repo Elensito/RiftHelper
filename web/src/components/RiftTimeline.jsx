@@ -233,6 +233,16 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
   const [renameModal, setRenameModal] = useState(null)
   const [renameVal, setRenameVal] = useState('')
   const [renaming, setRenaming] = useState(false)
+  const [toast, setToast] = useState(null)
+  const toastTimer = useRef(null)
+
+  const showToast = useCallback((msg) => {
+    setToast(msg)
+    if (toastTimer.current) clearTimeout(toastTimer.current)
+    toastTimer.current = setTimeout(() => setToast(null), 3000)
+  }, [])
+
+  useEffect(() => () => { if (toastTimer.current) clearTimeout(toastTimer.current) }, [])
 
   useEffect(() => { saveSettings(settings) }, [settings])
 
@@ -991,6 +1001,12 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
         </div>
       )}
 
+      {toast && (
+        <div className="rt-toast" key={toast}>
+          <span>{toast}</span>
+        </div>
+      )}
+
       <div className="rt-header">
         <div className="rt-header-left">
           <h2 className="rt-title">
@@ -1408,12 +1424,11 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
                     setContextMenu(null)
                     if (!h.hasVideo) return
                     if (inflightCuts.current.has(h.id)) return
+                    showToast(t(lang, 'makingClip'))
                     ensureHighlightClip(h).then((entry) => {
-                      if (entry) {
-                        setHlStore({ ...loadHlStore() })
-                        setHighlights(buildHlCards(loadHlStore(), vods, hlHidden, lang))
-                      }
-                    }).catch(() => {})
+                      if (entry && entry.clipPath) showToast(t(lang, 'clipMadeToast'))
+                      else showToast(t(lang, 'clipMadeFailed'))
+                    }).catch(() => showToast(t(lang, 'clipMadeFailed')))
                   }}
                 >
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

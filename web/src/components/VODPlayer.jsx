@@ -1263,15 +1263,15 @@ export default function VODPlayer({ vod, lang, onBack, puuid, summoner, showTeam
         )}
       </div>
 
-      {!highlight && (
+      {(!highlight || clipEditorOpen) && (
         <NeonTimeline
-          matchId={pending ? '' : mv.matchId}
+          matchId={highlight && clipEditorOpen ? '' : (pending ? '' : mv.matchId)}
           puuid={evPuuid}
           lang={lang}
           duration={duration}
           current={currentTime}
           onSeek={seek}
-          localData={localEvents}
+          localData={highlight && clipEditorOpen ? null : localEvents}
           gameTimeOffset={mv.gameTimeOffset || 0}
           clipEditorOpen={clipEditorOpen}
           clipStart={clipStart}
