@@ -673,6 +673,74 @@ async fn show_in_folder(path: String) -> Result<(), String> {
     }
 }
 
+#[cfg(windows)]
+fn downloads_folder() -> String {
+    use windows::Win32::System::Com::CoTaskMemFree;
+    use windows::Win32::UI::Shell::SHGetKnownFolderPath;
+    const FOLDERID_DOWNLOADS: windows::core::GUID =
+        windows::core::GUID::from_u128(0x374de290_123f_4565_9164_39c4925e467b);
+    // SAFETY: FOLDERID_DOWNLOADS is a valid known-folder id and the returned
+    // PWSTR is freed via CoTaskMemFree below.
+    let res = unsafe {
+        SHGetKnownFolderPath(
+            &FOLDERID_DOWNLOADS,
+            windows::Win32::UI::Shell::KNOWN_FOLDER_FLAG(0),
+            None,
+        )
+    };
+    if let Ok(p) = res {
+        let s = unsafe { p.to_string() }.unwrap_or_default();
+        unsafe { CoTaskMemFree(Some(p.as_ptr() as *const _)) };
+        if !s.is_empty() {
+            return s;
+        }
+    }
+    let local = std::env::var("USERPROFILE").unwrap_or_else(|_| ".".to_string());
+    std::path::Path::new(&local)
+        .join("Downloads")
+        .to_string_lossy()
+        .to_string()
+}
+
+/// Copies a clip/highlight file into the real Windows Downloads folder and
+/// opens Explorer with the copied file selected (so the user can rename it).
+#[tauri::command]
+async fn download_to_downloads(source: String) -> Result<String, String> {
+    let src = std::path::Path::new(&source);
+    if !src.is_file() {
+        return Err("El archivo de origen ya no existe".to_string());
+    }
+    let folder = downloads_folder();
+    std::fs::create_dir_all(&folder).map_err(|e| e.to_string())?;
+    let file_name = src
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("clip.mp4")
+        .to_string();
+    let stem = std::path::Path::new(&file_name)
+        .file_stem()
+        .and_then(|n| n.to_str())
+        .unwrap_or("clip");
+    let ext = std::path::Path::new(&file_name)
+        .extension()
+        .and_then(|n| n.to_str())
+        .map(|e| format!(".{e}"))
+        .unwrap_or_default();
+    let mut dest = std::path::PathBuf::from(&folder).join(&file_name);
+    let mut i = 1;
+    while dest.exists() {
+        dest = std::path::PathBuf::from(&folder).join(format!("{stem} ({i}){ext}"));
+        i += 1;
+    }
+    std::fs::copy(&src, &dest).map_err(|e| e.to_string())?;
+    std::process::Command::new("explorer")
+        .arg(format!("/select,{}", dest.to_string_lossy()))
+        .creation_flags(0x08000000)
+        .spawn()
+        .map_err(|e| e.to_string())?;
+    Ok(dest.to_string_lossy().to_string())
+}
+
 #[tauri::command]
 async fn select_vod_folder(app: tauri::AppHandle) -> Result<Option<String>, String> {
     use tauri_plugin_dialog::DialogExt;
@@ -2740,6 +2808,7 @@ pub fn run() {
             get_riot_client_session,
             open_vod_folder,
             show_in_folder,
+            download_to_downloads,
             select_vod_folder,
             get_default_vod_folder,
             toggle_autostart,

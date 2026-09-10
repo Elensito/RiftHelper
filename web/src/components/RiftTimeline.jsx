@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { t } from '../i18n.js'
 import { isTauri, showInFolder, getAudioMode, vodThumbUrl, getDiskUsage, readVodEvents } from '../tauri.js'
 import { deleteRecordingBlob } from '../video-recorder.js'
-import { deleteVodFiles, exportHighlightCopy, createManualClip, localFileSrc, shareClip, renameClipFile, readShareLog } from '../tauri.js'
+import { deleteVodFiles, exportHighlightCopy, createManualClip, localFileSrc, shareClip, renameClipFile, readShareLog, downloadToDownloads } from '../tauri.js'
 import { computeHighlights, highlightId, highlightLabel } from '../highlights.js'
 import { warmShareServer } from '../api.js'
 
@@ -648,6 +648,18 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
       doOpen(h.vod, h.hl)
     }
   }, [onOpenHighlight, onOpenVod, ensureHighlightClip, lang])
+
+  /* Copy the highlight's clip (building it first if needed) to the Windows
+     Downloads folder and reveal it in Explorer for renaming/keeping. */
+  const downloadHighlight = useCallback(async (h) => {
+    const entry = loadHlStore()[h.id]
+    let p = entry && entry.clipPath
+    if (!p) {
+      const made = await ensureHighlightClip(h)
+      p = made && made.clipPath
+    }
+    if (p) downloadToDownloads(p)
+  }, [ensureHighlightClip])
 
   /* Share a clip or highlight: generate the highlight's clip if needed, upload
      the mp4 (+ thumbnail) to the public server and surface the link. Already
@@ -1415,6 +1427,18 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
                 </button>
                 <button
                   className="rt-context-item"
+                  disabled={!contextMenu.hl.hasVideo}
+                  onClick={() => { setContextMenu(null); downloadHighlight(contextMenu.hl).catch(() => {}) }}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                    <polyline points="7 10 12 15 17 10" />
+                    <line x1="12" y1="15" x2="12" y2="3" />
+                  </svg>
+                  {t(lang, 'downloadVod')}
+                </button>
+                <button
+                  className="rt-context-item"
                   onClick={() => { toggleHlFavorite(contextMenu.hl.id, { stopPropagation: () => {} }, contextMenu.hl); setContextMenu(null) }}
                 >
                   <svg width="14" height="14" viewBox="0 0 24 24" fill={hlFav.has(contextMenu.hl.id) ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -1473,6 +1497,18 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
                     {t(lang, 'showInFolder')}
                   </button>
                 )}
+                <button
+                  className="rt-context-item"
+                  disabled={!contextMenu.clip.path}
+                  onClick={() => { setContextMenu(null); downloadToDownloads(contextMenu.clip.path) }}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                    <polyline points="7 10 12 15 17 10" />
+                    <line x1="12" y1="15" x2="12" y2="3" />
+                  </svg>
+                  {t(lang, 'downloadVod')}
+                </button>
                 <button className="rt-context-item" onClick={() => { doShare({ id: contextMenu.clip.id, kind: 'clip' }); setContextMenu(null) }}>
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <circle cx="18" cy="5" r="3" />

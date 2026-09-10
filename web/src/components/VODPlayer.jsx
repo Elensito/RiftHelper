@@ -522,6 +522,7 @@ export default function VODPlayer({ vod, lang, onBack, puuid, summoner, showTeam
   const [clipSaving, setClipSaving] = useState(false)
   const [clipReady, setClipReady] = useState(null)
   const [clipSelDuration, setClipSelDuration] = useState(30)
+  const [confirmPreview, setConfirmPreview] = useState(false)
   const seekBarRef = useRef(null)
   const [showTeams, setShowTeams] = useState(showTeamsProp !== false)
   const [videoUrl, setVideoUrl] = useState(null)
@@ -853,7 +854,10 @@ export default function VODPlayer({ vod, lang, onBack, puuid, summoner, showTeam
 
   /* Preview the clip region: seek to start when handles change */
   const previewClipRegion = useCallback(() => {
-    if (clipStart !== null) seek(clipStart)
+    if (clipStart === null) return
+    seek(clipStart)
+    const vid = videoRef.current
+    if (vid) vid.play().then(() => setPlaying(true)).catch(() => {})
   }, [clipStart, seek])
 
   const saveClipToLibrary = async () => {
@@ -890,6 +894,62 @@ export default function VODPlayer({ vod, lang, onBack, puuid, summoner, showTeam
     } catch {}
     setClipSaving(false)
   }
+
+  const confirmClipCut = async () => {
+    if (clipStart === null || clipEnd === null || clipStart >= clipEnd) return
+    setClipSaving(true)
+    try { await saveClipToLibrary() } catch {}
+    setConfirmPreview(false)
+    setClipSaving(false)
+  }
+
+  /* While the clip editor is open (and not on the final-confirm modal), clamp
+     playback to the selected region: it starts at clipStart and pauses exactly
+     at clipEnd, so the user always watches precisely the part they trimmed. */
+  useEffect(() => {
+    if (!clipEditorOpen || confirmPreview || clipStart == null || clipEnd == null) return
+    const vid = videoRef.current
+    if (!vid) return
+    const onTime = () => {
+      if (!vid.paused && Number.isFinite(vid.duration) && vid.currentTime >= clipEnd) {
+        vid.pause()
+        vid.currentTime = clipEnd
+        setCurrent(clipEnd)
+        setPlaying(false)
+      }
+    }
+    vid.addEventListener('timeupdate', onTime)
+    return () => vid.removeEventListener('timeupdate', onTime)
+  }, [clipEditorOpen, confirmPreview, clipStart, clipEnd])
+
+  /* Final-confirm preview: loop [clipStart → clipEnd] while the modal is up so
+     the user can review the actual clip before the cut happens. */
+  useEffect(() => {
+    if (!confirmPreview || clipStart == null) return
+    const vid = videoRef.current
+    if (!vid) return
+    const start = clipStart
+    const end = clipEnd != null && clipEnd > start ? clipEnd : null
+    const loop = () => {
+      if (end != null && vid.currentTime >= end) {
+        vid.currentTime = start
+        setCurrent(start)
+        vid.play().then(() => setPlaying(true)).catch(() => {})
+      }
+    }
+    vid.addEventListener('timeupdate', loop)
+    const t = setTimeout(() => {
+      vid.currentTime = start
+      setCurrent(start)
+      vid.play().then(() => setPlaying(true)).catch(() => {})
+    }, 60)
+    return () => {
+      clearTimeout(t)
+      vid.removeEventListener('timeupdate', loop)
+      vid.pause()
+      setPlaying(false)
+    }
+  }, [confirmPreview, clipStart, clipEnd])
 
   const downloadVod = () => {
     if (videoUrl) {
@@ -1225,9 +1285,45 @@ export default function VODPlayer({ vod, lang, onBack, puuid, summoner, showTeam
           onClipDuration={changeClipDuration}
           onClipName={setClipName}
           onClipPreview={previewClipRegion}
-          onClipSave={saveClipToLibrary}
+          onClipSave={() => {
+            if (clipStart !== null && clipEnd !== null && clipStart < clipEnd && !confirmPreview) {
+              setConfirmPreview(true)
+            }
+          }}
           onClipClose={closeClipEditor}
         />
+      )}
+
+      {confirmPreview && clipStart != null && clipEnd != null && clipStart < clipEnd && (
+        <div className="vtl-confirm-backdrop" onClick={() => setConfirmPreview(false)}>
+          <div className="vtl-confirm-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="vtl-confirm-head">
+              <span className="vtl-confirm-title">{t(lang, 'clipConfirmTitle')}</span>
+              <button className="vtl-clip-cancel" onClick={() => setConfirmPreview(false)} title={t(lang, 'close')}>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="18" y1="6" x2="6" y2="18" />
+                  <line x1="6" y1="6" x2="18" y2="18" />
+                </svg>
+              </button>
+            </div>
+            <div className="vtl-confirm-times">
+              <span className="vod-clip-bar-badge start">{fmt(clipStart)}</span>
+              <span className="vod-clip-bar-sep">→</span>
+              <span className="vod-clip-bar-badge end">{fmt(clipEnd)}</span>
+              <span className="vod-clip-bar-dur">{fmt(clipEnd - clipStart)}</span>
+            </div>
+            {clipName && <div className="vtl-confirm-name">{clipName}</div>}
+            <div className="vtl-confirm-tip">{t(lang, 'clipConfirmHint')}</div>
+            <div className="vtl-confirm-actions">
+              <button className="rt-btn rt-btn-ghost vtl-confirm-back" onClick={() => setConfirmPreview(false)}>
+                {t(lang, 'backToAdjust')}
+              </button>
+              <button className="vod-clip-bar-save vtl-confirm-save" onClick={confirmClipCut} disabled={clipSaving}>
+                {clipSaving ? t(lang, 'clipSaving') : t(lang, 'confirmCut')}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
     </div>

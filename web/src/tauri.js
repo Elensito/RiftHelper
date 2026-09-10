@@ -202,6 +202,12 @@ export async function showInFolder(path) {
   try { await invoke('show_in_folder', { path }) } catch {}
 }
 
+export async function downloadToDownloads(path) {
+  if (!isTauri() || !path) return null
+  const { invoke } = await import('@tauri-apps/api/core')
+  try { return await invoke('download_to_downloads', { source: path }) } catch { return null }
+}
+
 export async function deleteVodFiles(videoPath) {
   if (!isTauri() || !videoPath) return
   const { invoke } = await import('@tauri-apps/api/core')

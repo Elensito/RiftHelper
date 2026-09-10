@@ -8437,6 +8437,70 @@ body.sidebar-expanded .vod-player-view {
   color: #ff3d5e;
 }
 
+/* clip final-confirm preview modal */
+.vtl-confirm-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(5, 5, 12, 0.6);
+  backdrop-filter: blur(2px);
+}
+.vtl-confirm-modal {
+  width: min(420px, 86vw);
+  padding: 18px;
+  background: rgba(12, 12, 22, 0.95);
+  border: 1px solid rgba(255, 45, 120, 0.35);
+  border-radius: 12px;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.55);
+  animation: vod-clip-bar-in 0.22s ease;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.vtl-confirm-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.vtl-confirm-title {
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+.vtl-confirm-times {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.vtl-confirm-name {
+  font-size: 12px;
+  color: var(--cyan);
+  font-weight: 600;
+}
+.vtl-confirm-tip {
+  font-size: 11px;
+  color: var(--muted);
+  line-height: 1.45;
+}
+.vtl-confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 4px;
+}
+.vtl-confirm-back {
+  padding: 5px 12px;
+  font-size: 11px;
+  font-weight: 600;
+}
+.vtl-confirm-save {
+  padding: 6px 14px;
+}
+
 /* clip range region on the timeline track */
 .vtl-clip-range {
   position: absolute;
