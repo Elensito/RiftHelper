@@ -740,7 +740,7 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
             cut = { path: cachedNow.clipPath, thumb: cachedNow.thumb || '' }
           } else if (inflightCuts.current.has(id)) {
             stageLog('cut-wait-worker')
-            for (let i = 0; i < 340; i++) {
+            for (let i = 0; i < 600; i++) {
               await new Promise(r => setTimeout(r, 500))
               const st = loadHlStore()[id]
               if (st && st.clipPath) {
@@ -761,7 +761,7 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
             inflightCuts.current.add(id)
             let r
             try {
-              r = await withTimeout(createManualClip(vod.videoPath, start, end, shareName), 120000, 'cut')
+              r = await withTimeout(createManualClip(vod.videoPath, start, end, shareName), 300000, 'cut')
             } finally {
               inflightCuts.current.delete(id)
             }
@@ -798,7 +798,7 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
       }
       if (!isTauri() || !videoPath) { fail(t(lang, 'shareNoClip'), 'missing'); return }
       stageLog('upload-start', videoPath)
-      const r = await withTimeout(shareClip(videoPath, thumbPath, shareName, kind), 150000, 'upload')
+      const r = await withTimeout(shareClip(videoPath, thumbPath, shareName, kind), 320000, 'upload')
       if (r && r.timedOut) { fail(t(lang, 'shareTimeoutDesc'), 'timeout'); return }
       if (r && r.error) { fail(r.error, 'upload'); return }
       const res = r || {}

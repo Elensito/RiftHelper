@@ -1212,7 +1212,7 @@ async fn create_manual_clip(
             eprintln!("[create_manual_clip] cutter finished, ok={}", r.is_ok());
             let _ = tx_cut.send(r);
         });
-        let cut_path = match rx_cut.recv_timeout(std::time::Duration::from_secs(180)) {
+        let cut_path = match rx_cut.recv_timeout(std::time::Duration::from_secs(300)) {
             Ok(Ok(path)) => path,
             Ok(Err(e)) => {
                 let cut_secs = cut_t0.elapsed().as_secs();
@@ -1222,9 +1222,11 @@ async fn create_manual_clip(
             }
             Err(_) => {
                 // The cutter thread may still be running; its output is
-                // discarded. 180s is far beyond what a healthy cut needs.
-                share_log_line(&app, &"[cut] TIMEOUT (180s)".to_string());
-                eprintln!("[create_manual_clip] CUT TIMEOUT (180s): {clip_str}");
+                // discarded. 300s covers a full-res software re-encode of a
+                // long highlight on slow machines; the fast copy path usually
+                // finishes in a couple of seconds.
+                share_log_line(&app, &"[cut] TIMEOUT (300s)".to_string());
+                eprintln!("[create_manual_clip] CUT TIMEOUT (300s): {clip_str}");
                 let _ = std::fs::remove_file(&clip_path);
                 return Err(
                     "No se pudo generar el clip del highlight: el recorte tardó demasiado tiempo."
@@ -1362,7 +1364,7 @@ async fn post_bytes_limited(base: &str, suffix: &str, bytes: Vec<u8>, mime: &str
     let mime = mime.to_string();
     tauri::async_runtime::spawn_blocking(move || -> Result<serde_json::Value, String> {
         let client = reqwest::blocking::Client::builder()
-            .timeout(std::time::Duration::from_secs(60))
+            .timeout(std::time::Duration::from_secs(90))
             .connect_timeout(std::time::Duration::from_secs(15))
             .build()
             .map_err(|e| format!("http client: {e}"))?;

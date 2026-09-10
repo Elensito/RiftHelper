@@ -10,12 +10,12 @@ use windows::Win32::Media::MediaFoundation::{
     MF_MT_AAC_PAYLOAD_TYPE, MF_MT_AUDIO_BITS_PER_SAMPLE,
     MF_MT_AUDIO_BLOCK_ALIGNMENT, MF_MT_AUDIO_NUM_CHANNELS, MF_MT_AUDIO_SAMPLES_PER_SECOND,
     MF_MT_AVG_BITRATE, MF_MT_FRAME_RATE, MF_MT_FRAME_SIZE,
-    MF_MT_INTERLACE_MODE, MF_MT_MAJOR_TYPE, MF_MT_SUBTYPE, MF_SOURCE_READERF_ENDOFSTREAM,
+    MF_MT_INTERLACE_MODE, MF_MT_MAJOR_TYPE, MF_MT_MPEG_SEQUENCE_HEADER, MF_MT_SUBTYPE, MF_SOURCE_READERF_ENDOFSTREAM,
     MF_SOURCE_READERF_STREAMTICK, MF_SOURCE_READER_ANY_STREAM, MFAudioFormat_AAC, MFAudioFormat_PCM,
     MFCreateAttributes, MFCreateMediaType, MFCreateSinkWriterFromURL, MFCreateSourceReaderFromURL,
     MFMediaType_Audio, MFMediaType_Video, MFShutdown, MFStartup, MFVideoFormat_H264,
     MFVideoFormat_NV12, MFVideoFormat_RGB32, MFVideoInterlace_Progressive, MF_VERSION, MFSTARTUP_FULL,
-    IMFAttributes, IMFMediaType, IMFSample, IMFSourceReader,
+    IMFAttributes, IMFMediaType, IMFSample, IMFSinkWriter, IMFSourceReader,
 };
 use windows::Win32::System::Com::{CoInitializeEx, CoUninitialize, COINIT_APARTMENTTHREADED};
 
@@ -126,47 +126,83 @@ unsafe fn cut_highlight_inner(in_path: &str, out_path: &str, start_sec: f64, end
         a.SetUINT32(&MF_READWRITE_ENABLE_HARDWARE_TRANSFORMS, 1).ok();
     }
 
-    let writer = MFCreateSinkWriterFromURL(PCWSTR(out_url.as_ptr()), None, sink_attrs.as_ref())
-        .map_err(|e| format!("MFCreateSinkWriterFromURL: {e:?}"))?;
-
     let mut stream_map: Vec<(u32, u32)> = Vec::new(); // (source index, sink index)
-    // Ask the reader for DECODED samples (NV12 / PCM) and let the Sink Writer
-    // insert the H.264 / AAC encoders: the encoders generate the SPS/PPS
-    // headers the MP4 sink needs. Passing the source's compressed samples
-    // through directly leaves the sink unable to produce its file headers and
-    // Finalize fails with 0xC00D4A45 (MF_E_SINK_HEADERS_NOT_FOUND).
     let mut ordered: Vec<(u32, bool)> = stream_ids.clone();
     ordered.sort_by_key(|(_, is_video)| !*is_video);
-    for &(stidx, is_video) in &ordered {
-        let native = reader.GetCurrentMediaType(stidx).map_err(|e| format!("GetCurrentMediaType({stidx}): {e:?}"))?;
-        // Ask the decoder for 720p-capped NV12: much faster to encode and much
-        // smaller to upload. If a codec cannot rescale, fall back to the native
-        // frame size so cuts never break — just lose the speedup for that file.
-        let mut decoded = make_decoded_input_type(&native, is_video, true)?;
-        // Source Readers do not always accept a resized NV12 type for a given
-        // codec (MF_E_INVALIDMEDIATYPE). If so, fall back to the native size so
-        // the cut always works; we just lose the 720p speedup for that file.
-        let decoded_capped = reader
-            .SetCurrentMediaType(stidx, None, &decoded)
-            .is_ok();
-        if !decoded_capped {
-            decoded = make_decoded_input_type(&native, is_video, false)?;
-            reader
-                .SetCurrentMediaType(stidx, None, &decoded)
-                .map_err(|e| format!("SetCurrentMediaType({stidx}): {e:?}"))?;
-        }
-        let decoded = reader.GetCurrentMediaType(stidx).map_err(|e| format!("GetCurrentMediaType({stidx}): {e:?}"))?;
-        let encoded = make_output_type(&decoded, is_video, decoded_capped)?;
 
-        // Sink stream indexes are NOT the same as source indexes: ask the sink
-        // writer to create each stream and use the index it returns.
-        let sink_idx = writer
-            .AddStream(&encoded)
-            .map_err(|e| format!("AddStream({stidx}): {e:?}"))?;
-        writer
-            .SetInputMediaType(sink_idx, &decoded, None)
-            .map_err(|e| format!("SetInputMediaType({stidx}->{sink_idx}): {e:?}"))?;
-        stream_map.push((stidx, sink_idx));
+    // FAST PATH — sample copy (no decode, no re-encode). Our recorder writes
+    // plain H.264/AAC MP4s, and the MP4 demuxer exposes the native (encoded)
+    // types with MF_MT_MPEG_SEQUENCE_HEADER (SPS/PPS) populated — exactly what
+    // the MP4 sink needs to write its headers on Finalize. Feeding those same
+    // compressed samples straight through turns a highlight cut into a couple
+    // of seconds of copying no matter the resolution; the old full-res software
+    // re-encode is what exceeded 120s on codecs that refuse 720p scaling.
+    // Non-H.264/AAC sources (external files) reject this and fall back below.
+    let passthrough_capable = {
+        let mut ok = true;
+        for &(stidx, is_video) in &ordered {
+            let native = reader
+                .GetCurrentMediaType(stidx)
+                .map_err(|e| format!("GetCurrentMediaType({stidx}): {e:?}"))?;
+            let compat = if is_video {
+                native
+                    .GetGUID(&MF_MT_SUBTYPE)
+                    .map(|g| g == MFVideoFormat_H264)
+                    .unwrap_or(false)
+                    && native
+                        .GetBlobSize(&MF_MT_MPEG_SEQUENCE_HEADER)
+                        .map(|n| n > 0)
+                        .unwrap_or(false)
+            } else {
+                native
+                    .GetGUID(&MF_MT_SUBTYPE)
+                    .map(|g| g == MFAudioFormat_AAC)
+                    .unwrap_or(false)
+            };
+            if !compat {
+                ok = false;
+                break;
+            }
+        }
+        ok
+    };
+
+    let mut writer;
+    if passthrough_capable {
+        writer = MFCreateSinkWriterFromURL(PCWSTR(out_url.as_ptr()), None, sink_attrs.as_ref())
+            .map_err(|e| format!("MFCreateSinkWriterFromURL: {e:?}"))?;
+        let mut ok = true;
+        for &(stidx, _is_video) in &ordered {
+            let native = match reader.GetCurrentMediaType(stidx) {
+                Ok(mt) => mt,
+                Err(_) => {
+                    ok = false;
+                    break;
+                }
+            };
+            let sink_idx = match writer.AddStream(&native) {
+                Ok(si) => si,
+                Err(_) => {
+                    ok = false;
+                    break;
+                }
+            };
+            if writer.SetInputMediaType(sink_idx, &native, None).is_err() {
+                ok = false;
+                break;
+            }
+            stream_map.push((stidx, sink_idx));
+        }
+        if !ok {
+            // The container refused the direct compressed stream: abandon this
+            // writer and re-cut through the re-encoder from an empty file.
+            drop(writer);
+            stream_map.clear();
+            let _ = std::fs::remove_file(out_path);
+            writer = setup_reencode_streams(&reader, &ordered, &mut stream_map, out_path)?;
+        }
+    } else {
+        writer = setup_reencode_streams(&reader, &ordered, &mut stream_map, out_path)?;
     }
 
     let sink_for = |src_idx: u32| -> Option<u32> {
@@ -348,6 +384,58 @@ unsafe fn make_output_type(in_type: &IMFMediaType, is_video: bool, decoded_cappe
 
 fn pack_ratio(num: u32, den: u32) -> u64 {
     ((num as u64) << 32) | (den as u64)
+}
+
+/// The re-encoding path: ask the reader for DECODED samples (NV12 / PCM) and
+/// let the Sink Writer insert the H.264 / AAC encoders, which generate the
+/// SPS/PPS headers Finalize needs. Tries a 720p-capped decode first and falls
+/// back to the native size when the codec refuses to rescale.
+unsafe fn setup_reencode_streams(
+    reader: &IMFSourceReader,
+    ordered: &[(u32, bool)],
+    stream_map: &mut Vec<(u32, u32)>,
+    out_path: &str,
+) -> Result<IMFSinkWriter, String> {
+    let out_url = to_wide_url(out_path)?;
+    let mut sink_attrs: Option<IMFAttributes> = None;
+    MFCreateAttributes(&mut sink_attrs, 1).map_err(|e| format!("sink attrs: {e:?}"))?;
+    if let Some(a) = &sink_attrs {
+        a.SetUINT32(&MF_READWRITE_ENABLE_HARDWARE_TRANSFORMS, 1).ok();
+    }
+    let writer = MFCreateSinkWriterFromURL(PCWSTR(out_url.as_ptr()), None, sink_attrs.as_ref())
+        .map_err(|e| format!("MFCreateSinkWriterFromURL: {e:?}"))?;
+    for &(stidx, is_video) in ordered {
+        let native = reader
+            .GetCurrentMediaType(stidx)
+            .map_err(|e| format!("GetCurrentMediaType({stidx}): {e:?}"))?;
+        // Ask the decoder for 720p-capped NV12: much faster to encode and much
+        // smaller to upload. If a codec cannot rescale, fall back to the native
+        // frame size so cuts never break — just lose the speedup for that file.
+        let mut decoded = make_decoded_input_type(&native, is_video, true)?;
+        // Source Readers do not always accept a resized NV12 type for a given
+        // codec (MF_E_INVALIDMEDIATYPE). If so, fall back to the native size so
+        // the cut always works; we just lose the 720p speedup for that file.
+        let decoded_capped = reader.SetCurrentMediaType(stidx, None, &decoded).is_ok();
+        if !decoded_capped {
+            decoded = make_decoded_input_type(&native, is_video, false)?;
+            reader
+                .SetCurrentMediaType(stidx, None, &decoded)
+                .map_err(|e| format!("SetCurrentMediaType({stidx}): {e:?}"))?;
+        }
+        let decoded = reader.GetCurrentMediaType(stidx).map_err(|e| format!("GetCurrentMediaType({stidx}): {e:?}"))?;
+        let encoded = make_output_type(&decoded, is_video, decoded_capped)?;
+
+        // Sink stream indexes are NOT the same as source indexes: ask the sink
+        // writer to create each stream and use the index it returns.
+        let sink_idx = writer
+            .AddStream(&encoded)
+            .map_err(|e| format!("AddStream({stidx}): {e:?}"))?;
+        writer
+            .SetInputMediaType(sink_idx, &decoded, None)
+            .map_err(|e| format!("SetInputMediaType({stidx}->{sink_idx}): {e:?}"))?;
+        stream_map.push((stidx, sink_idx));
+    }
+    Ok(writer)
 }
 
 /// Build the DECODED type (NV12 / PCM) the Source Reader should hand us so the
