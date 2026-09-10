@@ -21,10 +21,10 @@ export function hlSensitivity() {
       minKills: Math.max(0, Number(s.hlMinKills) || 0),
       includeDied: s.hlIncludeDied === undefined ? true : s.hlIncludeDied !== false,
       leadSec: Math.max(0, Math.min(30, Number(s.hlLeadSec) || 10)),
-      tailSec: Math.max(0, Math.min(30, Number(s.hlTailSec) || 3)),
+      tailSec: Math.max(0, Math.min(30, Number(s.hlTailSec) || 5)),
     }
   } catch {
-    return { max: 3, minKills: 0, includeDied: true, leadSec: 10, tailSec: 3 }
+    return { max: 3, minKills: 0, includeDied: true, leadSec: 10, tailSec: 5 }
   }
 }
 

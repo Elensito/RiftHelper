@@ -12,7 +12,7 @@ const ENGAGEMENT_GAP_SEC = 22
 
 /* Default cut window around a play (seconds), used when settings don't exist. */
 const LEAD_SEC = 10
-const TAIL_SEC = 3
+const TAIL_SEC = 5
 
 function parseEventSec(ev) {
   const tm = typeof ev.time === 'string' ? ev.time.match(/(\d+)\s*:\s*(\d{1,2})/) : null
@@ -129,7 +129,7 @@ function classifyGroup(events) {
    - minKills:   minimum player kills involved for a play to count (default 1)
    - includeDied: include plays where the player died (default true)
    - leadSec:    seconds of video cut in before the play starts (default 10)
-   - tailSec:    seconds of video cut out after the play ends (default 3) */
+   - tailSec:    seconds of video cut out after the play ends (default 5) */
 export function computeHighlights(events, {
   me,
   gameTimeOffset = 0,
@@ -168,14 +168,24 @@ export function computeHighlights(events, {
 /* Per-language nouns used to build a highlight's display name, e.g.
    "2 kills con Smolder", "3 asistencias 1 kill con Leona". */
 const HL_WORDS = {
-  en: { killsFew: 'kills', killsOne: 'kill', assistFew: 'assists', assistOne: 'assist', dying: 'dying', with: 'with', solo: 'solo' },
-  es: { killsFew: 'kills', killsOne: 'kill', assistFew: 'asistencias', assistOne: 'asistencia', dying: 'muriendo', with: 'con', solo: 'solo' },
-  pt: { killsFew: 'kills', killsOne: 'kill', assistFew: 'assistências', assistOne: 'assistência', dying: 'morrendo', with: 'com', solo: 'solo' },
-  fr: { killsFew: 'kills', killsOne: 'kill', assistFew: 'assists', assistOne: 'assist', dying: 'mourant', with: 'avec', solo: 'seul' },
-  ko: { killsFew: '킬', killsOne: '킬', assistFew: '어시스트', assistOne: '어시스트', dying: '사망', with: '로', solo: '솔로' },
+  en: { killsFew: 'kills', killsOne: 'kill', assistFew: 'assists', assistOne: 'assist', dying: 'dying', with: 'with', solo: 'solo', doubleKill: 'Double kill', tripleKill: 'Triple kill', quadraKill: 'Quadra kill', pentaKill: 'Penta kill' },
+  es: { killsFew: 'kills', killsOne: 'kill', assistFew: 'asistencias', assistOne: 'asistencia', dying: 'muriendo', with: 'con', solo: 'solo', doubleKill: 'Doble kill', tripleKill: 'Triple kill', quadraKill: 'Quadra kill', pentaKill: 'Penta kill' },
+  pt: { killsFew: 'kills', killsOne: 'kill', assistFew: 'assistências', assistOne: 'assistência', dying: 'morrendo', with: 'com', solo: 'solo', doubleKill: 'Double kill', tripleKill: 'Triple kill', quadraKill: 'Quadra kill', pentaKill: 'Penta kill' },
+  fr: { killsFew: 'kills', killsOne: 'kill', assistFew: 'assists', assistOne: 'assist', dying: 'mourant', with: 'avec', solo: 'seul', doubleKill: 'Double kill', tripleKill: 'Triple kill', quadraKill: 'Quadra kill', pentaKill: 'Penta kill' },
+  ko: { killsFew: '킬', killsOne: '킬', assistFew: '어시스트', assistOne: '어시스트', dying: '사망', with: '로', solo: '솔로', doubleKill: '더블킬', tripleKill: '트리플킬', quadraKill: '쿼드라킬', pentaKill: '펜타킬' },
 }
 
 const noun = (lang, n, few, one) => (n === 1 ? one : few)
+
+/* "Double kill / Triple kill / Quadra kill / Penta kill" name for an
+   engagement, or null for a single kill (kept as "N kill(s)"). */
+function multikillName(w, kills) {
+  if (kills <= 1) return null
+  if (kills === 2) return w.doubleKill
+  if (kills === 3) return w.tripleKill
+  if (kills === 4) return w.quadraKill
+  return w.pentaKill
+}
 
 export function highlightLabel(lang, hl, champion) {
   const w = HL_WORDS[lang] || HL_WORDS.en
@@ -183,7 +193,13 @@ export function highlightLabel(lang, hl, champion) {
   const c = champ ? ` ${w.with} ${champ}` : ''
   const dies = hl.died ? ` (${w.dying})` : ''
   let body
-  if (hl.kind === 'assist-carry') {
+  const multi = multikillName(w, hl.kills)
+  if (multi) {
+    const pre = hl.assists > 0 && hl.kind !== 'solo'
+      ? `${hl.assists} ${noun(lang, hl.assists, w.assistFew, w.assistOne)} `
+      : ''
+    body = `${pre}${multi}${c}`
+  } else if (hl.kind === 'assist-carry') {
     body = `${hl.assists} ${noun(lang, hl.assists, w.assistFew, w.assistOne)} ${hl.kills} ${noun(lang, hl.kills, w.killsFew, w.killsOne)}${c}`
   } else if (hl.solo) {
     body = `${hl.kills} ${noun(lang, hl.kills, w.killsFew, w.killsOne)} (${w.solo})${c}`

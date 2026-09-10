@@ -97,7 +97,7 @@ export default function AppSettings({ theme, onThemeChange, lang, onLangChange, 
   const [recordingFps, setRecordingFpsState] = useState('30')
   const [recordingQuality, setRecordingQualityState] = useState('720p')
   const [autoHighlights, setAutoHighlightsState] = useState(true)
-  const [hlSens, setHlSens] = useState({ max: 3, minKills: 0, includeDied: true, leadSec: 10, tailSec: 3 })
+  const [hlSens, setHlSens] = useState({ max: 3, minKills: 0, includeDied: true, leadSec: 10, tailSec: 5 })
   const [confirmPopup, setConfirmPopup] = useState(false)
   const [downloadState, setDownloadState] = useState('confirm')
   const [appVersion, setAppVersion] = useState('')
