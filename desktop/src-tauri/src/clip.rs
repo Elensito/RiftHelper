@@ -139,12 +139,24 @@ unsafe fn cut_highlight_inner(in_path: &str, out_path: &str, start_sec: f64, end
     ordered.sort_by_key(|(_, is_video)| !*is_video);
     for &(stidx, is_video) in &ordered {
         let native = reader.GetCurrentMediaType(stidx).map_err(|e| format!("GetCurrentMediaType({stidx}): {e:?}"))?;
-        let decoded = make_decoded_input_type(&native, is_video)?;
-        reader
+        // Ask the decoder for 720p-capped NV12: much faster to encode and much
+        // smaller to upload. If a codec cannot rescale, fall back to the native
+        // frame size so cuts never break — just lose the speedup for that file.
+        let mut decoded = make_decoded_input_type(&native, is_video, true)?;
+        // Source Readers do not always accept a resized NV12 type for a given
+        // codec (MF_E_INVALIDMEDIATYPE). If so, fall back to the native size so
+        // the cut always works; we just lose the 720p speedup for that file.
+        let decoded_capped = reader
             .SetCurrentMediaType(stidx, None, &decoded)
-            .map_err(|e| format!("SetCurrentMediaType({stidx}): {e:?}"))?;
+            .is_ok();
+        if !decoded_capped {
+            decoded = make_decoded_input_type(&native, is_video, false)?;
+            reader
+                .SetCurrentMediaType(stidx, None, &decoded)
+                .map_err(|e| format!("SetCurrentMediaType({stidx}): {e:?}"))?;
+        }
         let decoded = reader.GetCurrentMediaType(stidx).map_err(|e| format!("GetCurrentMediaType({stidx}): {e:?}"))?;
-        let encoded = make_output_type(&decoded, is_video)?;
+        let encoded = make_output_type(&decoded, is_video, decoded_capped)?;
 
         // Sink stream indexes are NOT the same as source indexes: ask the sink
         // writer to create each stream and use the index it returns.
@@ -287,7 +299,7 @@ unsafe fn mt_is(mt: &IMFMediaType, expected: windows::core::GUID) -> Result<bool
     Ok(guid == expected)
 }
 
-unsafe fn make_output_type(in_type: &IMFMediaType, is_video: bool) -> Result<IMFMediaType, String> {
+unsafe fn make_output_type(in_type: &IMFMediaType, is_video: bool, decoded_capped: bool) -> Result<IMFMediaType, String> {
     let out = MFCreateMediaType().map_err(|e| format!("MFCreateMediaType: {e:?}"))?;
 
     if is_video {
@@ -298,14 +310,22 @@ unsafe fn make_output_type(in_type: &IMFMediaType, is_video: bool) -> Result<IMF
 
         let frame_size = in_type.GetUINT64(&MF_MT_FRAME_SIZE).unwrap_or(pack_ratio(1920, 1080));
         let frame_rate = in_type.GetUINT64(&MF_MT_FRAME_RATE).unwrap_or(pack_ratio(30, 1));
-        let capped = capped_frame_size(frame_size, 1280, 720);
-        let capped_w = ((capped >> 32) & 0xFFFF_FFFF) as u32;
+        // The encoder MUST output the exact size the reader actually decoded
+        // (720p when the capped decode was accepted, native otherwise). A frame
+        // size mismatch between the NV12 inputs and the H.264 encoder leaves
+        // the sink never starting — exactly what MF_E_INVALIDMEDIATYPE guards.
+        let out_size = if decoded_capped {
+            capped_frame_size(frame_size, 1280, 720)
+        } else {
+            frame_size
+        };
+        let out_w = ((out_size >> 32) & 0xFFFF_FFFF) as u32;
 
-        out.SetUINT64(&MF_MT_FRAME_SIZE, capped)
+        out.SetUINT64(&MF_MT_FRAME_SIZE, out_size)
             .map_err(|e| format!("out frame: {e:?}"))?;
         out.SetUINT64(&MF_MT_FRAME_RATE, frame_rate)
             .map_err(|e| format!("out fps: {e:?}"))?;
-        out.SetUINT32(&MF_MT_AVG_BITRATE, if capped_w <= 1280 { VIDEO_BITRATE_CAPPED } else { VIDEO_BITRATE })
+        out.SetUINT32(&MF_MT_AVG_BITRATE, if out_w <= 1280 { VIDEO_BITRATE_CAPPED } else { VIDEO_BITRATE })
             .map_err(|e| format!("out vbit: {e:?}"))?;
     } else {
         out.SetGUID(&MF_MT_MAJOR_TYPE, &MFMediaType_Audio)
@@ -332,8 +352,10 @@ fn pack_ratio(num: u32, den: u32) -> u64 {
 
 /// Build the DECODED type (NV12 / PCM) the Source Reader should hand us so the
 /// Sink Writer can chain its H.264 / AAC encoders (which produce the file
-/// headers Finalize requires).
-unsafe fn make_decoded_input_type(native: &IMFMediaType, is_video: bool) -> Result<IMFMediaType, String> {
+/// headers Finalize requires). `capped` requests 720p video so the pipeline
+/// inserts the scaling Video Processor; when a codec refuses, the caller falls
+/// back to `capped=false` (native size).
+unsafe fn make_decoded_input_type(native: &IMFMediaType, is_video: bool, capped: bool) -> Result<IMFMediaType, String> {
     let out = MFCreateMediaType().map_err(|e| format!("MFCreateMediaType: {e:?}"))?;
 
     if is_video {
@@ -346,7 +368,8 @@ unsafe fn make_decoded_input_type(native: &IMFMediaType, is_video: bool) -> Resu
         // Decode at the SAME capped resolution the encoder requests; MF inserts
         // the Video Processor transform to scale, otherwise the types mismatch
         // and the sink never starts (hanging before any sample is written).
-        out.SetUINT64(&MF_MT_FRAME_SIZE, capped_frame_size(frame_size, 1280, 720)).map_err(|e| format!("in frame: {e:?}"))?;
+        let out_size = if capped { capped_frame_size(frame_size, 1280, 720) } else { frame_size };
+        out.SetUINT64(&MF_MT_FRAME_SIZE, out_size).map_err(|e| format!("in frame: {e:?}"))?;
         out.SetUINT64(&MF_MT_FRAME_RATE, frame_rate).map_err(|e| format!("in fps: {e:?}"))?;
         out.SetUINT32(&MF_MT_INTERLACE_MODE, MFVideoInterlace_Progressive.0 as u32)
             .map_err(|e| format!("in interlace: {e:?}"))?;
