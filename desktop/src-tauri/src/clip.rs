@@ -21,7 +21,24 @@ use windows::Win32::System::Com::{CoInitializeEx, CoUninitialize, COINIT_APARTME
 
 /* Clip re-encode parameters. */
 const VIDEO_BITRATE: u32 = 6_000_000; // 6 Mbps (matches "high" 1080p preset)
+const VIDEO_BITRATE_CAPPED: u32 = 2_600_000; // 2.6 Mbps once we downscale to 720p
 const AUDIO_BITRATE: u32 = 192_000;
+
+/// Share clips are meant for Discord/browser playback, so there is no point
+/// transcoding a full 4K/1440p source into another huge file: that is slow AND
+/// uploads megabytes. Cap the output to 720p (even dimensions are required by
+/// MF encoders), which is typically 3-6x faster to encode and far smaller.
+fn capped_frame_size(size: u64, max_w: u32, max_h: u32) -> u64 {
+    let w = ((size >> 32) & 0xFFFF_FFFF) as u32;
+    let h = (size & 0xFFFF_FFFF) as u32;
+    if w == 0 || h == 0 || (w <= max_w && h <= max_h) {
+        return size;
+    }
+    let scale = ((w as f64) / (max_w as f64)).max((h as f64) / (max_h as f64));
+    let nw = (((w as f64) / scale).round() as u32) & !1;
+    let nh = (((h as f64) / scale).round() as u32) & !1;
+    pack_ratio(nw.max(2), nh.max(2))
+}
 
 /// Cut `in_path` -> `out_path` for the window [start, end] in seconds.
 /// Returns Ok(()) on success.
@@ -281,12 +298,14 @@ unsafe fn make_output_type(in_type: &IMFMediaType, is_video: bool) -> Result<IMF
 
         let frame_size = in_type.GetUINT64(&MF_MT_FRAME_SIZE).unwrap_or(pack_ratio(1920, 1080));
         let frame_rate = in_type.GetUINT64(&MF_MT_FRAME_RATE).unwrap_or(pack_ratio(30, 1));
+        let capped = capped_frame_size(frame_size, 1280, 720);
+        let capped_w = ((capped >> 32) & 0xFFFF_FFFF) as u32;
 
-        out.SetUINT64(&MF_MT_FRAME_SIZE, frame_size)
+        out.SetUINT64(&MF_MT_FRAME_SIZE, capped)
             .map_err(|e| format!("out frame: {e:?}"))?;
         out.SetUINT64(&MF_MT_FRAME_RATE, frame_rate)
             .map_err(|e| format!("out fps: {e:?}"))?;
-        out.SetUINT32(&MF_MT_AVG_BITRATE, VIDEO_BITRATE)
+        out.SetUINT32(&MF_MT_AVG_BITRATE, if capped_w <= 1280 { VIDEO_BITRATE_CAPPED } else { VIDEO_BITRATE })
             .map_err(|e| format!("out vbit: {e:?}"))?;
     } else {
         out.SetGUID(&MF_MT_MAJOR_TYPE, &MFMediaType_Audio)
@@ -324,7 +343,10 @@ unsafe fn make_decoded_input_type(native: &IMFMediaType, is_video: bool) -> Resu
             .map_err(|e| format!("in subtype: {e:?}"))?;
         let frame_size = native.GetUINT64(&MF_MT_FRAME_SIZE).unwrap_or(pack_ratio(1920, 1080));
         let frame_rate = native.GetUINT64(&MF_MT_FRAME_RATE).unwrap_or(pack_ratio(30, 1));
-        out.SetUINT64(&MF_MT_FRAME_SIZE, frame_size).map_err(|e| format!("in frame: {e:?}"))?;
+        // Decode at the SAME capped resolution the encoder requests; MF inserts
+        // the Video Processor transform to scale, otherwise the types mismatch
+        // and the sink never starts (hanging before any sample is written).
+        out.SetUINT64(&MF_MT_FRAME_SIZE, capped_frame_size(frame_size, 1280, 720)).map_err(|e| format!("in frame: {e:?}"))?;
         out.SetUINT64(&MF_MT_FRAME_RATE, frame_rate).map_err(|e| format!("in fps: {e:?}"))?;
         out.SetUINT32(&MF_MT_INTERLACE_MODE, MFVideoInterlace_Progressive.0 as u32)
             .map_err(|e| format!("in interlace: {e:?}"))?;

@@ -729,17 +729,34 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
             fail(t(lang, 'shareNoClip'), 'missing')
             return
           }
-          /* Give the background worker a few seconds if it's already cutting
-             this highlight, then cut it ourselves — never spin forever. */
-          for (let i = 0; i < 20 && inflightCuts.current.has(id); i++) {
-            await new Promise(r => setTimeout(r, 500))
-          }
-          const byWorker = loadHlStore()[id]
+          /* If the standalone clip is already being cut (worker / opened the VOD),
+             WAIT for it and reuse the file. Never start a second Media
+             Foundation transcode on the same source: two concurrent cuts of
+             the same VOD starve each other — that is exactly the "stuck for
+             minutes then timeout" seen in the share logs. */
+          const cachedNow = loadHlStore()[id]
           let cut = null
-          if (byWorker && byWorker.clipPath) {
-            stageLog('worker-cut-done', byWorker.clipPath)
-            cut = { path: byWorker.clipPath, thumb: byWorker.thumb || '' }
-          } else {
+          if (cachedNow && cachedNow.clipPath) {
+            cut = { path: cachedNow.clipPath, thumb: cachedNow.thumb || '' }
+          } else if (inflightCuts.current.has(id)) {
+            stageLog('cut-wait-worker')
+            for (let i = 0; i < 340; i++) {
+              await new Promise(r => setTimeout(r, 500))
+              const st = loadHlStore()[id]
+              if (st && st.clipPath) {
+                cut = { path: st.clipPath, thumb: st.thumb || '' }
+                break
+              }
+              if (!inflightCuts.current.has(id)) break
+            }
+            if (cut) stageLog('worker-cut-done', cut.path)
+            else if (inflightCuts.current.has(id)) {
+              stageLog('cut-wait-timeout')
+              fail(t(lang, 'shareTimeoutDesc'), 'timeout')
+              return
+            }
+          }
+          if (!cut) {
             stageLog('cut-start', { start, end, vod: vod.videoPath })
             inflightCuts.current.add(id)
             let r
