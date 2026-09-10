@@ -10,7 +10,7 @@ use windows::Win32::Media::MediaFoundation::{
     MF_MT_AAC_PAYLOAD_TYPE, MF_MT_AUDIO_BITS_PER_SAMPLE,
     MF_MT_AUDIO_BLOCK_ALIGNMENT, MF_MT_AUDIO_NUM_CHANNELS, MF_MT_AUDIO_SAMPLES_PER_SECOND,
     MF_MT_AVG_BITRATE, MF_MT_FRAME_RATE, MF_MT_FRAME_SIZE,
-    MF_MT_INTERLACE_MODE, MF_MT_MAJOR_TYPE, MF_MT_MPEG_SEQUENCE_HEADER, MF_MT_SUBTYPE, MF_SOURCE_READERF_ENDOFSTREAM,
+    MF_MT_INTERLACE_MODE, MF_MT_MAJOR_TYPE, MF_MT_SUBTYPE, MF_SOURCE_READERF_ENDOFSTREAM,
     MF_SOURCE_READERF_STREAMTICK, MF_SOURCE_READER_ANY_STREAM, MFAudioFormat_AAC, MFAudioFormat_PCM,
     MFCreateAttributes, MFCreateMediaType, MFCreateSinkWriterFromURL, MFCreateSourceReaderFromURL,
     MFMediaType_Audio, MFMediaType_Video, MFShutdown, MFStartup, MFVideoFormat_H264,
@@ -23,6 +23,9 @@ use windows::Win32::System::Com::{CoInitializeEx, CoUninitialize, COINIT_APARTME
 const VIDEO_BITRATE: u32 = 6_000_000; // 6 Mbps (matches "high" 1080p preset)
 const VIDEO_BITRATE_CAPPED: u32 = 2_600_000; // 2.6 Mbps once we downscale to 720p
 const AUDIO_BITRATE: u32 = 192_000;
+
+/// Serializes every cut across the whole app (see cut_highlight).
+static CUT_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 /// Share clips are meant for Discord/browser playback, so there is no point
 /// transcoding a full 4K/1440p source into another huge file: that is slow AND
@@ -55,6 +58,15 @@ pub fn cut_highlight(in_path: &str, out_path: &str, start_sec: f64, end_sec: f64
         if mf.is_err() {
             return Err(format!("MFStartup: {mf:?}"));
         }
+        // Globally serialize cuts (worker pre-cuts, the Highlights eager cut,
+        // and on-demand share cuts all land here). Two concurrent Media
+        // Foundation transcodes — even on different VODs — split the CPU and
+        // each one crawls for minutes; that was the "TIMEOUT (300s)" pattern
+        // in the share logs (two [cut] start lines seconds apart, two timeouts).
+        let _cut_guard = match CUT_LOCK.lock() {
+            Ok(g) => g,
+            Err(poisoned) => poisoned.into_inner(),
+        };
         let result = cut_highlight_inner(in_path, out_path, start_sec, end_sec);
         let _ = MFShutdown();
         CoUninitialize();
@@ -72,13 +84,17 @@ unsafe fn cut_highlight_inner(in_path: &str, out_path: &str, start_sec: f64, end
     let end_hns = (end_sec * 10_000_000.0) as i64;
 
     let in_url = to_wide_url(in_path)?;
-    let out_url = to_wide_url(out_path)?;
 
-    // Source readers / sink writers may want hardware transforms.
+    // Source readers / sink writers may want hardware transforms. We ask the
+    // reader to insert a Video Processor MFT too: that is what let us decode to
+    // a 720p NV12 type even on codecs that cannot rescale themselves — without
+    // it MF rejects the resized type (0xC00D36B4) and every cut degrades to a
+    // full-res, multi-minute, sometimes 300s-timeout re-encode.
     let mut reader_attrs: Option<IMFAttributes> = None;
-    MFCreateAttributes(&mut reader_attrs, 1).map_err(|e| format!("reader attrs: {e:?}"))?;
+    MFCreateAttributes(&mut reader_attrs, 2).map_err(|e| format!("reader attrs: {e:?}"))?;
     if let Some(a) = &reader_attrs {
         a.SetUINT32(&MF_READWRITE_ENABLE_HARDWARE_TRANSFORMS, 1).ok();
+        a.SetUINT32(&MF_SOURCE_READER_ENABLE_VIDEO_PROCESSING, 1).ok();
     }
 
     let reader = MFCreateSourceReaderFromURL(
@@ -130,80 +146,17 @@ unsafe fn cut_highlight_inner(in_path: &str, out_path: &str, start_sec: f64, end
     let mut ordered: Vec<(u32, bool)> = stream_ids.clone();
     ordered.sort_by_key(|(_, is_video)| !*is_video);
 
-    // FAST PATH — sample copy (no decode, no re-encode). Our recorder writes
-    // plain H.264/AAC MP4s, and the MP4 demuxer exposes the native (encoded)
-    // types with MF_MT_MPEG_SEQUENCE_HEADER (SPS/PPS) populated — exactly what
-    // the MP4 sink needs to write its headers on Finalize. Feeding those same
-    // compressed samples straight through turns a highlight cut into a couple
-    // of seconds of copying no matter the resolution; the old full-res software
-    // re-encode is what exceeded 120s on codecs that refuse 720p scaling.
-    // Non-H.264/AAC sources (external files) reject this and fall back below.
-    let passthrough_capable = {
-        let mut ok = true;
-        for &(stidx, is_video) in &ordered {
-            let native = reader
-                .GetCurrentMediaType(stidx)
-                .map_err(|e| format!("GetCurrentMediaType({stidx}): {e:?}"))?;
-            let compat = if is_video {
-                native
-                    .GetGUID(&MF_MT_SUBTYPE)
-                    .map(|g| g == MFVideoFormat_H264)
-                    .unwrap_or(false)
-                    && native
-                        .GetBlobSize(&MF_MT_MPEG_SEQUENCE_HEADER)
-                        .map(|n| n > 0)
-                        .unwrap_or(false)
-            } else {
-                native
-                    .GetGUID(&MF_MT_SUBTYPE)
-                    .map(|g| g == MFAudioFormat_AAC)
-                    .unwrap_or(false)
-            };
-            if !compat {
-                ok = false;
-                break;
-            }
-        }
-        ok
-    };
-
-    let mut writer;
-    if passthrough_capable {
-        writer = MFCreateSinkWriterFromURL(PCWSTR(out_url.as_ptr()), None, sink_attrs.as_ref())
-            .map_err(|e| format!("MFCreateSinkWriterFromURL: {e:?}"))?;
-        let mut ok = true;
-        for &(stidx, _is_video) in &ordered {
-            let native = match reader.GetCurrentMediaType(stidx) {
-                Ok(mt) => mt,
-                Err(_) => {
-                    ok = false;
-                    break;
-                }
-            };
-            let sink_idx = match writer.AddStream(&native) {
-                Ok(si) => si,
-                Err(_) => {
-                    ok = false;
-                    break;
-                }
-            };
-            if writer.SetInputMediaType(sink_idx, &native, None).is_err() {
-                ok = false;
-                break;
-            }
-            stream_map.push((stidx, sink_idx));
-        }
-        if !ok {
-            // The container refused the direct compressed stream: abandon this
-            // writer and re-cut through the re-encoder from an empty file.
-            drop(writer);
-            stream_map.clear();
-            let _ = std::fs::remove_file(out_path);
-            writer = setup_reencode_streams(&reader, &ordered, &mut stream_map, out_path)?;
-        }
-    } else {
-        writer = setup_reencode_streams(&reader, &ordered, &mut stream_map, out_path)?;
-    }
+    // Ask the reader for DECODED samples (NV12 / PCM) and let the Sink Writer
+    // insert the H.264 / AAC encoders, which generate the SPS/PPS headers the
+    // MP4 sink needs on Finalize. With MF_SOURCE_READER_ENABLE_VIDEO_PROCESSING
+    // set above, the reader inserts a Video Processor MFT so our requested 720p
+    // NV12 decode is accepted even by codecs that cannot rescale themselves —
+    // that keeps the re-encode to 720p (seconds, not minutes) instead of a
+    // full-res software transcode. Earlier attempts to hand the VOD's own
+    // compressed samples straight through (no re-encode) made the MP4 sink wait
+    // forever for a clean point and hung until the 300s timeout, so that path
+    // is disabled: a fast cap + global serialization (CUT_LOCK) is the fix.
+    let writer = setup_reencode_streams(&reader, &ordered, &mut stream_map, out_path)?;
 
     let sink_for = |src_idx: u32| -> Option<u32> {
         stream_map.iter().find(|(s, _)| *s == src_idx).map(|(_, si)| *si)
