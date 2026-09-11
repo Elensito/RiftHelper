@@ -1152,22 +1152,20 @@ async fn export_highlight_copy(
 
     #[cfg(windows)]
     {
+        // NEVER fall back to copying the source VOD: that created multi-GB
+        // "highlights" that last exactly as long as the whole recording. An
+        // export that can't be trimmed is a failure (None), never the VOD.
         if clip::cut_highlight(&video_path, &dest_str, start_sec, end_sec).is_ok() {
             return Ok(Some(dest_str));
         }
-        // fall back to streaming copy if transcode fails
-        if std::fs::copy(src, &dest).is_ok() {
-            return Ok(Some(dest_str));
-        }
+        let _ = std::fs::remove_file(&dest);
         return Ok(None);
     }
     #[cfg(not(windows))]
     {
         let _ = start_sec;
         let _ = end_sec;
-        if std::fs::copy(src, &dest).is_ok() {
-            return Ok(Some(dest_str));
-        }
+        let _ = src;
         return Ok(None);
     }
 }
@@ -1280,7 +1278,7 @@ async fn create_manual_clip(
             eprintln!("[create_manual_clip] cutter finished, ok={}", r.is_ok());
             let _ = tx_cut.send(r);
         });
-        let cut_path = match rx_cut.recv_timeout(std::time::Duration::from_secs(300)) {
+        let cut_path = match rx_cut.recv_timeout(std::time::Duration::from_secs(900)) {
             Ok(Ok(path)) => path,
             Ok(Err(e)) => {
                 let cut_secs = cut_t0.elapsed().as_secs();
@@ -1290,11 +1288,11 @@ async fn create_manual_clip(
             }
             Err(_) => {
                 // The cutter thread may still be running; its output is
-                // discarded. 300s covers a full-res software re-encode of a
-                // long highlight on slow machines; the fast copy path usually
-                // finishes in a couple of seconds.
-                share_log_line(&app, &"[cut] TIMEOUT (300s)".to_string());
-                eprintln!("[create_manual_clip] CUT TIMEOUT (300s): {clip_str}");
+                // discarded. 900s covers full-res sequential re-encode from t=0
+                // on large 4K recordings (late highlights need to decode the
+                // whole file up to their window before writing a single byte).
+                share_log_line(&app, &"[cut] TIMEOUT (900s)".to_string());
+                eprintln!("[create_manual_clip] CUT TIMEOUT (900s): {clip_str}");
                 let _ = std::fs::remove_file(&clip_path);
                 return Err(
                     "No se pudo generar el clip del highlight: el recorte tardó demasiado tiempo."
@@ -1326,11 +1324,8 @@ async fn create_manual_clip(
     }
     #[cfg(not(windows))]
     {
-        let _ = (start_sec, end_sec, &thumb_str);
-        if std::fs::copy(src, &clip_path).is_err() {
-            return Ok(None);
-        }
-        Ok(Some(serde_json::json!({ "path": clip_str, "thumb": "" })))
+        let _ = (start_sec, end_sec, &thumb_str, src, &clip_str);
+        return Ok(None);
     }
 }
 

@@ -115,7 +115,9 @@ function buildHlCards(store, vods, hlHidden, lang) {
       const hasClip = !!e.clipPath
       const vodPath = hasClip ? e.clipPath : (vod && vod.videoPath)
       const hasVideo = hasClip || !!(vod && vod.hasVideo && vod.videoPath)
-      const hl = hasClip ? { ...e.hl, startVideoSec: 0 } : e.hl
+      const hl = hasClip
+        ? { ...e.hl, startVideoSec: 0, endVideoSec: Math.max(0, (e.hl.endVideoSec || 0) - (e.hl.startVideoSec || 0)) }
+        : e.hl
       return {
         key: hasClip ? `${id}::clip` : id,
         id,
@@ -133,7 +135,9 @@ function buildHlCards(store, vods, hlHidden, lang) {
           queue: e.queue,
           hasVideo,
           videoPath: vodPath,
-          duration: (vod && vod.duration) || 0,
+          duration: hasClip
+            ? Math.max(0, (e.hl.endVideoSec || 0) - (e.hl.startVideoSec || 0))
+            : (vod && vod.duration) || 0,
         },
       }
     })
@@ -636,6 +640,7 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
     const hlWithLabel = (vod, hl) => ({
       ...hl,
       startVideoSec: 0,
+      endVideoSec: Math.max(0, (hl.endVideoSec || 0) - (hl.startVideoSec || 0)),
       label: highlightLabel(lang, hl, (vod.champion) || ''),
     })
     const vod = h.vod
@@ -783,7 +788,7 @@ export default function RiftTimeline({ lang, onOpenVod, profile, subTab, onSubTa
             inflightCuts.current.add(id)
             let r
             try {
-              r = await withTimeout(createManualClip(vod.videoPath, start, end, shareName), 300000, 'cut')
+              r = await withTimeout(createManualClip(vod.videoPath, start, end, shareName), 900000, 'cut')
             } finally {
               inflightCuts.current.delete(id)
             }

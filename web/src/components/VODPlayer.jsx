@@ -728,6 +728,34 @@ export default function VODPlayer({ vod, lang, onBack, puuid, summoner, showTeam
     }
   }, [videoUrl, highlight])
 
+  /* Highlight playback is clamped to [startVideoSec, endVideoSec]: when the
+     highlight has no standalone clip yet it opens the full VOD for instant
+     playback, but it must NOT play past the highlight moment. Pause exactly at
+     endVideoSec instead of letting the whole VOD run. */
+  useEffect(() => {
+    if (!highlight) return
+    const start = highlight.startVideoSec
+    const end = highlight.endVideoSec
+    if (!Number.isFinite(start) || !Number.isFinite(end)) return
+    const vid = videoRef.current
+    if (!vid) return
+    const onTime = () => {
+      if (vid.paused) return
+      const dur = vid.duration
+      if (!(Number.isFinite(dur) && dur > 0)) return
+      if (end <= 0 || end > dur) return
+      if (vid.currentTime >= end) {
+        vid.pause()
+        const clamped = Math.max(start, Math.min(end, dur))
+        vid.currentTime = clamped
+        setCurrent(clamped)
+        setPlaying(false)
+      }
+    }
+    vid.addEventListener('timeupdate', onTime)
+    return () => vid.removeEventListener('timeupdate', onTime)
+  }, [videoUrl, highlight])
+
   /* Canvas MPO bypass: draw video frames onto a <canvas> element which is
      never promoted to a hardware overlay plane.  The <video> is hidden
      off-screen but still drives playback, seeking, and volume. */
