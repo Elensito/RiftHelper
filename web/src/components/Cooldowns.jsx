@@ -3,14 +3,32 @@ import { t } from '../i18n.js'
 import CHAMP_DATA from '../data/championCooldowns.json'
 
 const DDG = CHAMP_DATA.version || '16.18.1'
-const ICON_CDN = `https://ddragon.leagueoflegends.com/cdn/${DDG}`
-const champIcon = (img) => `${ICON_CDN}/img/champion/${img}`
-const spellIcon = (img) => `${ICON_CDN}/img/spell/${img}`
-const passiveIcon = (img) => `${ICON_CDN}/img/passive/${img}`
+const ITEM_CDN = `https://ddragon.leagueoflegends.com/cdn/${DDG}/img/item`
+const PERK_CDN = 'https://ddragon.leagueoflegends.com/cdn/img/perk-images'
+const champIcon = (img) => `https://ddragon.leagueoflegends.com/cdn/${DDG}/img/champion/${img}`
+const spellIcon = (img) => `https://ddragon.leagueoflegends.com/cdn/${DDG}/img/spell/${img}`
+const passiveIcon = (img) => `https://ddragon.leagueoflegends.com/cdn/${DDG}/img/passive/${img}`
+
+const MOD_SRC = {
+  shard: `${PERK_CDN}/StatMods/StatModsCDRScalingIcon.png`,
+  codex: `${ITEM_CDN}/3108.png`,
+  malignance: `${ITEM_CDN}/3118.png`,
+  hexplate: `${ITEM_CDN}/3073.png`,
+  uh: `${PERK_CDN}/Styles/Domination/UltimateHunter/UltimateHunter.png`,
+}
 
 const AH_STEPS = [0, 10, 20, 30, 40, 50, 60, 70, 80]
 const MAX_CHAMPS = 5
-const ULT_HUNTER_STACKS = 5
+
+const defaultMods = () => ({
+  ah: 0,
+  rune8: false,
+  codex: false,
+  malignance: false,
+  hexplate: false,
+  ultHunter: false,
+  ultStacks: 1,
+})
 
 /* League of Legends cooldown redn: final = base * 100 / (100 + haste).
    Ability haste applies to every spell. Ultimate haste stacks additively
@@ -68,19 +86,6 @@ function ChampionPicker({ onSelect, onClose, lang }) {
   )
 }
 
-function ModChip({ name, hint, checked, onChange, icon, accent }) {
-  return (
-    <button className={`cd-chip ${checked ? 'active' : ''}`} onClick={onChange} data-accent={accent}>
-      <span className="cd-chip-check">{checked ? '✓' : ''}</span>
-      <span className="cd-chip-icon">{icon}</span>
-      <span className="cd-chip-txt">
-        <b>{name}</b>
-        <i>{hint}</i>
-      </span>
-    </button>
-  )
-}
-
 function StackSelector({ value, onChange, lang }) {
   return (
     <div className="cd-uh-stacks">
@@ -95,7 +100,93 @@ function StackSelector({ value, onChange, lang }) {
   )
 }
 
-function ChampionCard({ champ, ah, ultAh, onRemove, canRemove, lang }) {
+function ModChip({ src, name, hint, checked, onChange, accent }) {
+  return (
+    <button className={`cd-chip ${checked ? 'active' : ''}`} onClick={onChange} data-accent={accent}>
+      <span className="cd-chip-check">{checked ? '✓' : ''}</span>
+      <span className="cd-chip-icon">
+        <img src={src} alt="" draggable="false" />
+      </span>
+      <span className="cd-chip-txt">
+        <b>{name}</b>
+        <i>{hint}</i>
+      </span>
+    </button>
+  )
+}
+
+function Modifiers({ mod, onChange, lang }) {
+  const set = (patch) => onChange({ ...mod, ...patch })
+  return (
+    <div className="cd-mod">
+      <div className="cd-mod-label">{t(lang, 'cdModifiers')}</div>
+      <div className="cd-ah-steps">
+        {AH_STEPS.map((v) => (
+          <button
+            key={v}
+            className={`cd-ah-step ${mod.ah === v ? 'active' : ''}`}
+            onClick={() => set({ ah: v })}
+          >
+            {v}
+          </button>
+        ))}
+      </div>
+      <div className="cd-chips">
+        <ModChip
+          src={MOD_SRC.shard}
+          name={t(lang, 'cdRune8Name')}
+          hint={t(lang, 'cdRune8Hint')}
+          checked={mod.rune8}
+          onChange={() => set({ rune8: !mod.rune8 })}
+        />
+        <ModChip
+          src={MOD_SRC.codex}
+          name={t(lang, 'cdCodexName')}
+          hint={t(lang, 'cdCodexHint')}
+          checked={mod.codex}
+          onChange={() => set({ codex: !mod.codex })}
+        />
+        <ModChip
+          src={MOD_SRC.malignance}
+          name={t(lang, 'cdMalName')}
+          hint={t(lang, 'cdMalHint')}
+          checked={mod.malignance}
+          onChange={() => set({ malignance: !mod.malignance })}
+          accent="violet"
+        />
+        <ModChip
+          src={MOD_SRC.hexplate}
+          name={t(lang, 'cdHexName')}
+          hint={t(lang, 'cdHexHint')}
+          checked={mod.hexplate}
+          onChange={() => set({ hexplate: !mod.hexplate })}
+          accent="pink"
+        />
+        <ModChip
+          src={MOD_SRC.uh}
+          name={t(lang, 'cdUHName')}
+          hint={t(lang, 'cdUHHint')}
+          checked={mod.ultHunter}
+          onChange={() => set({ ultHunter: !mod.ultHunter })}
+          accent="green"
+        />
+      </div>
+      {mod.ultHunter && (
+        <div className="cd-uh">
+          <StackSelector value={mod.ultStacks} onChange={(n) => set({ ultStacks: n })} lang={lang} />
+        </div>
+      )}
+    </div>
+  )
+}
+
+function ChampionCard({ champ, mod, onModChange, onRemove, canRemove, lang }) {
+  const ah = mod.ah + (mod.rune8 ? 8 : 0) + (mod.codex ? 10 : 0) + (mod.malignance ? 15 : 0)
+  const ultAh =
+    (mod.ultHunter ? 6 + 5 * mod.ultStacks : 0) +
+    (mod.malignance ? 20 : 0) +
+    (mod.hexplate ? 30 : 0)
+
   return (
     <div className="cd-card">
       <div className="cd-card-head">
@@ -138,7 +229,7 @@ function ChampionCard({ champ, ah, ultAh, onRemove, canRemove, lang }) {
                     <div className="cd-rank" key={r}>
                       <span className="cd-rank-lv">{r + 1}</span>
                       <span className="cd-rank-val">
-                        {fmt(cdAfter(base, ah, isUlt ? ultAh : 0))}
+                        {fmt(cdAfter(base, ah, isUlt ? ultAh : 0))}s
                       </span>
                       <span className="cd-rank-base">{fmt(base)}s</span>
                     </div>
@@ -149,20 +240,16 @@ function ChampionCard({ champ, ah, ultAh, onRemove, canRemove, lang }) {
           )
         })}
       </div>
+
+      <Modifiers mod={mod} onChange={onModChange} lang={lang} />
     </div>
   )
 }
 
 export default function Cooldowns({ lang }) {
   const [slots, setSlots] = useState([null, null])
+  const [mods, setMods] = useState([defaultMods(), defaultMods()])
   const [pickerFor, setPickerFor] = useState(null)
-  const [ah, setAh] = useState(0)
-  const [rune8, setRune8] = useState(false)
-  const [codex, setCodex] = useState(false)
-  const [malignance, setMalignance] = useState(false)
-  const [hexplate, setHexplate] = useState(false)
-  const [ultHunter, setUltHunter] = useState(ULT_HUNTER_STACKS)
-  const [ultStacks, setUltStacks] = useState(1)
 
   const pickChamp = (slotIdx, id) => {
     setSlots((prev) => prev.map((c, i) => (i === slotIdx ? id : c)))
@@ -171,18 +258,19 @@ export default function Cooldowns({ lang }) {
 
   const removeSlot = (slotIdx) => {
     setSlots((prev) => prev.filter((_, i) => i !== slotIdx))
+    setMods((prev) => prev.filter((_, i) => i !== slotIdx))
   }
 
   const addSlot = () => {
-    if (slots.length < MAX_CHAMPS) setSlots((prev) => [...prev, null])
+    if (slots.length < MAX_CHAMPS) {
+      setSlots((prev) => [...prev, null])
+      setMods((prev) => [...prev, defaultMods()])
+    }
   }
 
   const champs = useMemo(() =>
     slots.map((id) => (id ? (CHAMP_DATA.champions[id] || null) : null)),
   [slots])
-
-  const baseAh = ah + (rune8 ? 8 : 0) + (codex ? 10 : 0) + (malignance ? 15 : 0)
-  const ultAh = (ultHunter ? 6 + 5 * ultStacks : 0) + (malignance ? 20 : 0) + (hexplate ? 30 : 0)
 
   return (
     <div className="content cooldowns">
@@ -190,83 +278,6 @@ export default function Cooldowns({ lang }) {
         <div className="cd-hero-title">
           <h1>{t(lang, 'navCooldownsTitle')}</h1>
           <p>{t(lang, 'cdSubtitle')}</p>
-        </div>
-        <div className="cd-hero-stats">
-          <div className="cd-hero-stat">
-            <span>{t(lang, 'cdAH')}</span>
-            <b>{baseAh}</b>
-          </div>
-          <div className="cd-hero-stat">
-            <span>{t(lang, 'cdUltHaste')}</span>
-            <b>{ultAh}</b>
-          </div>
-        </div>
-      </div>
-
-      <div className="cd-panel">
-        <div className="cd-panel-sec">
-          <div className="cd-panel-label">
-            <b>{t(lang, 'cdAH')}</b>
-            <span className="cd-ah-current">{ah}</span>
-          </div>
-          <div className="cd-ah-steps">
-            {AH_STEPS.map((v) => (
-              <button key={v} className={`cd-ah-step ${ah === v ? 'active' : ''}`} onClick={() => setAh(v)}>
-                {v}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="cd-panel-sec">
-          <div className="cd-panel-label">
-            <b>{t(lang, 'cdModifiers')}</b>
-          </div>
-          <div className="cd-chips">
-            <ModChip
-              name={t(lang, 'cdRune8Name')}
-              hint={t(lang, 'cdRune8Hint')}
-              checked={rune8}
-              onChange={() => setRune8(!rune8)}
-              icon="R"
-            />
-            <ModChip
-              name={t(lang, 'cdCodexName')}
-              hint={t(lang, 'cdCodexHint')}
-              checked={codex}
-              onChange={() => setCodex(!codex)}
-              icon="C"
-            />
-            <ModChip
-              name={t(lang, 'cdMalName')}
-              hint={t(lang, 'cdMalHint')}
-              checked={malignance}
-              onChange={() => setMalignance(!malignance)}
-              icon="M"
-              accent="violet"
-            />
-            <ModChip
-              name={t(lang, 'cdHexName')}
-              hint={t(lang, 'cdHexHint')}
-              checked={hexplate}
-              onChange={() => setHexplate(!hexplate)}
-              icon="H"
-              accent="pink"
-            />
-            <ModChip
-              name={t(lang, 'cdUHName')}
-              hint={t(lang, 'cdUHHint')}
-              checked={ultHunter}
-              onChange={() => setUltHunter(!ultHunter)}
-              icon="U"
-              accent="green"
-            />
-          </div>
-          {ultHunter && (
-            <div className="cd-uh">
-              <StackSelector value={ultStacks} onChange={setUltStacks} lang={lang} />
-            </div>
-          )}
         </div>
       </div>
 
@@ -289,8 +300,8 @@ export default function Cooldowns({ lang }) {
             {champ ? (
               <ChampionCard
                 champ={champ}
-                ah={baseAh}
-                ultAh={ultAh}
+                mod={mods[i]}
+                onModChange={(m) => setMods((prev) => prev.map((x, j) => (j === i ? m : x)))}
                 onRemove={() => removeSlot(i)}
                 canRemove={slots.length > 2}
                 lang={lang}
@@ -318,10 +329,6 @@ export default function Cooldowns({ lang }) {
 
       <div className="cd-foot">
         <span className="cd-foot-data">{t(lang, 'cdDataFrom')} {DDG}</span>
-        <span className="cd-foot-legend">
-          <span className="cd-foot-dot ah" /> {t(lang, 'cdAH')}
-          <span className="cd-foot-dot uh" /> {t(lang, 'cdUltHaste')}
-        </span>
       </div>
     </div>
   )
