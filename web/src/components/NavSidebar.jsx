@@ -9,6 +9,11 @@ const ICONS = {
       <circle cx="12" cy="7" r="4" />
     </svg>
   ),
+  cooldowns: (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+    </svg>
+  ),
   timeline: (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <circle cx="12" cy="12" r="10" />
@@ -25,6 +30,7 @@ const ICONS = {
 
 const NAV_ITEMS = [
   { id: 'profile', icon: 'profile', label: 'Profile', labelEs: 'Perfil' },
+  { id: 'cooldowns', icon: 'cooldowns', label: 'Cooldowns', labelEs: 'Cooldowns' },
   { id: 'rift-timeline', icon: 'timeline', label: 'Rift Timeline', labelEs: 'Rift Timeline' },
 ]
 

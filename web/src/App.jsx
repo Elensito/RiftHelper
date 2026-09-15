@@ -16,6 +16,7 @@ import AICoach from './components/AICoach.jsx'
 import Tooltip from './components/Tooltip.jsx'
 import NavSidebar from './components/NavSidebar.jsx'
 import RiftTimeline from './components/RiftTimeline.jsx'
+import Cooldowns from './components/Cooldowns.jsx'
 import VODPlayer from './components/VODPlayer.jsx'
 import AppSettings from './components/AppSettings.jsx'
 import HeroTypewriter from './components/HeroTypewriter.jsx'
@@ -633,6 +634,18 @@ export default function App() {
                 }
               }}
             />
+          </main>
+        </>
+      ) : view === 'cooldowns' ? (
+        <>
+          <header className="topbar topbar-icon-rail">
+            <div className="topbar-right">
+              {isTauri() && <FeedbackButton lang={lang} />}
+              {isTauri() && <RiotClientWidget lang={lang} onOpen={openPlayer} />}
+            </div>
+          </header>
+          <main className="content">
+            <Cooldowns lang={lang} />
           </main>
         </>
       ) : (
