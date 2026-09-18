@@ -30,6 +30,46 @@ const LANE_LABELS = {
 
 const OFFICIAL_RIFT_MAP = 'https://raw.communitydragon.org/latest/game/assets/maps/info/map11/2dlevelminimap_base_baron1.png'
 
+function KillHoverCard({ event }) {
+  if (!event) return null
+  const killer = event.killer
+  const victim = event.victim
+  return (
+    <div className="kill-hover-card" role="status">
+      <div className="kill-hover-head">
+        <span className="kill-hover-kicker">{event.time} // CHAMPION KILL</span>
+        <span className={`kill-hover-team ${event.team === 200 ? 'red' : 'blue'}`}>
+          {event.team === 200 ? 'RED SIDE' : 'BLUE SIDE'}
+        </span>
+      </div>
+      <div className="kill-hover-matchup">
+        <div className="kill-hover-player killer">
+          <Img src={killer?.champion_icon} className="kill-hover-icon" alt={killer?.champion || ''} />
+          <span className="kill-hover-player-copy">
+            <strong>{killer?.champion || 'Unknown'}</strong>
+            <small>{killer?.name || 'Unknown player'}</small>
+          </span>
+        </div>
+        <span className="kill-hover-arrow" aria-hidden="true">›</span>
+        <div className="kill-hover-player victim">
+          <Img src={victim?.champion_icon} className="kill-hover-icon" alt={victim?.champion || ''} />
+          <span className="kill-hover-player-copy">
+            <strong>{victim?.champion || 'Unknown'}</strong>
+            <small>{victim?.name || 'Unknown player'}</small>
+          </span>
+        </div>
+      </div>
+      {(event.first_blood || event.shutdown || event.assists > 0) && (
+        <div className="kill-hover-flags">
+          {event.first_blood && <span>FIRST BLOOD</span>}
+          {event.shutdown && <span>SHUTDOWN</span>}
+          {event.assists > 0 && <span>+{event.assists} ASSISTS</span>}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function PlayerChip({ player, withName }) {
   if (!player) return null
   return (
@@ -99,13 +139,13 @@ function RiftMap({ kills, activeEvent, onHover }) {
               type="button"
               className={`rift-map-kill ${ev.team === 200 ? 'red' : 'blue'} ${isActive ? 'active' : ''}`}
               style={{ left: `${x}%`, top: `${y}%` }}
-              title={`${ev.time} · ${ev.killer?.name || ev.killer?.champion || '?'} > ${ev.victim?.name || ev.victim?.champion || '?'}`}
               onMouseEnter={() => onHover(ev)}
               onMouseLeave={() => onHover(null)}
               onFocus={() => onHover(ev)}
               onBlur={() => onHover(null)}
             >
               <span />
+              {isActive && <KillHoverCard event={ev} />}
             </button>
           )
         })}
@@ -120,6 +160,7 @@ export default function MatchEvents({ matchId, puuid, lang }) {
   const [error, setError] = useState('')
   const [myTeamOnly, setMyTeamOnly] = useState(false)
   const [activeEvent, setActiveEvent] = useState(null)
+  const [hoverOrigin, setHoverOrigin] = useState(null)
   const feedRef = useRef(null)
 
   useEffect(() => {
@@ -181,7 +222,14 @@ export default function MatchEvents({ matchId, puuid, lang }) {
         )}
       </div>
 
-      <RiftMap kills={kills} activeEvent={activeEvent} onHover={setActiveEvent} />
+      <RiftMap
+        kills={kills}
+        activeEvent={hoverOrigin === 'map' ? activeEvent : null}
+        onHover={(event) => {
+          setHoverOrigin(event ? 'map' : null)
+          setActiveEvent(event)
+        }}
+      />
 
       <div className="events-ruler">
         {visible.map((e) => {
@@ -228,8 +276,18 @@ export default function MatchEvents({ matchId, puuid, lang }) {
                 id={`evt-${matchId}-${baseIdx}`}
                 key={baseIdx}
                 className={`evt ${ev.type} ${teamCls} ${ev.killer && ev.killer.is_player ? 'mine' : ''}`}
-                onMouseEnter={() => ev.type === 'kill' && setActiveEvent(ev)}
-                onMouseLeave={() => ev.type === 'kill' && setActiveEvent(null)}
+                onMouseEnter={() => {
+                  if (ev.type === 'kill') {
+                    setHoverOrigin('event')
+                    setActiveEvent(ev)
+                  }
+                }}
+                onMouseLeave={() => {
+                  if (ev.type === 'kill') {
+                    setHoverOrigin(null)
+                    setActiveEvent(null)
+                  }
+                }}
               >
                 <div className="evt-time">{ev.time}</div>
 
@@ -256,6 +314,7 @@ export default function MatchEvents({ matchId, puuid, lang }) {
                         {ev.first_blood && <span className="fb-tag">{t(lang, 'evFirstBlood')}</span>}
                         {ev.shutdown && <span className="sd-tag">{t(lang, 'evShutdown')}</span>}
                       </span>
+                      {hoverOrigin === 'event' && activeEvent === ev && <KillHoverCard event={ev} />}
                     </>
                   ) : (
                     <>

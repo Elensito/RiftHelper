@@ -2807,6 +2807,56 @@ button.g-pname:hover {
 .rift-map-kill:hover,
 .rift-map-kill:focus-visible { transform: translate(-50%, -50%) scale(1.7); outline: none; box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.24), 0 0 22px currentColor; }
 
+.kill-hover-card {
+  position: absolute;
+  z-index: 8;
+  left: 50%;
+  bottom: calc(100% + 12px);
+  width: 250px;
+  padding: 10px;
+  transform: translateX(-50%);
+  border: 1px solid rgba(0, 229, 255, 0.42);
+  border-radius: 10px;
+  background: linear-gradient(145deg, rgba(7, 16, 27, 0.98), rgba(22, 10, 31, 0.98));
+  box-shadow: 0 0 0 1px rgba(0, 229, 255, 0.08), 0 10px 30px rgba(0, 0, 0, 0.46), 0 0 22px rgba(0, 229, 255, 0.16);
+  color: var(--text);
+  pointer-events: none;
+  text-align: left;
+  animation: kill-card-in 0.12s ease-out;
+}
+
+.evt-main > .kill-hover-card {
+  position: absolute;
+  left: 92px;
+  bottom: calc(100% + 8px);
+  transform: none;
+}
+
+.kill-hover-head,
+.kill-hover-matchup,
+.kill-hover-player,
+.kill-hover-flags { display: flex; align-items: center; }
+.kill-hover-head { justify-content: space-between; gap: 8px; margin-bottom: 9px; }
+.kill-hover-kicker, .kill-hover-team { font-size: 8px; font-weight: 900; letter-spacing: 0.11em; }
+.kill-hover-kicker { color: var(--muted); }
+.kill-hover-team.blue { color: var(--cyan); }
+.kill-hover-team.red { color: var(--red); }
+.kill-hover-matchup { gap: 8px; }
+.kill-hover-player { min-width: 0; flex: 1; gap: 7px; }
+.kill-hover-player.victim { opacity: 0.78; }
+.kill-hover-icon { width: 30px; height: 30px; flex-shrink: 0; border: 1px solid rgba(255, 255, 255, 0.24); border-radius: 7px; object-fit: cover; }
+.kill-hover-player-copy { display: flex; min-width: 0; flex-direction: column; gap: 2px; }
+.kill-hover-player-copy strong { overflow: hidden; color: var(--text); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.kill-hover-player-copy small { overflow: hidden; color: var(--muted); font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+.kill-hover-arrow { color: var(--red); font-size: 22px; line-height: 1; text-shadow: 0 0 8px rgba(255, 45, 120, 0.65); }
+.kill-hover-flags { flex-wrap: wrap; gap: 5px; margin-top: 9px; }
+.kill-hover-flags span { padding: 3px 5px; border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 4px; color: var(--muted); font-size: 8px; font-weight: 900; letter-spacing: 0.06em; }
+.kill-hover-flags span:first-child { color: #ffbd4a; border-color: rgba(255, 189, 74, 0.3); }
+
+@keyframes kill-card-in { from { opacity: 0; transform: translateX(-50%) translateY(3px); } to { opacity: 1; transform: translateX(-50%) translateY(0); } }
+.evt-main > .kill-hover-card { animation-name: kill-card-event-in; }
+@keyframes kill-card-event-in { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: translateY(0); } }
+
 .rift-map-foot { margin-top: 8px; text-align: right; font-size: 8px; letter-spacing: 0.08em; }
 
 .metrics-teams {
