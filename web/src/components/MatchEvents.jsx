@@ -28,6 +28,8 @@ const LANE_LABELS = {
   BOTTOM: 'evLaneBot',
 }
 
+const OFFICIAL_RIFT_MAP = 'https://raw.communitydragon.org/latest/game/assets/maps/info/map11/2dlevelminimap_base_baron1.png'
+
 function PlayerChip({ player, withName }) {
   if (!player) return null
   return (
@@ -74,10 +76,50 @@ function EventBadge({ ev }) {
   )
 }
 
+function RiftMap({ kills, activeEvent, onHover }) {
+  const positioned = kills.filter((ev) => ev.position?.x != null && ev.position?.y != null)
+  return (
+    <div className="rift-map-panel">
+      <div className="rift-map-heading">
+        <span className="rift-map-title">RIFT // KILL LOCATIONS</span>
+        <span className="rift-map-count">{positioned.length}/{kills.length} plotted</span>
+      </div>
+      <div
+        className="rift-map"
+        aria-label="Summoner's Rift kill locations"
+        style={{ backgroundImage: `url(${OFFICIAL_RIFT_MAP})` }}
+      >
+        {positioned.map((ev, index) => {
+          const x = Math.min(98, Math.max(2, (ev.position.x / 15000) * 100))
+          const y = Math.min(98, Math.max(2, 100 - (ev.position.y / 15000) * 100))
+          const isActive = activeEvent === ev
+          return (
+            <button
+              key={`${ev.ts}-${index}`}
+              type="button"
+              className={`rift-map-kill ${ev.team === 200 ? 'red' : 'blue'} ${isActive ? 'active' : ''}`}
+              style={{ left: `${x}%`, top: `${y}%` }}
+              title={`${ev.time} · ${ev.killer?.name || ev.killer?.champion || '?'} > ${ev.victim?.name || ev.victim?.champion || '?'}`}
+              onMouseEnter={() => onHover(ev)}
+              onMouseLeave={() => onHover(null)}
+              onFocus={() => onHover(ev)}
+              onBlur={() => onHover(null)}
+            >
+              <span />
+            </button>
+          )
+        })}
+      </div>
+      <div className="rift-map-foot">Summoner's Rift · live coordinate projection</div>
+    </div>
+  )
+}
+
 export default function MatchEvents({ matchId, puuid, lang }) {
   const [data, setData] = useState(null)
   const [error, setError] = useState('')
   const [myTeamOnly, setMyTeamOnly] = useState(false)
+  const [activeEvent, setActiveEvent] = useState(null)
   const feedRef = useRef(null)
 
   useEffect(() => {
@@ -121,6 +163,7 @@ export default function MatchEvents({ matchId, puuid, lang }) {
     )
 
   const duration = Math.max(1, data.duration_min)
+  const kills = data.events.filter((event) => event.type === 'kill')
 
   return (
     <div className="events-wrap">
@@ -137,6 +180,8 @@ export default function MatchEvents({ matchId, puuid, lang }) {
           </button>
         )}
       </div>
+
+      <RiftMap kills={kills} activeEvent={activeEvent} onHover={setActiveEvent} />
 
       <div className="events-ruler">
         {visible.map((e) => {
@@ -183,6 +228,8 @@ export default function MatchEvents({ matchId, puuid, lang }) {
                 id={`evt-${matchId}-${baseIdx}`}
                 key={baseIdx}
                 className={`evt ${ev.type} ${teamCls} ${ev.killer && ev.killer.is_player ? 'mine' : ''}`}
+                onMouseEnter={() => ev.type === 'kill' && setActiveEvent(ev)}
+                onMouseLeave={() => ev.type === 'kill' && setActiveEvent(null)}
               >
                 <div className="evt-time">{ev.time}</div>
 

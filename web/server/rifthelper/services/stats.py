@@ -230,6 +230,10 @@ def timeline_events(match: dict, timeline: dict, champ_info: dict[int, dict], pu
                         "time": time,
                         "type": "kill",
                         "team": killer.get("teamId", 0) if killer else 0,
+                        "position": {
+                            "x": (ev.get("position") or {}).get("x"),
+                            "y": (ev.get("position") or {}).get("y"),
+                        } if ev.get("position") else None,
                         "killer": _player_ref(killer, champ_info, puuid) if killer else None,
                         "victim": _player_ref(victim, champ_info, puuid) if victim else None,
                         "assists": len(ev.get("assistingParticipantIds", []) or []),

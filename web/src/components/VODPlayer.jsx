@@ -169,7 +169,7 @@ function NeonTimeline({ matchId, puuid, lang, duration, current, onSeek, localDa
       if (!kind) continue
       if (adjSec < 0) continue // skip events before recording started (loading screen)
       const vsec = adjSec * scale
-      out.push({ kind, sec: adjSec, vsec, time: ev.time, team: ev.team === 200 ? 200 : 100, ally: ev.team === 100 })
+      out.push({ kind, sec: adjSec, vsec, time: ev.time, team: ev.team === 200 ? 200 : 100, ally: ev.team === 100, position: ev.position || null, source: ev })
     }
 
     // Team alignment relative to MY team
