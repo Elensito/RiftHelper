@@ -3336,6 +3336,45 @@ button.p-name:hover {
   gap: 8px;
 }
 
+.spell-cast-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.spell-cast-card {
+  min-width: 68px;
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  padding: 8px 10px 7px;
+  border: 1px solid rgba(0, 229, 255, 0.16);
+  border-radius: 12px;
+  background: linear-gradient(145deg, rgba(0, 229, 255, 0.08), rgba(129, 140, 248, 0.06));
+  transition: border-color 0.16s, transform 0.16s, box-shadow 0.16s;
+}
+
+.spell-cast-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(0, 229, 255, 0.48);
+  box-shadow: 0 5px 18px rgba(0, 229, 255, 0.12);
+}
+
+.spell-cast-key {
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 1px;
+}
+
+.spell-cast-count {
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 800;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
 .spell-cell {
   position: relative;
   width: 40px;

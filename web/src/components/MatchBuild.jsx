@@ -33,8 +33,11 @@ function TeamTiles({ players, selected, onSelect, data }) {
   )
 }
 
-function SpellIcon({ spell, level, champ }) {
-  const label = level ? `Lv ${level} · ${spell.name}` : spell.name
+function SpellIcon({ spell, level, champ, castCount, lang }) {
+  const countLabel = lang === 'es' ? 'usos' : 'casts'
+  const label = [level ? `Lv ${level}` : null, spell.name, castCount != null ? `${castCount} ${countLabel}` : null]
+    .filter(Boolean)
+    .join(' · ')
   return (
     <TooltipTarget
       as="div"
@@ -119,10 +122,14 @@ export default function MatchBuild({ matchId, puuid, lang, players }) {
 
         {spells.length > 0 && (
           <div className="build-section">
-            <span className="build-label">{t(lang, 'buildSpells')}</span>
-            <div className="spell-row">
-              {spells.map((s) => (
-                <SpellIcon key={s.key} spell={s} champ={b.champion_key} />
+            <span className="build-label">{t(lang, 'buildSkillCasts')}</span>
+            <div className="spell-cast-row">
+              {spells.map((s, i) => (
+                <div className="spell-cast-card" key={s.key}>
+                  <SpellIcon spell={s} champ={b.champion_key} castCount={b.spell_casts?.[i] ?? 0} lang={lang} />
+                  <span className="spell-cast-key">{s.key}</span>
+                  <span className="spell-cast-count">{b.spell_casts?.[i] ?? 0}</span>
+                </div>
               ))}
             </div>
           </div>

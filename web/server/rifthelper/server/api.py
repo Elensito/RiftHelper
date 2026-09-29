@@ -1001,6 +1001,12 @@ async def fetch_match_build(match_id: str, puuid: str | None = None) -> dict:
                 "champion": p.get("championName", f"ID {p.get('championId')}"),
                 "champion_key": champ_info.get(p.get("championId"), {}).get("id", ""),
                 "spells": spells,
+                "spell_casts": [
+                    p.get("spell1Casts", 0),
+                    p.get("spell2Casts", 0),
+                    p.get("spell3Casts", 0),
+                    p.get("spell4Casts", 0),
+                ],
                 "skill_order": _skill_order(timeline, pid) if pid in player_ids else [],
             }
         )
