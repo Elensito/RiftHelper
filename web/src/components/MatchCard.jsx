@@ -9,8 +9,62 @@ const MatchBuild = lazy(() => import('./MatchBuild.jsx'))
 
 const ARENA_QUEUES = [1700, 1710, 1740, 1750]
 
+function fallbackAccolades(players) {
+  if (!players?.length) return players
+
+  const teamKills = new Map()
+  const teamGold = new Map()
+  for (const player of players) {
+    teamKills.set(player.team, (teamKills.get(player.team) || 0) + (player.kills || 0))
+    teamGold.set(player.team, (teamGold.get(player.team) || 0) + (player.gold || 0))
+  }
+
+  const metrics = players.map((player) => ({
+    kda: ((player.kills || 0) + (player.assists || 0)) / Math.max(1, player.deaths || 0),
+    gold_share: (player.gold || 0) / Math.max(1, teamGold.get(player.team) || 0),
+    damage: player.damage || 0,
+    vision: player.vision || 0,
+    cs_min: player.cs_per_min || 0,
+    gold: player.gold || 0,
+    kills: player.kills || 0,
+    assists: player.assists || 0,
+    deaths: player.deaths || 0,
+    kp: ((player.kills || 0) + (player.assists || 0)) / Math.max(1, teamKills.get(player.team) || 0),
+  }))
+  const rules = [
+    ['kda_beast', 'kda', 'max', 'positive'], ['team_carry', 'gold_share', 'max', 'positive'],
+    ['damage_dealer', 'damage', 'max', 'positive'], ['visionary', 'vision', 'max', 'positive'],
+    ['cs_machine', 'cs_min', 'max', 'positive'], ['gold_hoarder', 'gold', 'max', 'positive'],
+    ['kill_securer', 'kills', 'max', 'positive'], ['assist_king', 'assists', 'max', 'positive'],
+    ['untouchable', 'deaths', 'min', 'positive'], ['teamfight_presence', 'kp', 'max', 'positive'],
+    ['death_magnet', 'deaths', 'max', 'negative'], ['low_kda', 'kda', 'min', 'negative'],
+    ['low_damage', 'damage', 'min', 'negative'], ['low_vision', 'vision', 'min', 'negative'],
+    ['farm_behind', 'cs_min', 'min', 'negative'], ['low_participation', 'kp', 'min', 'negative'],
+    ['gold_starved', 'gold_share', 'min', 'negative'],
+  ]
+
+  const accolades = players.map(() => [])
+  for (const [key, metric, direction, polarity] of rules) {
+    const values = metrics.map((entry) => entry[metric])
+    if (Math.max(...values) <= 0) continue
+    const extreme = direction === 'max' ? Math.max(...values) : Math.min(...values)
+    players.forEach((_, index) => {
+      if (values[index] !== extreme) return
+      const rank = direction === 'max'
+        ? 1 + values.filter((value) => value > extreme).length
+        : 1 + values.filter((value) => value < extreme).length
+      accolades[index].push({ key, metric, direction, value: Number(values[index].toFixed(2)), rank, polarity })
+    })
+  }
+  return players.map((player, index) => ({
+    ...player,
+    accolades: player.accolades?.length ? player.accolades : accolades[index],
+  }))
+}
+
 function AccoladePanel({ players, lang }) {
-  const decorated = players.filter((p) => p.accolades?.length)
+  const matchPlayers = fallbackAccolades(players)
+  const decorated = matchPlayers.filter((p) => p.accolades?.length)
   return (
     <section className="accolades-panel">
       <div className="accolades-heading">
@@ -18,7 +72,7 @@ function AccoladePanel({ players, lang }) {
           <h3>{t(lang, 'matchAccolades')}</h3>
           <p>{t(lang, 'matchAccoladesDesc')}</p>
         </div>
-        <span className="accolades-count">{decorated.length}/{players.length}</span>
+        <span className="accolades-count">{decorated.length}/{matchPlayers.length}</span>
       </div>
       {decorated.length ? (
         <div className="accolades-grid">
@@ -37,7 +91,7 @@ function AccoladePanel({ players, lang }) {
                     key={award.key}
                     className={`accolade-badge ${award.polarity}`}
                     style={{ '--accolade-color': accoladeColor(award.key) }}
-                    title={`${accoladeDescription(lang, award)} ${t(lang, 'statRank')}: ${award.rank}/${players.length}.`}
+                    title={`${accoladeDescription(lang, award)} ${t(lang, 'statRank')}: ${award.rank}/${matchPlayers.length}.`}
                   >
                     <span>{accoladeTitle(lang, award.key)}</span>
                     <b>{award.key === 'teamfight_presence' || award.key === 'team_carry' ? `${(Number(award.value) * 100).toFixed(1)}%` : Number.isInteger(award.value) ? award.value : Number(award.value).toFixed(2)}</b>
