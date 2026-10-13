@@ -1955,23 +1955,36 @@ body {
   gap: 6px;
   max-width: 100%;
   padding: 5px 8px;
-  border: 1px solid rgba(0, 229, 255, 0.17);
+  border: 1px solid color-mix(in srgb, var(--accolade-color) 42%, transparent);
   border-radius: 8px;
-  background: rgba(0, 229, 255, 0.055);
-  color: #9cdfff;
+  background: color-mix(in srgb, var(--accolade-color) 9%, transparent);
+  color: var(--accolade-color);
   font-size: 10px;
   line-height: 1.3;
   cursor: help;
+  box-shadow: 0 0 10px color-mix(in srgb, var(--accolade-color) 12%, transparent);
+  transition: transform 0.16s, box-shadow 0.16s, background 0.16s;
+}
+
+.accolade-badge:hover {
+  transform: translateY(-1px);
+  background: color-mix(in srgb, var(--accolade-color) 15%, transparent);
+  box-shadow: 0 0 14px color-mix(in srgb, var(--accolade-color) 25%, transparent);
+}
+
+.accolade-badge > span {
+  color: var(--accolade-color);
+  font-weight: 750;
+  text-shadow: 0 0 7px color-mix(in srgb, var(--accolade-color) 55%, transparent);
 }
 
 .accolade-badge.negative {
-  border-color: rgba(255, 75, 112, 0.2);
-  background: rgba(255, 45, 120, 0.06);
-  color: #ff9aad;
+  border-color: color-mix(in srgb, var(--accolade-color) 48%, transparent);
 }
 
 .accolade-badge b {
-  color: var(--text);
+  color: color-mix(in srgb, var(--accolade-color) 70%, white);
+  text-shadow: 0 0 6px color-mix(in srgb, var(--accolade-color) 48%, transparent);
   font-variant-numeric: tabular-nums;
 }
 

@@ -2676,6 +2676,20 @@ export function accoladeTitle(lang, key) {
   return values ? values[LOCALE_INDEX[lang] ?? 0] : key
 }
 
+const ACCOLADE_NEON_COLORS = [
+  '#ff5470', '#ff6b3d', '#ff8c35', '#ffae38', '#ffd447', '#efff4a',
+  '#c4ff4a', '#8dff55', '#55ff76', '#42ffac', '#3dffd7', '#42f4ff',
+  '#42d4ff', '#48b3ff', '#538eff', '#686dff', '#865bff', '#a855ff',
+  '#c34fff', '#e34fff', '#ff4fd8', '#ff4fba', '#ff5c9e', '#ff6684',
+  '#ff7eae', '#ff9ae0', '#db8aff', '#b19aff', '#8bd6ff', '#75ffe0',
+  '#a9ff78', '#ffe477', '#ffbe72', '#ff83a8',
+]
+
+export function accoladeColor(key) {
+  const index = Object.keys(ACCOLADE_TITLES).indexOf(key)
+  return ACCOLADE_NEON_COLORS[index < 0 ? 0 : index % ACCOLADE_NEON_COLORS.length]
+}
+
 export function accoladeDescription(lang, award) {
   const index = LOCALE_INDEX[lang] ?? 0
   if (award.key === 'first_blood') return ACCOLADE_COPY.first_blood[index]

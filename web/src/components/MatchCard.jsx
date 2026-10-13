@@ -1,7 +1,7 @@
 import { lazy, Suspense, useState } from 'react'
 import Img from './Img.jsx'
 import { fmtNum, kdaRatio, sortPlayers, timeAgo } from '../utils.js'
-import { accoladeDescription, accoladeTitle, queueLabel, t } from '../i18n.js'
+import { accoladeColor, accoladeDescription, accoladeTitle, queueLabel, t } from '../i18n.js'
 import PlayerRow from './PlayerRow.jsx'
 
 const MatchMetrics = lazy(() => import('./MatchMetrics.jsx'))
@@ -36,6 +36,7 @@ function AccoladePanel({ players, lang }) {
                   <span
                     key={award.key}
                     className={`accolade-badge ${award.polarity}`}
+                    style={{ '--accolade-color': accoladeColor(award.key) }}
                     title={`${accoladeDescription(lang, award)} ${t(lang, 'statRank')}: ${award.rank}/${players.length}.`}
                   >
                     <span>{accoladeTitle(lang, award.key)}</span>
