@@ -2015,7 +2015,8 @@ body {
   padding: 11px 13px;
   border: 1px solid color-mix(in srgb, var(--accolade-color) 72%, transparent);
   border-radius: 10px;
-  background: linear-gradient(145deg, rgba(8, 14, 29, 0.98), rgba(12, 10, 26, 0.98));
+  background-color: #080d18;
+  background-image: none;
   color: var(--text);
   white-space: normal;
   text-align: left;
