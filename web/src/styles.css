@@ -1950,6 +1950,7 @@ body {
 }
 
 .accolade-badge {
+  position: relative;
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -1964,33 +1965,84 @@ body {
   cursor: help;
   box-shadow: 0 0 10px color-mix(in srgb, var(--accolade-color) 12%, transparent);
   transition: transform 0.16s, box-shadow 0.16s, background 0.16s;
+  outline: none;
 }
 
-.accolade-badge:hover {
+.accolade-badge:hover,
+.accolade-badge:focus-visible {
   transform: translateY(-1px);
   background: color-mix(in srgb, var(--accolade-color) 15%, transparent);
   box-shadow: 0 0 14px color-mix(in srgb, var(--accolade-color) 25%, transparent);
 }
 
-.accolade-badge > span {
+.accolade-badge > span:first-child {
   color: var(--accolade-color);
   font-weight: 750;
   text-shadow: 0 0 7px color-mix(in srgb, var(--accolade-color) 55%, transparent);
 }
 
+.accolade-tooltip {
+  position: absolute;
+  z-index: 40;
+  top: calc(100% + 9px);
+  left: 50%;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: max-content;
+  min-width: 190px;
+  max-width: min(270px, calc(100vw - 36px));
+  padding: 11px 13px;
+  border: 1px solid color-mix(in srgb, var(--accolade-color) 72%, transparent);
+  border-radius: 10px;
+  background: linear-gradient(145deg, rgba(8, 14, 29, 0.98), rgba(12, 10, 26, 0.98));
+  color: var(--text);
+  white-space: normal;
+  text-align: left;
+  box-shadow: 0 0 8px color-mix(in srgb, var(--accolade-color) 42%, transparent),
+    0 0 24px color-mix(in srgb, var(--accolade-color) 20%, transparent),
+    0 12px 28px rgba(0, 0, 0, 0.55);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transform: translate(-50%, -4px);
+  transition: opacity 0.14s ease, transform 0.14s ease, visibility 0.14s;
+}
+
+.accolade-badge:hover .accolade-tooltip,
+.accolade-badge:focus-visible .accolade-tooltip {
+  opacity: 1;
+  visibility: visible;
+  transform: translate(-50%, 0);
+}
+
+.accolade-tooltip strong {
+  color: var(--accolade-color);
+  font-size: 12px;
+  text-shadow: 0 0 9px color-mix(in srgb, var(--accolade-color) 65%, transparent);
+}
+
+.accolade-tooltip > span {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.accolade-tooltip b {
+  color: var(--text);
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 0 9px color-mix(in srgb, var(--accolade-color) 56%, transparent);
+}
+
+.accolade-tooltip small {
+  color: var(--accolade-color);
+  font-size: 10px;
+  font-weight: 700;
+}
+
 .accolade-badge.negative {
   border-color: color-mix(in srgb, var(--accolade-color) 48%, transparent);
-}
-
-.accolade-badge b {
-  color: color-mix(in srgb, var(--accolade-color) 70%, white);
-  text-shadow: 0 0 6px color-mix(in srgb, var(--accolade-color) 48%, transparent);
-  font-variant-numeric: tabular-nums;
-}
-
-.accolade-badge small {
-  color: var(--muted);
-  font-size: 9px;
 }
 
 .accolades-empty,

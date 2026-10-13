@@ -62,8 +62,45 @@ function fallbackAccolades(players) {
   }))
 }
 
+function playerAccolades(player, players) {
+  const metrics = [
+    ['kda', ((player.kills || 0) + (player.assists || 0)) / Math.max(1, player.deaths || 0)],
+    ['damage', player.damage || 0],
+    ['vision', player.vision || 0],
+    ['cs_min', player.cs_per_min || 0],
+  ]
+  const source = player.accolades?.length ? player.accolades : []
+  const awards = [...source]
+  if (!awards.length) {
+    for (const [metric, value] of metrics) {
+      const values = players.map((entry) => {
+        if (metric === 'kda') return ((entry.kills || 0) + (entry.assists || 0)) / Math.max(1, entry.deaths || 0)
+        return entry[metric === 'cs_min' ? 'cs_per_min' : metric] || 0
+      })
+      const rank = 1 + values.filter((other) => other > value).length
+      const key = metric === 'kda' ? 'kda_beast' : metric === 'damage' ? 'damage_dealer' : metric === 'vision' ? 'visionary' : 'cs_machine'
+      awards.push({ key, metric, direction: 'max', value, rank, polarity: 'positive' })
+    }
+  }
+
+  const unique = [...new Map(awards.map((award) => [award.key, award])).values()]
+  return unique
+    .sort((a, b) => a.rank - b.rank || Number(b.polarity === 'positive') - Number(a.polarity === 'positive'))
+    .slice(0, 3)
+}
+
+function accoladeValue(award) {
+  const value = Number(award.value)
+  if (award.metric === 'teamfight_presence' || award.metric === 'gold_share') return `${(value * 100).toFixed(1)}%`
+  if (award.metric === 'cs_min') return `${value.toFixed(1)} CS/min`
+  return Number.isInteger(value) ? new Intl.NumberFormat().format(value) : value.toFixed(2)
+}
+
 function AccoladePanel({ players, lang }) {
-  const matchPlayers = fallbackAccolades(players)
+  const matchPlayers = fallbackAccolades(players).map((player, _, allPlayers) => ({
+    ...player,
+    accolades: playerAccolades(player, allPlayers),
+  }))
   const decorated = matchPlayers.filter((p) => p.accolades?.length)
   return (
     <section className="accolades-panel">
@@ -91,11 +128,16 @@ function AccoladePanel({ players, lang }) {
                     key={award.key}
                     className={`accolade-badge ${award.polarity}`}
                     style={{ '--accolade-color': accoladeColor(award.key) }}
-                    title={`${accoladeDescription(lang, award)} ${t(lang, 'statRank')}: ${award.rank}/${matchPlayers.length}.`}
+                    tabIndex={0}
+                    aria-describedby={`accolade-tip-${p.participant_id}-${award.key}`}
                   >
                     <span>{accoladeTitle(lang, award.key)}</span>
-                    <b>{award.key === 'teamfight_presence' || award.key === 'team_carry' ? `${(Number(award.value) * 100).toFixed(1)}%` : Number.isInteger(award.value) ? award.value : Number(award.value).toFixed(2)}</b>
-                    <small>#{award.rank}</small>
+                    <span className="accolade-tooltip" id={`accolade-tip-${p.participant_id}-${award.key}`} role="tooltip">
+                      <strong>{accoladeTitle(lang, award.key)}</strong>
+                      <span>{accoladeDescription(lang, award)}</span>
+                      <b>{accoladeValue(award)}</b>
+                      <small>{t(lang, 'accoladePlace')}: #{award.rank}/{matchPlayers.length}</small>
+                    </span>
                   </span>
                 ))}
               </div>
