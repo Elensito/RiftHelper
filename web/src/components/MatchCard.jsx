@@ -86,7 +86,7 @@ function playerAccolades(player, players) {
   const unique = [...new Map(awards.map((award) => [award.key, award])).values()]
   return unique
     .sort((a, b) => a.rank - b.rank || Number(b.polarity === 'positive') - Number(a.polarity === 'positive'))
-    .slice(0, 3)
+    .slice(0, 1)
 }
 
 function accoladeValue(award) {
@@ -353,31 +353,33 @@ export default function MatchCard({ match, lang, puuid, onOpenPlayer }) {
 
         {tab === 'general' ? (
           <div className="teams">
-            {isArena ? (
-              <ArenaPanel
-                players={match.players}
-                lang={lang}
-                onOpenPlayer={onOpenPlayer}
-                allMaxDamage={Math.max(...match.players.map((p) => p.damage || 0))}
-              />
-            ) : (
-              <>
-                <TeamPanel
+            <div className="teams-table-scroll">
+              {isArena ? (
+                <ArenaPanel
                   players={match.players}
-                  teamId={100}
                   lang={lang}
                   onOpenPlayer={onOpenPlayer}
                   allMaxDamage={Math.max(...match.players.map((p) => p.damage || 0))}
                 />
-                <TeamPanel
-                  players={match.players}
-                  teamId={200}
-                  lang={lang}
-                  onOpenPlayer={onOpenPlayer}
-                  allMaxDamage={Math.max(...match.players.map((p) => p.damage || 0))}
-                />
-              </>
-            )}
+              ) : (
+                <>
+                  <TeamPanel
+                    players={match.players}
+                    teamId={100}
+                    lang={lang}
+                    onOpenPlayer={onOpenPlayer}
+                    allMaxDamage={Math.max(...match.players.map((p) => p.damage || 0))}
+                  />
+                  <TeamPanel
+                    players={match.players}
+                    teamId={200}
+                    lang={lang}
+                    onOpenPlayer={onOpenPlayer}
+                    allMaxDamage={Math.max(...match.players.map((p) => p.damage || 0))}
+                  />
+                </>
+              )}
+            </div>
             <AccoladePanel players={match.players} lang={lang} />
           </div>
         ) : tab === 'metrics' ? (

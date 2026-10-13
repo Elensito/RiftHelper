@@ -1844,6 +1844,7 @@ body {
 
 .match.open .match-body {
   max-height: 3200px;
+  overflow: visible;
 }
 
 .teams {
@@ -1851,6 +1852,11 @@ body {
   flex-direction: column;
   gap: 16px;
   padding: 6px 18px 18px;
+  overflow: visible;
+}
+
+.teams-table-scroll {
+  max-width: 100%;
   overflow-x: auto;
 }
 
@@ -1990,6 +1996,7 @@ body {
 
 .accolade-badge:hover,
 .accolade-badge:focus-visible {
+  z-index: 42;
   transform: translateY(-1px);
   background: color-mix(in srgb, var(--accolade-color) 15%, transparent);
   box-shadow: 0 0 14px color-mix(in srgb, var(--accolade-color) 25%, transparent);
@@ -2026,7 +2033,7 @@ body {
   opacity: 0;
   visibility: hidden;
   pointer-events: none;
-  transform: translate(-50%, -4px);
+  transform: translate(var(--accolade-tooltip-x, -50%), -4px);
   transition: opacity 0.14s ease, transform 0.14s ease, visibility 0.14s;
 }
 
@@ -2034,7 +2041,21 @@ body {
 .accolade-badge:focus-visible .accolade-tooltip {
   opacity: 1;
   visibility: visible;
-  transform: translate(-50%, 0);
+  transform: translate(var(--accolade-tooltip-x, -50%), 0);
+}
+
+.accolades-grid > .accolade-player:first-child:not(:last-child) .accolade-tooltip,
+.accolades-grid > .accolade-player:nth-child(5n + 1) .accolade-tooltip {
+  left: 0;
+  right: auto;
+  --accolade-tooltip-x: 0%;
+}
+
+.accolades-grid > .accolade-player:nth-child(5n) .accolade-tooltip,
+.accolades-grid > .accolade-player:last-child .accolade-tooltip {
+  left: auto;
+  right: 0;
+  --accolade-tooltip-x: 0%;
 }
 
 .accolade-tooltip strong {
@@ -2077,11 +2098,48 @@ body {
   .accolades-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
+
+  .accolades-grid > .accolade-player .accolade-tooltip {
+    left: 50%;
+    right: auto;
+    --accolade-tooltip-x: -50%;
+  }
+
+  .accolades-grid > .accolade-player:nth-child(3n + 1):not(:last-child) .accolade-tooltip {
+    left: 0;
+    --accolade-tooltip-x: 0%;
+  }
+
+  .accolades-grid > .accolade-player:nth-child(3n) .accolade-tooltip,
+  .accolades-grid > .accolade-player:last-child .accolade-tooltip {
+    left: auto;
+    right: 0;
+    --accolade-tooltip-x: 0%;
+  }
 }
 
 @media (max-width: 620px) {
   .accolades-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .accolades-grid > .accolade-player:nth-child(3n + 1) .accolade-tooltip {
+    left: 50%;
+    right: auto;
+    --accolade-tooltip-x: -50%;
+  }
+
+  .accolades-grid > .accolade-player:nth-child(2n + 1):not(:last-child) .accolade-tooltip {
+    left: 0;
+    right: auto;
+    --accolade-tooltip-x: 0%;
+  }
+
+  .accolades-grid > .accolade-player:nth-child(2n) .accolade-tooltip,
+  .accolades-grid > .accolade-player:last-child .accolade-tooltip {
+    left: auto;
+    right: 0;
+    --accolade-tooltip-x: 0%;
   }
 }
 
