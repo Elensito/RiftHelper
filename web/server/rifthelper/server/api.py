@@ -498,6 +498,9 @@ def build_match(
         )
         for p in participants
     ]
+    accolade_map = stats_service.match_accolades(match, timeline)
+    for p in players:
+        p["accolades"] = accolade_map.get(p.get("participant_id"), [])
     _mark_mvps(players)
     me = next((p for p in players if p["is_player"]), {})
 
@@ -536,7 +539,7 @@ def build_match(
 def _profile_cache_path(name: str, tag: str, start: int) -> Path:
     n = " ".join(name.strip().lower().split())
     tg = " ".join(tag.strip().lower().split())
-    key = f"v3#{config.RIOT_REGION}#{n}#{tg}__{start}"
+    key = f"v4#{config.RIOT_REGION}#{n}#{tg}__{start}"
     safe = "".join(c if c.isalnum() else "_" for c in key)
     return config.PROFILE_CACHE_DIR / f"{safe}.json"
 

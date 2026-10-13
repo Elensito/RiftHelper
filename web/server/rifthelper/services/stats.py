@@ -10,6 +10,143 @@ def _role(p: dict) -> str:
     return p.get("teamPosition") or p.get("lane") or ""
 
 
+def match_accolades(match: dict, timeline: dict) -> dict[int, list[dict]]:
+    """Award match highs/lows from explicit Match-V5 participant and timeline stats."""
+    info = match.get("info", {}) or {}
+    participants = info.get("participants", []) or []
+    frames = (timeline.get("info", {}) or {}).get("frames", []) or []
+    if not participants:
+        return {}
+
+    team_kills = {
+        team: sum(p.get("kills", 0) or 0 for p in participants if p.get("teamId") == team)
+        for team in {p.get("teamId") for p in participants}
+    }
+    gold10 = {}
+    if frames and (frames[-1].get("timestamp", 0) or 0) >= 600_000:
+        frame10 = min(frames, key=lambda f: abs((f.get("timestamp", 0) or 0) - 600_000))
+        gold10 = (frame10.get("participantFrames", {}) or {})
+    early_deaths = {p.get("participantId"): 0 for p in participants}
+    first_blood = None
+    for frame in frames:
+        for event in frame.get("events", []) or []:
+            if event.get("type") != "CHAMPION_KILL":
+                continue
+            pid = event.get("victimId")
+            if (event.get("timestamp") or 0) < 600_000 and pid in early_deaths:
+                early_deaths[pid] += 1
+            if first_blood is None:
+                first_blood = event.get("killerId")
+
+    values: dict[int, dict[str, float]] = {}
+    for p in participants:
+        pid = p.get("participantId")
+        team = p.get("teamId")
+        kills = p.get("kills", 0) or 0
+        deaths = p.get("deaths", 0) or 0
+        assists = p.get("assists", 0) or 0
+        duration = max(1, (info.get("gameDuration", 0) or 0) / 60)
+        cs = (p.get("totalMinionsKilled", 0) or 0) + (p.get("neutralMinionsKilled", 0) or 0)
+        gold = p.get("goldEarned", 0) or 0
+        team_gold = sum((x.get("goldEarned", 0) or 0) for x in participants if x.get("teamId") == team)
+        frame = (gold10.get(str(pid), {}) or {})
+        lane_opponent = next((x for x in participants if x.get("teamId") != team and _role(x) == _role(p) and _role(p)), None)
+        opponent_frame = (gold10.get(str(lane_opponent.get("participantId")), {}) or {}) if lane_opponent else {}
+        damage = p.get("totalDamageDealtToChampions", 0) or 0
+        kp = (kills + assists) / max(1, team_kills.get(team, 0))
+        kda = (kills + assists) / max(1, deaths)
+        values[pid] = {
+            "kills": kills, "deaths": deaths, "assists": assists,
+            "kda": kda, "damage": damage, "damage_taken": p.get("totalDamageTaken", 0) or 0,
+            "vision": p.get("visionScore", 0) or 0, "cs_min": cs / duration,
+            "gold": gold, "gold_share": gold / max(1, team_gold), "kp": kp,
+            "objective_damage": p.get("damageDealtToObjectives", 0) or 0,
+            "building_damage": p.get("damageDealtToBuildings", 0) or 0,
+            "cc": p.get("timeCCingOthers", 0) or 0,
+            "wards_placed": p.get("wardsPlaced", 0) or 0,
+            "wards_killed": p.get("wardsKilled", 0) or 0,
+            "multikill": p.get("largestMultiKill", 0) or 0,
+            "steals": p.get("objectivesStolen", 0) or 0,
+            "healing": p.get("totalHealsOnTeammates", 0) or 0,
+            "early_deaths": early_deaths.get(pid, 0),
+            "level": p.get("champLevel", 0) or 0,
+            "gold_diff10": (
+                (frame.get("totalGold", 0) or 0) - (opponent_frame.get("totalGold", 0) or 0)
+                if lane_opponent and str(pid) in gold10 and str(lane_opponent.get("participantId")) in gold10
+                else None
+            ),
+        }
+
+    # Each definition creates one positive or negative accolade for the relevant extreme.
+    awards: dict[int, list[dict]] = {pid: [] for pid in values}
+    rules = [
+        ("kda_beast", "kda", "max", "positive"),
+        ("team_carry", "gold_share", "max", "positive"),
+        ("damage_dealer", "damage", "max", "positive"),
+        ("damage_sponge", "damage_taken", "max", "positive"),
+        ("visionary", "vision", "max", "positive"),
+        ("cs_machine", "cs_min", "max", "positive"),
+        ("gold_hoarder", "gold", "max", "positive"),
+        ("kill_securer", "kills", "max", "positive"),
+        ("assist_king", "assists", "max", "positive"),
+        ("untouchable", "deaths", "min", "positive"),
+        ("objective_hunter", "objective_damage", "max", "positive"),
+        ("demolition_crew", "building_damage", "max", "positive"),
+        ("cc_controller", "cc", "max", "positive"),
+        ("ward_setter", "wards_placed", "max", "positive"),
+        ("ward_cleaner", "wards_killed", "max", "positive"),
+        ("multikill_machine", "multikill", "max", "positive"),
+        ("epic_stealer", "steals", "max", "positive"),
+        ("teamfight_presence", "kp", "max", "positive"),
+        ("big_healer", "healing", "max", "positive"),
+        ("death_magnet", "deaths", "max", "negative"),
+        ("rough_start", "early_deaths", "max", "negative"),
+        ("low_kda", "kda", "min", "negative"),
+        ("low_damage", "damage", "min", "negative"),
+        ("low_vision", "vision", "min", "negative"),
+        ("farm_behind", "cs_min", "min", "negative"),
+        ("low_participation", "kp", "min", "negative"),
+        ("gold_starved", "gold_share", "min", "negative"),
+        ("objective_ghost", "objective_damage", "min", "negative"),
+        ("structure_shy", "building_damage", "min", "negative"),
+        ("wardless", "wards_placed", "min", "negative"),
+        ("no_vision_control", "wards_killed", "min", "negative"),
+        ("slow_start", "gold_diff10", "min", "negative"),
+    ]
+    for key, metric, direction, polarity in rules:
+        candidates = [(pid, v[metric]) for pid, v in values.items() if v[metric] is not None]
+        if not candidates:
+            continue
+        extreme = (max if direction == "max" else min)(value for _, value in candidates)
+        if max(value for _, value in candidates) <= 0 and key != "slow_start":
+            continue
+        for pid, value in candidates:
+            if value == extreme:
+                rank = (
+                    1 + sum(1 for _, other in candidates if other > value)
+                    if direction == "max"
+                    else 1 + sum(1 for _, other in candidates if other < value)
+                )
+                awards[pid].append(
+                    {
+                        "key": key,
+                        "metric": metric,
+                        "direction": direction,
+                        "value": round(value, 2),
+                        "rank": rank,
+                        "polarity": polarity,
+                    }
+                )
+
+    if first_blood in awards:
+        awards[first_blood].append({"key": "first_blood", "metric": "first_blood", "direction": "special", "value": 1, "rank": 1, "polarity": "positive"})
+    for p in participants:
+        pid = p.get("participantId")
+        if values[pid]["level"] >= 18:
+            awards[pid].append({"key": "max_level", "metric": "max_level", "direction": "special", "value": 18, "rank": 1, "polarity": "positive"})
+    return awards
+
+
 def compute_match_stats(
     match: dict, timeline: dict, puuid: str, champ_info: dict[int, dict]
 ) -> dict | None:
@@ -155,21 +292,35 @@ def timeline_metrics(
     if frames and idx[-1] != len(frames) - 1:
         idx.append(len(frames) - 1)
 
+    team_kills = {
+        team: sum(p.get("kills", 0) or 0 for p in participants if p.get("teamId") == team)
+        for team in {p.get("teamId") for p in participants}
+    }
+    team_gold = {
+        team: sum(p.get("goldEarned", 0) or 0 for p in participants if p.get("teamId") == team)
+        for team in {p.get("teamId") for p in participants}
+    }
+    duration_min = max(1, (info.get("gameDuration", 0) or 0) / 60)
     players = []
     for p in participants:
         pid = p.get("participantId")
         champ = champ_info.get(p.get("championId"), {})
         image = champ.get("image")
-        series = {"gold": [], "damage": [], "xp": [], "cs": []}
+        series = {"gold": [], "damage": [], "damage_taken": [], "xp": [], "cs": []}
         for i in idx:
             pf = (frames[i].get("participantFrames", {}) or {}).get(str(pid), {}) or {}
             stats = pf.get("damageStats", {}) or {}
             series["gold"].append(pf.get("totalGold") or 0)
             series["damage"].append(stats.get("totalDamageDoneToChampions") or 0)
+            series["damage_taken"].append(stats.get("totalDamageTaken") or 0)
             series["xp"].append(pf.get("xp") or 0)
             series["cs"].append(
                 (pf.get("minionsKilled") or 0) + (pf.get("jungleMinionsKilled") or 0)
             )
+        kills = p.get("kills", 0) or 0
+        deaths = p.get("deaths", 0) or 0
+        assists = p.get("assists", 0) or 0
+        cs_total = (p.get("totalMinionsKilled", 0) or 0) + (p.get("neutralMinionsKilled", 0) or 0)
         players.append(
             {
                 "participant_id": pid,
@@ -177,6 +328,16 @@ def timeline_metrics(
                 "champion": champ.get("name", f"ID {p.get('championId')}"),
                 "champion_icon": f"{config.SITE_URL}/assets/champions/{image}" if image else None,
                 "is_player": p.get("puuid") == puuid,
+                "summary": {
+                    "kda": round((kills + assists) / max(1, deaths), 2),
+                    "cs_min": round(cs_total / duration_min, 2),
+                    "kp": round((kills + assists) / max(1, team_kills.get(p.get("teamId"), 0)) * 100, 1),
+                    "damage": p.get("totalDamageDealtToChampions", 0) or 0,
+                    "damage_taken": p.get("totalDamageTaken", 0) or 0,
+                    "vision": p.get("visionScore", 0) or 0,
+                    "gold_share": round((p.get("goldEarned", 0) or 0) / max(1, team_gold.get(p.get("teamId"), 0)) * 100, 1),
+                    "objectives": p.get("damageDealtToObjectives", 0) or 0,
+                },
                 **series,
             }
         )

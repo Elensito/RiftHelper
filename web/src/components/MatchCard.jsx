@@ -1,13 +1,58 @@
 import { lazy, Suspense, useState } from 'react'
 import Img from './Img.jsx'
 import { fmtNum, kdaRatio, sortPlayers, timeAgo } from '../utils.js'
-import { queueLabel, t } from '../i18n.js'
+import { accoladeDescription, accoladeTitle, queueLabel, t } from '../i18n.js'
 import PlayerRow from './PlayerRow.jsx'
 
 const MatchMetrics = lazy(() => import('./MatchMetrics.jsx'))
 const MatchBuild = lazy(() => import('./MatchBuild.jsx'))
 
 const ARENA_QUEUES = [1700, 1710, 1740, 1750]
+
+function AccoladePanel({ players, lang }) {
+  const decorated = players.filter((p) => p.accolades?.length)
+  return (
+    <section className="accolades-panel">
+      <div className="accolades-heading">
+        <div>
+          <h3>{t(lang, 'matchAccolades')}</h3>
+          <p>{t(lang, 'matchAccoladesDesc')}</p>
+        </div>
+        <span className="accolades-count">{decorated.length}/{players.length}</span>
+      </div>
+      {decorated.length ? (
+        <div className="accolades-grid">
+          {decorated.map((p) => (
+            <article className="accolade-player" key={p.participant_id}>
+              <div className="accolade-player-head">
+                <Img src={p.champion_icon} className="accolade-champion" />
+                <div className="accolade-player-name">
+                  <strong>{p.player_name || p.champion}</strong>
+                  <span>{p.champion} · {p.kills}/{p.deaths}/{p.assists}</span>
+                </div>
+              </div>
+              <div className="accolade-badges">
+                {p.accolades.map((award) => (
+                  <span
+                    key={award.key}
+                    className={`accolade-badge ${award.polarity}`}
+                    title={`${accoladeDescription(lang, award)} ${t(lang, 'statRank')}: ${award.rank}/${players.length}.`}
+                  >
+                    <span>{accoladeTitle(lang, award.key)}</span>
+                    <b>{award.key === 'teamfight_presence' || award.key === 'team_carry' ? `${(Number(award.value) * 100).toFixed(1)}%` : Number.isInteger(award.value) ? award.value : Number(award.value).toFixed(2)}</b>
+                    <small>#{award.rank}</small>
+                  </span>
+                ))}
+              </div>
+            </article>
+          ))}
+        </div>
+      ) : (
+        <p className="accolades-empty">{t(lang, 'matchAccoladesEmpty')}</p>
+      )}
+    </section>
+  )
+}
 
 function nameOf(entry, lang) {
   if (!entry) return ''
@@ -223,6 +268,7 @@ export default function MatchCard({ match, lang, puuid, onOpenPlayer }) {
                 />
               </>
             )}
+            <AccoladePanel players={match.players} lang={lang} />
           </div>
         ) : tab === 'metrics' ? (
           <Suspense

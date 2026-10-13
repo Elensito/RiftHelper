@@ -13,7 +13,17 @@ import { t } from '../i18n.js'
 
 const MatchEvents = lazy(() => import('./MatchEvents.jsx'))
 
-const METRICS = ['gold', 'damage', 'xp', 'cs']
+const METRICS = ['gold', 'damage', 'damage_taken', 'xp', 'cs']
+const BREAKDOWN = [
+  ['kda', 'statKda'],
+  ['cs_min', 'statCsPerMin'],
+  ['kp', 'statKillParticipation'],
+  ['gold_share', 'statTeamGoldShare'],
+  ['damage', 'statDamageDealt'],
+  ['damage_taken', 'statDamageTaken'],
+  ['vision', 'statVision'],
+  ['objectives', 'statObjectives'],
+]
 const BLUE_COLORS = ['#00e5ff', '#38bdf8', '#60a5fa', '#818cf8', '#22d3ee']
 const RED_COLORS = ['#ff2d78', '#fb7185', '#f97316', '#f43f5e', '#e879f9']
 
@@ -31,6 +41,55 @@ function teamColor(p, players) {
   const i = team.findIndex((x) => x.participant_id === p.participant_id)
   const palette = p.team === 100 ? BLUE_COLORS : RED_COLORS
   return palette[i % palette.length]
+}
+
+function formatBreakdown(value, key, lang) {
+  if (key === 'kp' || key === 'gold_share') return `${Number(value || 0).toFixed(1)}%`
+  if (key === 'kda' || key === 'cs_min') return Number(value || 0).toFixed(2)
+  return new Intl.NumberFormat(lang || 'en').format(value || 0)
+}
+
+function StatisticsBreakdown({ players, selected, lang }) {
+  const selection = players.filter((p) => selected.has(p.participant_id))
+  return (
+    <section className="statistics-breakdown">
+      <header className="statistics-breakdown-head">
+        <div>
+          <h3>{t(lang, 'statisticsBreakdown')}</h3>
+          <p>{t(lang, 'statisticsBreakdownDesc')}</p>
+        </div>
+      </header>
+      {selection.length ? (
+        <div className="statistics-grid">
+          {BREAKDOWN.map(([key, labelKey]) => {
+            const sorted = [...players].sort((a, b) => (b.summary?.[key] || 0) - (a.summary?.[key] || 0))
+            const maximum = Math.max(1, ...sorted.map((p) => p.summary?.[key] || 0))
+            return (
+              <article className="statistics-card" key={key}>
+                <h4>{t(lang, labelKey)}</h4>
+                <div className="statistics-card-rows">
+                  {selection.map((player) => {
+                    const rank = 1 + sorted.filter((p) => (p.summary?.[key] || 0) > (player.summary?.[key] || 0)).length
+                    const value = player.summary?.[key] || 0
+                    return (
+                      <div className="statistics-row" key={player.participant_id}>
+                        <span className="statistics-row-name">{player.champion}</span>
+                        <span className="statistics-row-value">{formatBreakdown(value, key, lang)}</span>
+                        <span className="statistics-row-rank">#{rank}</span>
+                        <i className="statistics-bar-track"><i style={{ width: `${Math.max(3, value / maximum * 100)}%`, background: teamColor(player, players) }} /></i>
+                      </div>
+                    )
+                  })}
+                </div>
+              </article>
+            )
+          })}
+        </div>
+      ) : (
+        <p className="statistics-empty">{t(lang, 'statChoosePlayer')}</p>
+      )}
+    </section>
+  )
 }
 
 function TeamIcons({ players, active, onToggle, data }) {
@@ -107,7 +166,7 @@ export default function MatchMetrics({ matchId, puuid, lang }) {
   const blue = data.players.filter((p) => p.team === 100)
   const red = data.players.filter((p) => p.team === 200)
   const activePlayers = data.players.filter((p) => active.has(p.participant_id))
-  const metricLabel = t(lang, `metric${cap(metric)}`)
+  const metricLabel = t(lang, metric === 'damage_taken' ? 'metricDamageTaken' : `metric${cap(metric)}`)
 
   if (view === 'events') {
     return (
@@ -151,7 +210,7 @@ export default function MatchMetrics({ matchId, puuid, lang }) {
             className={`pill ${metric === m ? 'active' : ''}`}
             onClick={() => setMetric(m)}
           >
-            {t(lang, `metric${cap(m)}`)}
+            {t(lang, m === 'damage_taken' ? 'metricDamageTaken' : `metric${cap(m)}`)}
           </button>
         ))}
       </div>
@@ -223,6 +282,7 @@ export default function MatchMetrics({ matchId, puuid, lang }) {
           ))}
         </div>
       )}
+      <StatisticsBreakdown players={data.players} selected={active} lang={lang} />
     </div>
   )
 }
