@@ -101,7 +101,14 @@ function AccoladePanel({ players, lang }) {
     ...player,
     accolades: playerAccolades(player, allPlayers),
   }))
-  const decorated = matchPlayers.filter((p) => p.accolades?.length)
+  const ownTeam = matchPlayers.find((player) => player.is_player)?.team
+  const teams = [...new Set(matchPlayers.map((player) => player.team))]
+    .sort((a, b) => Number(b === ownTeam) - Number(a === ownTeam))
+    .map((team) => ({
+      team,
+      own: team === ownTeam,
+      players: matchPlayers.filter((player) => player.team === team),
+    }))
   return (
     <section className="accolades-panel">
       <div className="accolades-heading">
@@ -109,39 +116,45 @@ function AccoladePanel({ players, lang }) {
           <h3>{t(lang, 'matchAccolades')}</h3>
           <p>{t(lang, 'matchAccoladesDesc')}</p>
         </div>
-        <span className="accolades-count">{decorated.length}/{matchPlayers.length}</span>
       </div>
-      {decorated.length ? (
-        <div className="accolades-grid">
-          {decorated.map((p) => (
-            <article className="accolade-player" key={p.participant_id}>
-              <div className="accolade-player-head">
-                <Img src={p.champion_icon} className="accolade-champion" />
-                <div className="accolade-player-name">
-                  <strong>{p.player_name || p.champion}</strong>
-                  <span>{p.champion} · {p.kills}/{p.deaths}/{p.assists}</span>
-                </div>
-              </div>
-              <div className="accolade-badges">
-                {p.accolades.map((award) => (
-                  <span
-                    key={award.key}
-                    className={`accolade-badge ${award.polarity}`}
-                    style={{ '--accolade-color': accoladeColor(award.key) }}
-                    tabIndex={0}
-                    aria-describedby={`accolade-tip-${p.participant_id}-${award.key}`}
-                  >
-                    <span>{accoladeTitle(lang, award.key)}</span>
-                    <span className="accolade-tooltip" id={`accolade-tip-${p.participant_id}-${award.key}`} role="tooltip">
-                      <strong>{accoladeTitle(lang, award.key)}</strong>
-                      <span>{accoladeDescription(lang, award)}</span>
-                      <b>{accoladeValue(award)}</b>
-                      <small>{t(lang, 'accoladePlace')}: #{award.rank}/{matchPlayers.length}</small>
-                    </span>
-                  </span>
+      {matchPlayers.length ? (
+        <div className="accolades-teams">
+          {teams.map((row) => (
+            <div className={`accolade-team-row ${row.own ? 'own-team' : 'opposing-team'}`} key={row.team}>
+              <h4>{t(lang, row.own ? 'accoladeYourTeam' : 'accoladeOpponents')}</h4>
+              <div className="accolades-grid">
+                {row.players.map((p) => (
+                  <article className="accolade-player" key={p.participant_id}>
+                    <div className="accolade-player-head">
+                      <Img src={p.champion_icon} className="accolade-champion" />
+                      <div className="accolade-player-name">
+                        <strong>{p.player_name || p.champion}</strong>
+                        <span>{p.champion} · {p.kills}/{p.deaths}/{p.assists}</span>
+                      </div>
+                    </div>
+                    <div className="accolade-badges">
+                      {p.accolades.map((award) => (
+                        <span
+                          key={award.key}
+                          className={`accolade-badge ${award.polarity}`}
+                          style={{ '--accolade-color': accoladeColor(award.key) }}
+                          tabIndex={0}
+                          aria-describedby={`accolade-tip-${p.participant_id}-${award.key}`}
+                        >
+                          <span>{accoladeTitle(lang, award.key)}</span>
+                          <span className="accolade-tooltip" id={`accolade-tip-${p.participant_id}-${award.key}`} role="tooltip">
+                            <strong>{accoladeTitle(lang, award.key)}</strong>
+                            <span>{accoladeDescription(lang, award)}</span>
+                            <b>{accoladeValue(award)}</b>
+                            <small>{t(lang, 'accoladePlace')}: #{award.rank}/{matchPlayers.length}</small>
+                          </span>
+                        </span>
+                      ))}
+                    </div>
+                  </article>
                 ))}
               </div>
-            </article>
+            </div>
           ))}
         </div>
       ) : (

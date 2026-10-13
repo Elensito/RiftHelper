@@ -1885,25 +1885,45 @@ body {
   margin: 4px 0 0;
 }
 
-.accolades-count {
-  padding: 4px 9px;
-  border-radius: 999px;
-  border: 1px solid rgba(0, 229, 255, 0.2);
-  color: var(--cyan);
-  font-size: 11px;
-  font-weight: 800;
-  font-variant-numeric: tabular-nums;
+.accolades-teams {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
 }
 
 .accolades-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
-  gap: 10px;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.accolade-team-row > h4 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 7px;
+  color: var(--cyan);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.accolade-team-row > h4::after {
+  height: 1px;
+  flex: 1;
+  background: linear-gradient(90deg, currentColor, transparent);
+  content: '';
+  opacity: 0.3;
+}
+
+.accolade-team-row.opposing-team > h4 {
+  color: #ff5cbd;
 }
 
 .accolade-player {
   min-width: 0;
-  padding: 11px;
+  padding: 8px;
   border: 1px solid rgba(130, 150, 200, 0.13);
   border-radius: 13px;
   background: rgba(255, 255, 255, 0.018);
@@ -1912,13 +1932,13 @@ body {
 .accolade-player-head {
   display: flex;
   align-items: center;
-  gap: 9px;
-  margin-bottom: 10px;
+  gap: 7px;
+  margin-bottom: 8px;
 }
 
 .accolade-champion {
-  width: 34px;
-  height: 34px;
+  width: 29px;
+  height: 29px;
   border-radius: 9px;
   object-fit: cover;
 }
@@ -1946,7 +1966,7 @@ body {
 .accolade-badges {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 5px;
 }
 
 .accolade-badge {
@@ -2050,6 +2070,18 @@ body {
   color: var(--muted);
   font-size: 12px;
   padding: 8px 0;
+}
+
+@media (max-width: 980px) {
+  .accolades-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 620px) {
+  .accolades-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 .team-panel {
